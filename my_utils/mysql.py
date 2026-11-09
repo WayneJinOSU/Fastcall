@@ -1,11 +1,10 @@
-"""兼容层：历史代码统一 import MysqlClient，实际由 my_utils.db 提供存储。
+"""兼容 shim：存储层已迁移至 storage/db.py。
 
-存储后端通过 DATABASE_URL 环境变量选择（默认 SQLite），详见 my_utils/db.py。
+历史调用点统一 import MysqlClient，实际是 DBClient 的别名；
+后端通过 DATABASE_URL 环境变量选择（默认 SQLite）。
 """
+from storage.db import DBClient, connection_and_select  # noqa: F401
 
-from my_utils.db import DBClient, connection_and_select
-
-# 保持历史调用点（main.py / call_metrics / notes / asr_compare / copilot）不变。
 MysqlClient = DBClient
 
 if __name__ == "__main__":
