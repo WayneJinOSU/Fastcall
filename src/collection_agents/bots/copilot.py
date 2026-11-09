@@ -82,7 +82,8 @@ from collection_agents.services.providers import attach_llm_retry_counter, selec
 from collection_agents.processors.common import SilenceDetector
 from collection_agents.metrics.collector import CallMetricsCollector, CallMetricsObserver
 from collection_agents.notes.call_notes import intelligent_notes_distribution
-from collection_agents.integrations.harness import send_call_data_callback
+# 开源版：harness 外呼平台集成已下线（下方回调调用本就已注释）。
+# from collection_agents.integrations.harness import send_call_data_callback
 
 load_dotenv(override=True)
 from collection_agents.infra.env import mode

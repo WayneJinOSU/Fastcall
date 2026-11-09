@@ -79,8 +79,9 @@ from collection_agents.services.call_config import (
     normalize_language_code,
 )
 from collection_agents.notes.call_notes import intelligent_notes_distribution, save_conversation
-from collection_agents.integrations.harness import send_call_data_callback
-from collection_agents.integrations.harness import resolve_collection_harness_llm_prompt
+# 开源版：harness 外呼平台集成已下线，相关调用一并注释（见下方）。
+# from collection_agents.integrations.harness import send_call_data_callback
+# from collection_agents.integrations.harness import resolve_collection_harness_llm_prompt
 from collection_agents.services.providers import load_output_sounds, send_hangup_signal
 from collection_agents.metrics.collector import CallMetricsCollector
 from collection_agents.metrics.collector import RealtimeMiniCallMetricsCollector
@@ -1375,20 +1376,19 @@ async def run_bot_realtime_alpha(
             asr_config = config_manager.get_asr_config()
             tts_config = config_manager.get_tts_config()
             llm_config = config_manager.get_llm_config()
-            # Preserve the prompt delivered in the websocket call config before
-            # attempting the optional harness lookup. A prompt API outage must
-            # not terminate the realtime call.
-            websocket_prompt = (
-                llm_config.get("prompt") or config_manager.get_prompt_config() or ""
-            )
+            # 开源版：harness prompt 平台已下线，直接使用建联配置中的 prompt。
+            # prompt_uuid 保留为 None，下游 metrics 载荷结构不变。
+            # websocket_prompt = (
+            #     llm_config.get("prompt") or config_manager.get_prompt_config() or ""
+            # )
             prompt_uuid = None
-            if outbound_source == "collection_harness":
-                prompt_uuid = await resolve_collection_harness_llm_prompt(
-                    outbound_source=outbound_source,
-                    variables=variables,
-                    llm_config=llm_config,
-                    fallback_prompt=websocket_prompt,
-                )
+            # if outbound_source == "collection_harness":
+            #     prompt_uuid = await resolve_collection_harness_llm_prompt(
+            #         outbound_source=outbound_source,
+            #         variables=variables,
+            #         llm_config=llm_config,
+            #         fallback_prompt=websocket_prompt,
+            #     )
             llm_metrics_config = dict(llm_config)
             if prompt_uuid:
                 # The harness prompt is for this attempt only. Keep it out of
@@ -2108,11 +2108,12 @@ async def run_bot_realtime_alpha(
         if metrics_collector:
             logging.info(f"call_metrics: {metrics_collector.to_dict()}")
             metrics_collector.save_to_db()
-            await send_call_data_callback(
-                context=context,
-                metrics_collector=metrics_collector,
-                collection_note=collection_note_result,
-            )
+            # 开源版：harness 通话结果回调已下线。
+            # await send_call_data_callback(
+            #     context=context,
+            #     metrics_collector=metrics_collector,
+            #     collection_note=collection_note_result,
+            # )
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="TerifAI Realtime Alpha Bot")

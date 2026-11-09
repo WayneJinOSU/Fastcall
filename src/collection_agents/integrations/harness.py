@@ -1,4 +1,9 @@
-"""Collection-harness prompt reference client.
+"""Collection-harness prompt / callback client（开源版已下线，保留备查）。
+
+开源版本中 bots 对这里的调用已全部注释：prompt 直接来自机器人配置
+（conf/robots/<robot_code>.json），通话结果回调不再外发。
+如需恢复私有平台集成，取消 bots/{standard,realtime,copilot}.py 中
+标注 "harness" 的注释即可。
 
 The prompt content is fetched for one outbound-call attempt only.  It is kept
 in memory, never cached, and never persisted by this module.

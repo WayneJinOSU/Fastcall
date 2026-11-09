@@ -93,8 +93,9 @@ from collection_agents.services.audio_assets import (
     split_voicemail_segments,
 )
 from collection_agents.notes.call_notes import intelligent_notes_distribution, save_conversation
-from collection_agents.integrations.harness import resolve_collection_harness_llm_prompt
-from collection_agents.integrations.harness import send_call_data_callback
+# 开源版：harness 外呼平台集成已下线，相关调用一并注释（见下方）。
+# from collection_agents.integrations.harness import resolve_collection_harness_llm_prompt
+# from collection_agents.integrations.harness import send_call_data_callback
 from collection_agents.services.providers import (
     attach_llm_retry_counter,
     create_llm_service,
@@ -509,17 +510,18 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
                 robot_name,
                 robot_code,
             )
-            # The websocket prompt is the fail-open fallback for harness
-            # lookup failures, so a temporary prompt API issue cannot stop a call.
-            websocket_prompt = (
-                llm_config.get("prompt") or config_manager.get_prompt_config() or ""
-            )
-            prompt_uuid = await resolve_collection_harness_llm_prompt(
-                outbound_source=outbound_source,
-                variables=variables,
-                llm_config=llm_config,
-                fallback_prompt=websocket_prompt,
-            )
+            # 开源版：harness prompt 平台已下线，直接使用建联配置中的 prompt。
+            # prompt_uuid 保留为 None，下游 metrics 载荷结构不变。
+            # websocket_prompt = (
+            #     llm_config.get("prompt") or config_manager.get_prompt_config() or ""
+            # )
+            # prompt_uuid = await resolve_collection_harness_llm_prompt(
+            #     outbound_source=outbound_source,
+            #     variables=variables,
+            #     llm_config=llm_config,
+            #     fallback_prompt=websocket_prompt,
+            # )
+            prompt_uuid = None
             llm_service = create_llm_service(llm_config)
 
             if asr_config.get("provider") == "cartesia":
@@ -1478,11 +1480,12 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
         if metrics_collector:
             logging.info(f"call_metrics: {metrics_collector.to_dict()}")
             metrics_collector.save_to_db()
-            await send_call_data_callback(
-                context=context,
-                metrics_collector=metrics_collector,
-                collection_note=collection_note_result,
-            )
+            # 开源版：harness 通话结果回调已下线。
+            # await send_call_data_callback(
+            #     context=context,
+            #     metrics_collector=metrics_collector,
+            #     collection_note=collection_note_result,
+            # )
 
 
 if __name__ == "__main__":
