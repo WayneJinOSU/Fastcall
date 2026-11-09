@@ -1,13 +1,10 @@
 import asyncio
-import json
 import logging
 import os
-import wave
 from types import MethodType
 
 from openai import APITimeoutError
 from deepgram import LiveOptions
-from pipecat.frames.frames import OutputAudioRawFrame
 from pipecat.services.azure.llm import AzureLLMService
 from pipecat.services.qwen.llm import QwenLLMService
 from pipecat.services.cartesia.stt import CartesiaLiveOptions, CartesiaSTTService
@@ -38,7 +35,6 @@ from collection_agents.services.call_config import (
     LLM_TIMEOUT_SECS_DEFAULT,
     coerce_positive_int,
 )
-from collection_agents.transport.websocket_safe_send import safe_send_text
 
 from collection_agents.services.routing import (
     DEEPSEEK_ROBOT_CODES,
@@ -506,35 +502,3 @@ def attach_llm_retry_counter(llm_service, metrics_collector):
     llm_service.get_chat_completions = MethodType(_tracked_get_chat_completions, llm_service)
     return llm_service
 
-
-def load_output_sounds(script_dir, sound_files=None):
-    sounds = {}
-    for file_name in (sound_files or ["incoming.wav", "incoming4.wav", "14287.wav"]):
-        full_path = os.path.join(script_dir, "assets", file_name)
-        with wave.open(full_path) as audio_file:
-            sounds[file_name] = OutputAudioRawFrame(
-                audio_file.readframes(-1),
-                audio_file.getframerate(),
-                audio_file.getnchannels(),
-            )
-    return sounds
-
-
-async def send_hangup_signal(websocket_client):
-    try:
-        hangup_message = {
-            "action": "hangup",
-            "data": {"code": 480},
-        }
-        logging.info("Sending hangup message")
-        await safe_send_text(
-            websocket_client,
-            json.dumps(hangup_message),
-            description="bot hangup signal",
-            logger=logging.getLogger(__name__),
-        )
-    except Exception as exc:
-        if "websocket.close" in str(exc) or "response already completed" in str(exc):
-            logging.warning(f"Hangup message skipped, connection already closed: {exc}")
-        else:
-            logging.error(f"Sending hangup message error: {exc}")

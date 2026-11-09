@@ -455,3 +455,22 @@ def _validate_wav_file(file_path: Path, *, sample_rate: int | None) -> None:
             )
         if audio_file.getnframes() <= 0:
             raise ValueError("WAV contains no audio frames")
+
+
+def load_output_sounds(script_dir, sound_files=None):
+    """加载 assets/ 下的提示音 wav，返回 {文件名: OutputAudioRawFrame}。"""
+    import os
+    import wave
+
+    from pipecat.frames.frames import OutputAudioRawFrame
+
+    sounds = {}
+    for file_name in (sound_files or ["incoming.wav", "incoming4.wav", "14287.wav"]):
+        full_path = os.path.join(script_dir, "assets", file_name)
+        with wave.open(full_path) as audio_file:
+            sounds[file_name] = OutputAudioRawFrame(
+                audio_file.readframes(-1),
+                audio_file.getframerate(),
+                audio_file.getnchannels(),
+            )
+    return sounds

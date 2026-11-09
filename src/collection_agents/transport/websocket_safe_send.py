@@ -227,3 +227,26 @@ async def safe_send_bytes(
         logger=logger,
         on_disconnect=on_disconnect,
     )
+
+
+async def send_hangup_signal(websocket_client):
+    """向对方发送挂机信令（action=hangup, code=480）。连接已关闭时静默跳过。"""
+    import json
+
+    try:
+        hangup_message = {
+            "action": "hangup",
+            "data": {"code": 480},
+        }
+        logging.info("Sending hangup message")
+        await safe_send_text(
+            websocket_client,
+            json.dumps(hangup_message),
+            description="bot hangup signal",
+            logger=logging.getLogger(__name__),
+        )
+    except Exception as exc:
+        if "websocket.close" in str(exc) or "response already completed" in str(exc):
+            logging.warning(f"Hangup message skipped, connection already closed: {exc}")
+        else:
+            logging.error(f"Sending hangup message error: {exc}")

@@ -74,18 +74,16 @@ from collection_agents.services.call_config import (
     build_first_question_content,
     coerce_positive_int,
     create_system_prompt,
-    resolve_task_type,
-    is_voicemail_hangup_action,
     normalize_language_code,
 )
 from collection_agents.notes.call_notes import intelligent_notes_distribution, save_conversation
 # 开源版：harness 外呼平台集成已下线，相关调用一并注释（见下方）。
 # from collection_agents.integrations.harness import send_call_data_callback
 # from collection_agents.integrations.harness import resolve_collection_harness_llm_prompt
-from collection_agents.services.providers import load_output_sounds, send_hangup_signal
+from collection_agents.services.audio_assets import load_output_sounds
+from collection_agents.bots.helpers import build_call_context, build_session_state
 from collection_agents.metrics.collector import CallMetricsCollector
 from collection_agents.metrics.collector import RealtimeMiniCallMetricsCollector
-from collection_agents.text.time_utils import utc2tz
 from collection_agents.transport.websocket_beta import (
     CustomProtocolFrameSerializer,
     TelephonyEventRouter,
@@ -94,6 +92,7 @@ from collection_agents.transport.websocket_safe_send import (
     harden_pipecat_websocket_transport,
     safe_send_bytes,
     safe_send_text,
+    send_hangup_signal,
 )
 from collection_agents.processors.common import ContextMessageTimestampTracker, SilenceDetector
 from collection_agents.processors.realtime import (
@@ -1281,6 +1280,255 @@ def _build_rnnoise_filter(enabled: bool = False):
 
 
 
+async def _setup_realtime_call(call_ctx, session_context, websocket_client, stream_sid, realtime_rnnoise_enabled):
+    """Realtime 通话设置：配置解析、Azure 资源获取、指标收集器、序列化器与传输层。
+
+    从 run_bot_realtime_alpha 抽出的设置段；返回普通 dict，主函数显式解包。
+    失败时释放已获取的 realtime 资源，避免泄漏。
+    """
+    config_manager = call_ctx["config_manager"]
+    country = call_ctx["country"]
+    task_type = call_ctx["task_type"]
+    follower_id = call_ctx["follower_id"]
+    dial_schedule = call_ctx["dial_schedule"]
+    customer_group = call_ctx["customer_group"]
+    has_sms = call_ctx["has_sms"]
+    has_app_push = call_ctx["has_app_push"]
+    tenant_id = call_ctx["tenant_id"]
+    app_type = call_ctx["app_type"]
+    work_order_id = call_ctx["work_order_id"]
+    outbound_source = call_ctx["outbound_source"]
+    platform = call_ctx["platform"]
+    is_round_robin = call_ctx["is_round_robin"]
+    is_human_assist = call_ctx["is_human_assist"]
+    robot_code = call_ctx["robot_code"]
+    robot_name = call_ctx["robot_name"]
+    org_code = call_ctx["org_code"]
+    org_name = call_ctx["org_name"]
+    call_uuid = call_ctx["call_uuid"]
+    business_id = call_ctx["business_id"]
+
+    realtime_resource = None
+    try:
+        asr_config = config_manager.get_asr_config()
+        tts_config = config_manager.get_tts_config()
+        llm_config = config_manager.get_llm_config()
+        # 开源版：harness prompt 平台已下线，直接使用建联配置中的 prompt。
+        # prompt_uuid 保留为 None，下游 metrics 载荷结构不变。
+        # websocket_prompt = (
+        #     llm_config.get("prompt") or config_manager.get_prompt_config() or ""
+        # )
+        prompt_uuid = None
+        # if outbound_source == "collection_harness":
+        #     prompt_uuid = await resolve_collection_harness_llm_prompt(
+        #         outbound_source=outbound_source,
+        #         variables=variables,
+        #         llm_config=llm_config,
+        #         fallback_prompt=websocket_prompt,
+        #     )
+        llm_metrics_config = dict(llm_config)
+        if prompt_uuid:
+            # The harness prompt is for this attempt only. Keep it out of
+            # process_record and the completed-call business payload.
+            llm_metrics_config.pop("prompt", None)
+            llm_metrics_config.pop("api_key", None)
+
+        realtime_resource = await _get_realtime_resource_manager().acquire()
+        realtime_url = realtime_resource["base_url"]
+        realtime_model = realtime_resource["model"]
+        realtime_asr_model = realtime_resource["asr_model"]
+        realtime_voice = _select_realtime_voice(call_uuid, stream_sid)
+
+        metrics_collector = RealtimeMiniCallMetricsCollector(
+            call_uuid=call_uuid,
+            business_id=business_id,
+            tenant_id=tenant_id,
+            app_type=app_type,
+            work_order_id=work_order_id,
+            outbound_source=outbound_source,
+            platform=platform,
+            is_round_robin=is_round_robin,
+            is_human_assist=is_human_assist,
+            robot_code=robot_code,
+            robot_name=robot_name,
+            org_code=org_code,
+            org_name=org_name,
+            country=country,
+            task_type=task_type,
+            follower_id=follower_id,
+            dial_schedule=dial_schedule,
+            customer_group=customer_group,
+            has_sms=has_sms,
+            has_app_push=has_app_push,
+            task_start_time=datetime.datetime.now(),
+            asr_info={
+                **asr_config,
+                "provider": "azure_realtime",
+                "model": realtime_asr_model,
+                "sample_rate": REALTIME_INPUT_SAMPLE_RATE,
+            },
+            llm_info={
+                **llm_metrics_config,
+                "provider": "azure_realtime",
+                "model": realtime_model,
+                "base_url": realtime_url,
+            },
+            tts_info={
+                **tts_config,
+                "provider": "azure_realtime",
+                "model": realtime_model,
+                "voice_id": realtime_voice,
+                "sample_rate": REALTIME_INPUT_SAMPLE_RATE,
+            },
+            llm_prompt="" if prompt_uuid else llm_config.get("prompt", ""),
+            prompt_uuid=prompt_uuid,
+        )
+        metrics_collector.llm_model_name = realtime_model
+
+        allow_interruptions = False
+        logging.info(
+            "Realtime alpha interruptions: allow_interruptions=%s",
+            allow_interruptions,
+        )
+        realtime_monitor_state = {
+            "bot_speaking": False,
+            "assistant_response_active": False,
+            "barge_in_item_ids": set(),
+            "input_transcription_events": [],
+        }
+        session_context["realtime_monitor_state"] = realtime_monitor_state
+        serializer = CustomProtocolFrameSerializer(
+            sample_rate=REALTIME_INPUT_SAMPLE_RATE,
+            channels=1,
+            input_sample_rate=TELEPHONY_SAMPLE_RATE,
+            output_sample_rate=TELEPHONY_SAMPLE_RATE,
+        )
+        transport = FastAPIWebsocketTransport(
+            websocket=websocket_client,
+            params=FastAPIWebsocketParams(
+                audio_out_enabled=True,
+                add_wav_header=False,
+                audio_in_sample_rate=REALTIME_INPUT_SAMPLE_RATE,
+                audio_in_channels=1,
+                audio_in_enabled=True,
+                audio_in_filter=_build_rnnoise_filter(realtime_rnnoise_enabled),
+                # Azure Realtime uses 24 kHz PCM. Pipecat's Silero VAD
+                # only supports 8 kHz or 16 kHz, so turn detection is
+                # delegated to Azure server_vad in SessionProperties.
+                vad_analyzer=None,
+                audio_in_passthrough=True,
+                serializer=serializer,
+                audio_out_sample_rate=TELEPHONY_SAMPLE_RATE,
+                audio_out_channels=1,
+            ),
+        )
+
+    except Exception:
+        if realtime_resource:
+            await _get_realtime_resource_manager().release(realtime_resource)
+        raise
+
+    return {
+        "tts_config": tts_config,
+        "llm_config": llm_config,
+        "realtime_resource": realtime_resource,
+        "realtime_url": realtime_url,
+        "realtime_model": realtime_model,
+        "realtime_asr_model": realtime_asr_model,
+        "realtime_voice": realtime_voice,
+        "metrics_collector": metrics_collector,
+        "realtime_monitor_state": realtime_monitor_state,
+        "serializer": serializer,
+        "transport": transport,
+        "allow_interruptions": allow_interruptions,
+    }
+
+
+
+async def _finalize_realtime_call(call_ctx, svc, session_context, context, duration_monitor, llm_service):
+    """Realtime 通话收尾：停监控/服务、释放资源、会话与纪要落库、指标落库、挂机信令。
+
+    从 run_bot_realtime_alpha 的 finally 段抽出；svc / call_ctx 允许为 None。
+    """
+    call_ctx = call_ctx or {}
+    svc = svc or {}
+    call_data = call_ctx.get("call_data", {})
+    call_uuid = call_ctx.get("call_uuid", "")
+    variables = call_ctx.get("variables", {})
+    business_id = call_ctx.get("business_id", "")
+    app_type = call_ctx.get("app_type", "")
+    country = call_ctx.get("country", "")
+    work_order_id = call_ctx.get("work_order_id", "")
+    websocket_client = session_context.get("websocket_client")
+    tts_config = svc.get("tts_config") or {}
+    metrics_collector = svc.get("metrics_collector")
+    realtime_resource = svc.get("realtime_resource")
+
+    if duration_monitor and not duration_monitor.done():
+        duration_monitor.cancel()
+    no_response_hangup_task = session_context.get("no_response_hangup_task")
+    if no_response_hangup_task and not no_response_hangup_task.done():
+        no_response_hangup_task.cancel()
+        try:
+            await no_response_hangup_task
+        except asyncio.CancelledError:
+            pass
+
+    if llm_service and hasattr(llm_service, "stop"):
+        try:
+            logging.info("Stopping Azure realtime service...")
+            await asyncio.wait_for(llm_service.stop(EndFrame()), timeout=3.0)
+            logging.info("Azure realtime service stopped")
+        except asyncio.TimeoutError:
+            logging.warning("Azure realtime service stop timeout")
+        except Exception as exc:
+            logging.warning(f"Azure realtime service stop error: {exc}")
+
+    if realtime_resource:
+        await _get_realtime_resource_manager().release(realtime_resource)
+
+    logging.info("finally - realtime_alpha")
+    await send_hangup_signal(websocket_client)
+
+    if metrics_collector:
+        metrics_collector.finalize(datetime.datetime.now())
+
+    collection_note_result = None
+    if context:
+        await save_conversation(
+            context,
+            call_uuid=call_uuid,
+            conversation_meta={
+                "user_name": variables.get("user_name", ""),
+                "business_id": business_id,
+                "remaining_amount": variables.get("remaining_amount", 0),
+                "app_type": app_type,
+                "country": country,
+            },
+            call_data=call_data,
+            metrics_collector=metrics_collector,
+            intent_label_override="G" if session_context.get("voicemail_detected") else None,
+        )
+        if work_order_id:
+            collection_note_result, task_type = await intelligent_notes_distribution(
+                context,
+                call_data,
+                locale=tts_config.get("locale", "es-MX"),
+            )
+            if collection_note_result and metrics_collector:
+                metrics_collector.set_collection_note_result(collection_note_result, task_type)
+
+    if metrics_collector:
+        logging.info(f"call_metrics: {metrics_collector.to_dict()}")
+        metrics_collector.save_to_db()
+        # 开源版：harness 通话结果回调已下线。
+        # await send_call_data_callback(
+        #     context=context,
+        #     metrics_collector=metrics_collector,
+        #     collection_note=collection_note_result,
+        # )
+
+
 async def run_bot_realtime_alpha(
     websocket_client,
     stream_sid,
@@ -1288,6 +1536,8 @@ async def run_bot_realtime_alpha(
     call_timeout=180,
 ):
     """Run the collection bot using Azure GA Realtime via Pipecat."""
+    call_ctx = None
+    svc = None
     session_context = {}
     context = None
     tts_config = {}
@@ -1300,67 +1550,39 @@ async def run_bot_realtime_alpha(
     metrics_collector: Optional[CallMetricsCollector] = None
 
     try:
-        config_manager = BotV3ConfigManager(call_data)
-        call_uuid = call_data.get("data", {}).get("callUUID", "")
-        business_id = call_data.get("data", {}).get("businessID", "")
-
-        variables = call_data.get("data", {}).get("config", {}).get("variables", {})
-        country = variables.get("country", "")
-        task_type = variables.get("task_type", "collection")
-        voicemail_config = config_manager.get_voicemail_config()
-        voicemail_action = (voicemail_config.get("action") or "").strip()
-        voicemail_instant_close = is_voicemail_hangup_action(voicemail_config)
+        # 通话上下文字段提取统一收口在 bots/helpers.py，这里显式解包所需字段。
+        call_ctx = build_call_context(call_data, platform="AzureRealtime")
+        config_manager = call_ctx["config_manager"]
+        call_uuid = call_ctx["call_uuid"]
+        business_id = call_ctx["business_id"]
+        variables = call_ctx["variables"]
+        country = call_ctx["country"]
+        task_type = call_ctx["task_type"]
+        voicemail_action = call_ctx["voicemail_action"]
+        voicemail_instant_close = call_ctx["voicemail_hangup_on_detect"]
         realtime_rnnoise_enabled = _coerce_bool_flag(
             variables.get("realtime_rnnoise_enabled", 0),
             default=False,
         )
-
-        follower_id = variables.get("follower_id", "待传入")
-        dial_schedule = variables.get("dial_schedule", ["待传入"])
-        customer_group = variables.get("customer_group", "待传入")
-        has_sms = variables.get("has_sms", 0)
-        has_app_push = variables.get("has_app_push", 0)
-
-        variables["contact_time"] = utc2tz(time.time(), country)
-
-        tenant_id = variables.get("tenant_id", "")
-        app_type = variables.get("app_type", "")
-        work_order_id = variables.get("work_order_id", "")
-        outbound_source = variables.get("outbound_source") or "hermes"
-
-        platform = "AzureRealtime"
-        is_round_robin = int(1)
-        is_human_assist = int(0)
-
-        robot_code = call_data.get("data", {}).get("config", {}).get("code")
-        robot_name = call_data.get("data", {}).get("config", {}).get("name")
-        resolved_task_type = resolve_task_type(task_type, robot_name)
-        if resolved_task_type != task_type:
-            logging.info(
-                "Task type resolved from robot name: robot_name=%r task_type=%s",
-                robot_name,
-                resolved_task_type,
-            )
-        task_type = resolved_task_type
-        # intelligent_notes_distribution reads the value from call_data, not
-        # the local variable, so keep both sources consistent.
-        variables["task_type"] = task_type
-        org_code = call_data.get("data", {}).get("config", {}).get("orgCode")
-        org_name = call_data.get("data", {}).get("config", {}).get("orgName")
+        follower_id = call_ctx["follower_id"]
+        dial_schedule = call_ctx["dial_schedule"]
+        customer_group = call_ctx["customer_group"]
+        has_sms = call_ctx["has_sms"]
+        has_app_push = call_ctx["has_app_push"]
+        tenant_id = call_ctx["tenant_id"]
+        app_type = call_ctx["app_type"]
+        work_order_id = call_ctx["work_order_id"]
+        outbound_source = call_ctx["outbound_source"]
+        platform = call_ctx["platform"]
+        is_round_robin = call_ctx["is_round_robin"]
+        is_human_assist = call_ctx["is_human_assist"]
+        robot_code = call_ctx["robot_code"]
+        robot_name = call_ctx["robot_name"]
+        org_code = call_ctx["org_code"]
+        org_name = call_ctx["org_name"]
 
         async with aiohttp.ClientSession():
-            session_context = {
-                "websocket_client": websocket_client,
-                "stream_sid": stream_sid,
-                "on_answer": False,
-                "is_end": False,
-                "call_start_time": time.time(),
-                "config_manager": config_manager,
-                "no_response_count": 0,
-                "no_response_hangup_queued": False,
-                "no_response_hangup_task": None,
-                "voicemail_detected": False,
-            }
+            session_context = build_session_state(websocket_client, stream_sid, config_manager)
 
             logging.info(f"Realtime alpha call data config: {config_manager.config}")
             logging.info(
@@ -1373,123 +1595,27 @@ async def run_bot_realtime_alpha(
                 realtime_rnnoise_enabled,
             )
 
-            asr_config = config_manager.get_asr_config()
-            tts_config = config_manager.get_tts_config()
-            llm_config = config_manager.get_llm_config()
-            # 开源版：harness prompt 平台已下线，直接使用建联配置中的 prompt。
-            # prompt_uuid 保留为 None，下游 metrics 载荷结构不变。
-            # websocket_prompt = (
-            #     llm_config.get("prompt") or config_manager.get_prompt_config() or ""
-            # )
-            prompt_uuid = None
-            # if outbound_source == "collection_harness":
-            #     prompt_uuid = await resolve_collection_harness_llm_prompt(
-            #         outbound_source=outbound_source,
-            #         variables=variables,
-            #         llm_config=llm_config,
-            #         fallback_prompt=websocket_prompt,
-            #     )
-            llm_metrics_config = dict(llm_config)
-            if prompt_uuid:
-                # The harness prompt is for this attempt only. Keep it out of
-                # process_record and the completed-call business payload.
-                llm_metrics_config.pop("prompt", None)
-                llm_metrics_config.pop("api_key", None)
-
-            realtime_resource = await _get_realtime_resource_manager().acquire()
-            realtime_url = realtime_resource["base_url"]
-            realtime_model = realtime_resource["model"]
-            realtime_asr_model = realtime_resource["asr_model"]
-            realtime_voice = _select_realtime_voice(call_uuid, stream_sid)
-
-            metrics_collector = RealtimeMiniCallMetricsCollector(
-                call_uuid=call_uuid,
-                business_id=business_id,
-                tenant_id=tenant_id,
-                app_type=app_type,
-                work_order_id=work_order_id,
-                outbound_source=outbound_source,
-                platform=platform,
-                is_round_robin=is_round_robin,
-                is_human_assist=is_human_assist,
-                robot_code=robot_code,
-                robot_name=robot_name,
-                org_code=org_code,
-                org_name=org_name,
-                country=country,
-                task_type=task_type,
-                follower_id=follower_id,
-                dial_schedule=dial_schedule,
-                customer_group=customer_group,
-                has_sms=has_sms,
-                has_app_push=has_app_push,
-                task_start_time=datetime.datetime.now(),
-                asr_info={
-                    **asr_config,
-                    "provider": "azure_realtime",
-                    "model": realtime_asr_model,
-                    "sample_rate": REALTIME_INPUT_SAMPLE_RATE,
-                },
-                llm_info={
-                    **llm_metrics_config,
-                    "provider": "azure_realtime",
-                    "model": realtime_model,
-                    "base_url": realtime_url,
-                },
-                tts_info={
-                    **tts_config,
-                    "provider": "azure_realtime",
-                    "model": realtime_model,
-                    "voice_id": realtime_voice,
-                    "sample_rate": REALTIME_INPUT_SAMPLE_RATE,
-                },
-                llm_prompt="" if prompt_uuid else llm_config.get("prompt", ""),
-                prompt_uuid=prompt_uuid,
+            # 通话设置收口在 _setup_realtime_call（本文件上方），返回普通 dict 显式解包。
+            svc = await _setup_realtime_call(
+                call_ctx, session_context, websocket_client, stream_sid, realtime_rnnoise_enabled
             )
-            metrics_collector.llm_model_name = realtime_model
-
-            allow_interruptions = False
-            logging.info(
-                "Realtime alpha interruptions: allow_interruptions=%s",
-                allow_interruptions,
-            )
-            realtime_monitor_state = {
-                "bot_speaking": False,
-                "assistant_response_active": False,
-                "barge_in_item_ids": set(),
-                "input_transcription_events": [],
-            }
-            session_context["realtime_monitor_state"] = realtime_monitor_state
-            serializer = CustomProtocolFrameSerializer(
-                sample_rate=REALTIME_INPUT_SAMPLE_RATE,
-                channels=1,
-                input_sample_rate=TELEPHONY_SAMPLE_RATE,
-                output_sample_rate=TELEPHONY_SAMPLE_RATE,
-            )
-            transport = FastAPIWebsocketTransport(
-                websocket=websocket_client,
-                params=FastAPIWebsocketParams(
-                    audio_out_enabled=True,
-                    add_wav_header=False,
-                    audio_in_sample_rate=REALTIME_INPUT_SAMPLE_RATE,
-                    audio_in_channels=1,
-                    audio_in_enabled=True,
-                    audio_in_filter=_build_rnnoise_filter(realtime_rnnoise_enabled),
-                    # Azure Realtime uses 24 kHz PCM. Pipecat's Silero VAD
-                    # only supports 8 kHz or 16 kHz, so turn detection is
-                    # delegated to Azure server_vad in SessionProperties.
-                    vad_analyzer=None,
-                    audio_in_passthrough=True,
-                    serializer=serializer,
-                    audio_out_sample_rate=TELEPHONY_SAMPLE_RATE,
-                    audio_out_channels=1,
-                ),
-            )
+            tts_config = svc["tts_config"]
+            llm_config = svc["llm_config"]
+            realtime_resource = svc["realtime_resource"]
+            realtime_url = svc["realtime_url"]
+            realtime_model = svc["realtime_model"]
+            realtime_asr_model = svc["realtime_asr_model"]
+            realtime_voice = svc["realtime_voice"]
+            metrics_collector = svc["metrics_collector"]
+            realtime_monitor_state = svc["realtime_monitor_state"]
+            serializer = svc["serializer"]
+            transport = svc["transport"]
+            allow_interruptions = svc["allow_interruptions"]
 
             # Create system prompt from configuration. Keep this identical to
             # bot_beta.py because realtime_alpha receives the same call_data.
             system_prompt_content = (
-                llm_config.get("prompt", "") or websocket_prompt
+                llm_config.get("prompt", "") or config_manager.get_prompt_config() or ""
             )
             # system_prompt_content = create_system_prompt(system_prompt_content, tts_config)
             system_prompt = {
@@ -2051,70 +2177,9 @@ async def run_bot_realtime_alpha(
         logging.error(f"Error in run_bot_realtime_alpha: {exc}")
         raise
     finally:
-        if duration_monitor and not duration_monitor.done():
-            duration_monitor.cancel()
-        no_response_hangup_task = session_context.get("no_response_hangup_task")
-        if no_response_hangup_task and not no_response_hangup_task.done():
-            no_response_hangup_task.cancel()
-            try:
-                await no_response_hangup_task
-            except asyncio.CancelledError:
-                pass
-
-        if llm_service and hasattr(llm_service, "stop"):
-            try:
-                logging.info("Stopping Azure realtime service...")
-                await asyncio.wait_for(llm_service.stop(EndFrame()), timeout=3.0)
-                logging.info("Azure realtime service stopped")
-            except asyncio.TimeoutError:
-                logging.warning("Azure realtime service stop timeout")
-            except Exception as exc:
-                logging.warning(f"Azure realtime service stop error: {exc}")
-
-        if realtime_resource:
-            await _get_realtime_resource_manager().release(realtime_resource)
-
-        logging.info("finally - realtime_alpha")
-        await send_hangup_signal(websocket_client)
-
-        if metrics_collector:
-            metrics_collector.finalize(datetime.datetime.now())
-
-        collection_note_result = None
-        if context:
-            await save_conversation(
-                context,
-                call_uuid=call_uuid,
-                conversation_meta={
-                    "user_name": variables.get("user_name", ""),
-                    "business_id": business_id,
-                    "remaining_amount": variables.get("remaining_amount", 0),
-                    "app_type": app_type,
-                    "country": country,
-                },
-                call_data=call_data,
-                metrics_collector=metrics_collector,
-                intent_label_override="G" if session_context.get("voicemail_detected") else None,
-            )
-            if work_order_id:
-                collection_note_result, task_type = await intelligent_notes_distribution(
-                    context,
-                    call_data,
-                    locale=tts_config.get("locale", "es-MX"),
-                )
-                if collection_note_result and metrics_collector:
-                    metrics_collector.set_collection_note_result(collection_note_result, task_type)
-
-        if metrics_collector:
-            logging.info(f"call_metrics: {metrics_collector.to_dict()}")
-            metrics_collector.save_to_db()
-            # 开源版：harness 通话结果回调已下线。
-            # await send_call_data_callback(
-            #     context=context,
-            #     metrics_collector=metrics_collector,
-            #     collection_note=collection_note_result,
-            # )
-
+        await _finalize_realtime_call(
+            call_ctx, svc, session_context, context, duration_monitor, llm_service
+        )
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="TerifAI Realtime Alpha Bot")
     parser.add_argument("--config", type=str, help="Bot configuration JSON")
