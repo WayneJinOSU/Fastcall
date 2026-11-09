@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Copilot Web Client</title>
+    <style>
+        :root {
+            --bg: radial-gradient(1200px 500px at 20% -10%, #ffd7a8 0%, transparent 55%),
+                  radial-gradient(900px 600px at 100% 0%, #b8d9ff 0%, transparent 50%),
+                  linear-gradient(160deg, #f8fafc, #eef2ff 60%, #eff6ff);
+            --panel: #ffffffee;
+            --text: #0f172a;
+            --muted: #475569;
+            --brand: #0369a1;
+            --ok: #166534;
+            --warn: #b45309;
+            --danger: #b91c1c;
+            --line: #cbd5e1;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Avenir Next", "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 24px;
+        }
+
+        .wrap {
+            max-width: 1100px;
+            margin: 0 auto;
+            background: var(--panel);
+            backdrop-filter: blur(5px);
+            border: 1px solid #ffffff;
+            border-radius: 18px;
+            box-shadow: 0 20px 50px #0f172a22;
+            overflow: hidden;
+        }
+
+        .header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--line);
+            background: linear-gradient(90deg, #f8fafc, #e0f2fe);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .title {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+
+        .status {
+            padding: 8px 12px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            border: 1px solid var(--line);
+            color: var(--muted);
+            background: #fff;
+        }
+
+        .status.connected {
+            color: var(--ok);
+            border-color: #86efac;
+            background: #f0fdf4;
+        }
+
+        .status.mic {
+            color: var(--brand);
+            border-color: #7dd3fc;
+            background: #f0f9ff;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1.1fr 1fr;
+            gap: 0;
+        }
+
+        .panel {
+            padding: 20px 24px;
+            border-right: 1px solid var(--line);
+        }
+
+        .panel:last-child {
+            border-right: none;
+        }
+
+        .row {
+            margin-bottom: 14px;
+        }
+
+        .row label {
+            display: block;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            color: var(--muted);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+        }
+
+        input, textarea {
+            width: 100%;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-size: 14px;
+            font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+            background: #fff;
+        }
+
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+
+        button {
+            border: none;
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform .15s ease, opacity .15s ease;
+            color: #fff;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-main { background: #0369a1; }
+        .btn-sub { background: #334155; }
+        .btn-ok { background: #166534; }
+        .btn-danger { background: #b91c1c; }
+
+        .log {
+            height: 300px;
+            overflow: auto;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: #0b1020;
+            color: #dbeafe;
+            padding: 10px;
+            font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+            font-size: 12px;
+            line-height: 1.45;
+            white-space: pre-wrap;
+        }
+
+        .hint {
+            color: var(--muted);
+            font-size: 12px;
+            margin-top: 6px;
+        }
+
+        @media (max-width: 900px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+            .panel {
+                border-right: none;
+                border-bottom: 1px solid var(--line);
+            }
+            .panel:last-child {
+                border-bottom: none;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="header">
+        <div class="title">Copilot WS Client</div>
+        <div id="status" class="status">Disconnected</div>
+    </div>
+
+    <div class="grid">
+        <section class="panel">
+            <div class="row">
+                <label for="wsUrl">WebSocket URL</label>
+                <input id="wsUrl" value="ws://127.0.0.1:8000/ws-ai-copilot"/>
+            </div>
+            <div class="row">
+                <label for="callUuid">Call UUID</label>
+                <input id="callUuid"/>
+            </div>
+            <div class="row">
+                <label for="taskUuid">Task UUID</label>
+                <input id="taskUuid"/>
+            </div>
+            <div class="row">
+                <label for="businessId">Business ID</label>
+                <input id="businessId"/>
+            </div>
+            <div class="row">
+                <label for="sessionCreate">session_create JSON</label>
+                <textarea id="sessionCreate"></textarea>
+            </div>
+            <div class="actions">
+                <button id="startSessionBtn" class="btn-main">Start Session</button>
+                <button id="answerBtn" class="btn-ok" disabled>Send Answer</button>
+                <button id="hangupBtn" class="btn-danger" disabled>Hangup</button>
+                <button id="closeBtn" class="btn-sub" disabled>Close Socket</button>
+            </div>
+            <div class="hint">`Start Session` 会先发送 `action.create`，然后自动开启 heartbeat。</div>
+        </section>
+
+        <section class="panel">
+            <div class="row">
+                <label for="textInput">Send CUSTOMER text</label>
+                <input id="textInput" placeholder="Type message and send as event_type=text"/>
+            </div>
+            <div class="actions">
+                <button id="sendTextBtn" class="btn-main" disabled>Send Text</button>
+                <button id="startMicBtn" class="btn-ok" disabled>Start Mic Audio</button>
+                <button id="stopMicBtn" class="btn-danger" disabled>Stop Mic Audio</button>
+            </div>
+            <div class="hint">音频上行为 8kHz / mono / PCM16 / base64，符合当前 copilot 协议。</div>
+
+            <div class="row" style="margin-top: 16px;">
+                <label>Event Log</label>
+                <div id="log" class="log"></div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<script>
+    (() => {
+        const EventType = {
+            ACTION_CREATE: "action.create",
+            ACTION_ANSWER: "action.answer",
+            ACTION_HANGUP: "action.hangup",
+            AUDIO: "audio",
+            TEXT: "text",
+            HEARTBEAT: "heartbeat"
+        };
+
+        const Role = {
+            CUSTOMER: "CUSTOMER",
+            ROBOT: "ROBOT"
+        };
+
+        const ui = {
+            wsUrl: document.getElementById("wsUrl"),
+            callUuid: document.getElementById("callUuid"),
+            taskUuid: document.getElementById("taskUuid"),
+            businessId: document.getElementById("businessId"),
+            sessionCreate: document.getElementById("sessionCreate"),
+            textInput: document.getElementById("textInput"),
+            status: document.getElementById("status"),
+            log: document.getElementById("log"),
+            startSessionBtn: document.getElementById("startSessionBtn"),
+            answerBtn: document.getElementById("answerBtn"),
+            hangupBtn: document.getElementById("hangupBtn"),
+            closeBtn: document.getElementById("closeBtn"),
+            sendTextBtn: document.getElementById("sendTextBtn"),
+            startMicBtn: document.getElementById("startMicBtn"),
+            stopMicBtn: document.getElementById("stopMicBtn")
+        };
+
+        let ws = null;
+        let heartbeatTimer = null;
+
+        let micStream = null;
+        let micAudioContext = null;
+        let micSource = null;
+        let micProcessor = null;
+        let isMicRunning = false;
+
+        let playContext = null;
+        let playCursor = 0;
+
+        function genId() {
+            if (window.crypto?.randomUUID) {
+                return window.crypto.randomUUID();
+            }
+            return "id-" + Math.random().toString(16).slice(2) + "-" + Date.now();
+        }
+
+        function nowMs() {
+            return Date.now();
+        }
+
+        function updateStatus(text, cls = "") {
+            ui.status.className = "status" + (cls ? " " + cls : "");
+            ui.status.textContent = text;
+        }
+
+        function log(message, obj = null) {
+            const time = new Date().toISOString().split("T")[1].replace("Z", "");
+            const line = `[${time}] ${message}` + (obj ? ` ${JSON.stringify(obj)}` : "");
+            ui.log.textContent += line + "\n";
+            ui.log.scrollTop = ui.log.scrollHeight;
+        }
+
+        function buildEvent(eventType, extra = {}) {
+            return {
+                event_id: genId(),
+                event_type: eventType,
+                call_uuid: ui.callUuid.value.trim(),
+                task_uuid: ui.taskUuid.value.trim(),
+                business_id: ui.businessId.value.trim(),
+                timestamp: nowMs(),
+                ...extra
+            };
+        }
+
+        function setConnectedUI(connected) {
+            ui.startSessionBtn.disabled = connected;
+            ui.answerBtn.disabled = !connected;
+            ui.hangupBtn.disabled = !connected;
+            ui.closeBtn.disabled = !connected;
+            ui.sendTextBtn.disabled = !connected;
+            ui.startMicBtn.disabled = !connected;
+            ui.stopMicBtn.disabled = true;
+        }
+
+        function ensureBaseFields() {
+            if (!ui.callUuid.value.trim()) ui.callUuid.value = genId();
+            if (!ui.taskUuid.value.trim()) ui.taskUuid.value = genId();
+            if (!ui.businessId.value.trim()) ui.businessId.value = `demo___${Math.random().toString(16).slice(2, 10)}`;
+        }
+
+        function defaultSessionCreate() {
+            return {
+                config: {
+                    asr: {
+                        provider: "deepgram",
+                        locale: "zh-CN",
+                        name: "中文"
+                    },
+                    tts: {
+                        provider: "cartesia",
+                        name: "bf32f849-7bc9-4b91-8c62-954588efcc30",
+                        model: "sonic-2",
+                        locale: "zh-CN"
+                    },
+                    modelConfig: {
+                        code: "2d0a13761aef42f2a074517b1592dce4",
+                        type: "",
+                        provider: "openrouter",
+                        name: "gpt-4o",
+                        url: "",
+                        apiKey: "",
+                        config: {
+                            temperature: 0.5,
+                            contextRounds: 10,
+                            maxTokens: 100
+                        }
+                    },
+                    promptConfig: {
+                        content: `你是plapla平台的催收专员。你需要致电跟进借款人的债务。你的目标是要求今天还款。你将生中文。
+
+如果债务人侮辱你，你必须施加压力，告知他不还款的风险和危险。
+一次只回复1到2句话。
+你的每一个回答都必须基于相应的 \`步骤\` 和 \`条件\` 。
+
+流程:
+  描述: >
+    你是一名专业的贷款催收员。你需要向借款人催收债务，生成中文文本。
+    开场白必须简洁；首先确认身份，然后直接表明目的。
+    保持专业且带有一定压力的语气。如果用户询问无关问题，强调当前对话的重点是催收。
+  语气: 专业且带有压力
+  限制:
+    - 每次仅执行一个 \`步骤\`，避免回答过长。
+    - 不要回答与催收无关的问题；始终将话题引回到付款上。
+    - 如果可能是语音信箱，请留言催收，然后调用 \`end_conversation\` (结束对话)。
+    - 关键: 如果对话进入死循环或你已经道别，立即结束对话。
+  活动日期: "2025-10-11"
+  客户信息:
+    姓名: "李书文"
+    欠款金额: "897"
+    逾期天数: "1天"
+  步骤:
+    - 步骤: 介绍及身份确认
+      条件: "与用户的第一次互动"
+      执行动作:
+        - 简要介绍自己来自plapla。
+        - 使用确认的语气称呼客户（例如：“您好，我是plapla 的。请问是李书文吗？”）。
+        - 等待用户回答以确认身份。
+
+    - 步骤: 通知付款义务
+      条件: "身份已确认"
+      执行动作:
+        - 告知其在plapla平台有一笔债务以及金额 897。
+        - 参考话术: "我看到您有一笔897 比索的逾期余额。为了确认一下，您今天能结清吗？"
+
+    - 步骤: 施加压力
+      条件: "用户表示推迟付款，或说没欠钱"
+      执行动作:
+        - 告知将产生负面后果，例如通知亲朋好友，并影响其在信用局（Buró）的记录。
+        - 建议立即付款。
+
+    - 步骤: 给予鼓励
+      条件: "客户愿意付款"
+      执行动作:
+        - 告知在逾期初期付款不影响贷款续期；续期将享有更低的利率、更高的额度、更长的期限以及付款优惠。
+
+    - 步骤: 再次施加压力
+      条件: "找借口或说没钱"
+      执行动作:
+        - 坚定地表明你不负责考虑这些因素。
+        - 告知再拖延一天会增加滞纳金利息。如果今天不付，将失去提额或降息的机会。建议今天付款。
+
+    - 步骤: 部分付款
+      条件: "最近表示有付款意愿，或承诺明天付款"
+      执行动作:
+        - 告知可以先付 1/3，剩下的之后结清，以减少我们的来电频率。
+
+    - 步骤: 结束对话
+      条件: "同意今天付款"
+      执行动作:
+        - 以自然、口语化的方式结束对话。
+        - 强制参考话术: 好的，那就这么定了。期待您今天付款。拜拜。
+
+    - 步骤: 语音信箱
+      条件: "遭遇语音信箱"
+      执行动作:
+      -给予留言并且结尾留下"再见", 可参考"我们来自plapla收到请立即检查账单，并完成还款，逃避无法解决问题，我们后续仍然会持续跟进，再见。”
+
+  [思考过程]：货币数字应转换为清晰易懂的货币文本，而非孤立的数字，例如 "1 0 0 0 比索"。
+  [思考过程]：日期也应以对话形式表达，使用单个数字，而非“2 0 1 4 年”。
+  [思考过程]：切勿使用英语生成系统指令（例如，“请填写完整的响应时间范围”）。
+  [思考过程]：回复用户并确认其回复 100% 为西班牙语。
+  [思考过程]：当前数字不能用逗号分隔；必须直接输入，以防止语音转语音服务误读。
+  [思考过程]：一旦输入“Chao”，文本生成将立即停止。`
+                    },
+                    flowConfig: {
+                        welcomeNode: {
+                            content: "请问是 {{user_name}}吗，您在{{app_type}}有一笔{{remaining_amount}}比索的账单，今天是还款日，请问你有什么还款计划？",
+                            timeoutSec: 8,
+                            timeoutReply: "您好，还在吗？及时还款可以避免罚息以及下次快速通过下次贷款。"
+                        },
+                        noResponse: {
+                            timeoutSec: 8,
+                            maxNoResponseCount: 2,
+                            noResponseReply: "您好，请问您还在吗？",
+                            noResponseHangUp: {
+                                enabled: true,
+                                hangupMessage: "感谢您的接听，再见。"
+                            }
+                        }
+                    },
+                    variables: {
+                        tenant_id: "100035",
+                        country: "mexico",
+                        touchWay: "ai_cooperation_task_rotation",
+                        user_name: "ANGEL DIAZ LOPEZ",
+                        app_type: "PlaPla",
+                        remaining_amount: "5537"
+                    }
+                }
+            };
+        }
+
+        function parseSessionCreate() {
+            try {
+                const data = JSON.parse(ui.sessionCreate.value);
+                if (!data || typeof data !== "object") throw new Error("session_create must be object");
+                return data;
+            } catch (e) {
+                throw new Error(`session_create JSON invalid: ${e.message}`);
+            }
+        }
+
+        function sendEvent(event) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                throw new Error("WebSocket not connected");
+            }
+            ws.send(JSON.stringify(event));
+            log("-> " + event.event_type, event);
+        }
+
+        function startHeartbeat() {
+            stopHeartbeat();
+            heartbeatTimer = setInterval(() => {
+                if (!ws || ws.readyState !== WebSocket.OPEN) return;
+                const heartbeat = buildEvent(EventType.HEARTBEAT);
+                ws.send(JSON.stringify(heartbeat));
+            }, 6000);
+        }
+
+        function stopHeartbeat() {
+            if (heartbeatTimer) {
+                clearInterval(heartbeatTimer);
+                heartbeatTimer = null;
+            }
+        }
+
+        function base64FromUint8(uint8) {
+            let binary = "";
+            const chunkSize = 0x8000;
+            for (let i = 0; i < uint8.length; i += chunkSize) {
+                binary += String.fromCharCode(...uint8.subarray(i, i + chunkSize));
+            }
+            return btoa(binary);
+        }
+
+        function uint8FromBase64(base64) {
+            const binary = atob(base64);
+            const len = binary.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return bytes;
+        }
+
+        function downsampleTo8k(float32Samples, inputRate) {
+            const outputRate = 8000;
+            if (inputRate === outputRate) return float32Samples;
+            const ratio = inputRate / outputRate;
+            const outputLen = Math.max(1, Math.round(float32Samples.length / ratio));
+            const result = new Float32Array(outputLen);
+            let offsetResult = 0;
+            let offsetBuffer = 0;
+            while (offsetResult < result.length) {
+                const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
+                let acc = 0;
+                let count = 0;
+                for (let i = offsetBuffer; i < nextOffsetBuffer && i < float32Samples.length; i++) {
+                    acc += float32Samples[i];
+                    count++;
+                }
+                result[offsetResult] = count > 0 ? acc / count : 0;
+                offsetResult++;
+                offsetBuffer = nextOffsetBuffer;
+            }
+            return result;
+        }
+
+        function floatToPcm16Bytes(float32Samples) {
+            const bytes = new Uint8Array(float32Samples.length * 2);
+            const view = new DataView(bytes.buffer);
+            for (let i = 0; i < float32Samples.length; i++) {
+                const s = Math.max(-1, Math.min(1, float32Samples[i]));
+                view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+            }
+            return bytes;
+        }
+
+        async function startMic() {
+            if (isMicRunning) return;
+            if (!ws || ws.readyState !== WebSocket.OPEN) throw new Error("connect first");
+
+            micStream = await navigator.mediaDevices.getUserMedia({audio: true});
+            micAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            await micAudioContext.resume();
+            micSource = micAudioContext.createMediaStreamSource(micStream);
+            micProcessor = micAudioContext.createScriptProcessor(2048, 1, 1);
+
+            micProcessor.onaudioprocess = (evt) => {
+                if (!isMicRunning) return;
+                const input = evt.inputBuffer.getChannelData(0);
+                const down = downsampleTo8k(input, micAudioContext.sampleRate);
+                const pcm16 = floatToPcm16Bytes(down);
+                const payload = buildEvent(EventType.AUDIO, {
+                    audio: {
+                        role: Role.CUSTOMER,
+                        audio: base64FromUint8(pcm16)
+                    }
+                });
+                ws.send(JSON.stringify(payload));
+            };
+
+            micSource.connect(micProcessor);
+            micProcessor.connect(micAudioContext.destination);
+            isMicRunning = true;
+            ui.startMicBtn.disabled = true;
+            ui.stopMicBtn.disabled = false;
+            updateStatus("Connected + Mic", "mic");
+            log("microphone started");
+        }
+
+        async function stopMic() {
+            if (!isMicRunning) return;
+            isMicRunning = false;
+            ui.startMicBtn.disabled = false;
+            ui.stopMicBtn.disabled = true;
+
+            try { micProcessor?.disconnect(); } catch (_) {}
+            try { micSource?.disconnect(); } catch (_) {}
+            try { micStream?.getTracks().forEach(t => t.stop()); } catch (_) {}
+            try { await micAudioContext?.close(); } catch (_) {}
+
+            micProcessor = null;
+            micSource = null;
+            micStream = null;
+            micAudioContext = null;
+            updateStatus("Connected", "connected");
+            log("microphone stopped");
+        }
+
+        async function playRobotPcm(base64Audio) {
+            const bytes = uint8FromBase64(base64Audio);
+            const sampleCount = Math.floor(bytes.length / 2);
+            const float32 = new Float32Array(sampleCount);
+            const view = new DataView(bytes.buffer);
+            for (let i = 0; i < sampleCount; i++) {
+                float32[i] = view.getInt16(i * 2, true) / 32768;
+            }
+
+            if (!playContext) {
+                playContext = new (window.AudioContext || window.webkitAudioContext)();
+                await playContext.resume();
+                playCursor = playContext.currentTime;
+            }
+
+            const buffer = playContext.createBuffer(1, float32.length, 8000);
+            buffer.getChannelData(0).set(float32);
+            const source = playContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(playContext.destination);
+
+            const startAt = Math.max(playContext.currentTime, playCursor);
+            source.start(startAt);
+            playCursor = startAt + buffer.duration;
+        }
+
+        async function closeAll() {
+            await stopMic();
+            stopHeartbeat();
+            if (ws) {
+                try { ws.close(); } catch (_) {}
+            }
+            ws = null;
+            setConnectedUI(false);
+            updateStatus("Disconnected");
+        }
+
+        async function startSession() {
+            ensureBaseFields();
+            const sessionCreate = parseSessionCreate();
+
+            await closeAll();
+            updateStatus("Connecting");
+
+            ws = new WebSocket(ui.wsUrl.value.trim());
+
+            ws.onopen = () => {
+                updateStatus("Connected", "connected");
+                setConnectedUI(true);
+                startHeartbeat();
+                try {
+                    sendEvent(buildEvent(EventType.ACTION_CREATE, {session_create: sessionCreate}));
+                } catch (e) {
+                    log("send create failed: " + e.message);
+                }
+            };
+
+            ws.onmessage = async (evt) => {
+                let event;
+                try {
+                    event = JSON.parse(evt.data);
+                } catch (e) {
+                    log("<- non-json message");
+                    return;
+                }
+
+                const type = event.event_type || "unknown";
+                if (type === EventType.TEXT) {
+                    const text = event.text?.text || "";
+                    const role = event.text?.role || "";
+                    log(`<-${type}(${role}): ${text}`);
+                    return;
+                }
+                if (type === EventType.AUDIO) {
+                    const role = event.audio?.role || "";
+                    const audioB64 = event.audio?.audio || "";
+                    log(`<-${type}(${role}) bytes(base64)=${audioB64.length}`);
+                    if (role === Role.ROBOT && audioB64) {
+                        try {
+                            await playRobotPcm(audioB64);
+                        } catch (e) {
+                            log("play audio error: " + e.message);
+                        }
+                    }
+                    return;
+                }
+
+                log("<- " + type, event);
+            };
+
+            ws.onerror = () => {
+                log("websocket error");
+            };
+
+            ws.onclose = async () => {
+                log("websocket closed");
+                await closeAll();
+            };
+        }
+
+        ui.startSessionBtn.addEventListener("click", async () => {
+            try {
+                await startSession();
+            } catch (e) {
+                log("start session failed: " + e.message);
+            }
+        });
+
+        ui.answerBtn.addEventListener("click", () => {
+            try {
+                sendEvent(buildEvent(EventType.ACTION_ANSWER));
+            } catch (e) {
+                log("send answer failed: " + e.message);
+            }
+        });
+
+        ui.hangupBtn.addEventListener("click", () => {
+            try {
+                sendEvent(buildEvent(EventType.ACTION_HANGUP));
+            } catch (e) {
+                log("send hangup failed: " + e.message);
+            }
+        });
+
+        ui.closeBtn.addEventListener("click", async () => {
+            await closeAll();
+        });
+
+        ui.sendTextBtn.addEventListener("click", () => {
+            try {
+                const text = ui.textInput.value.trim();
+                if (!text) return;
+                sendEvent(buildEvent(EventType.TEXT, {
+                    text: {
+                        role: Role.CUSTOMER,
+                        text,
+                        message_id: genId()
+                    }
+                }));
+                ui.textInput.value = "";
+            } catch (e) {
+                log("send text failed: " + e.message);
+            }
+        });
+
+        ui.startMicBtn.addEventListener("click", async () => {
+            try {
+                await startMic();
+            } catch (e) {
+                log("start mic failed: " + e.message);
+            }
+        });
+
+        ui.stopMicBtn.addEventListener("click", async () => {
+            await stopMic();
+        });
+
+        window.addEventListener("beforeunload", () => {
+            stopHeartbeat();
+            if (ws) ws.close();
+        });
+
+        ui.sessionCreate.value = JSON.stringify(defaultSessionCreate(), null, 2);
+        ui.callUuid.value = genId();
+        ui.taskUuid.value = genId();
+        ui.businessId.value = `demo___${Math.random().toString(16).slice(2, 10)}`;
+        setConnectedUI(false);
+    })();
+</script>
+</body>
+</html>
