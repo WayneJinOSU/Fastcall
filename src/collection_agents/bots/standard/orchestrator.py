@@ -8,9 +8,14 @@ import time
 import traceback
 import json
 from functools import partial
-from types import MethodType
 from dotenv import load_dotenv
 from collection_agents.bots.helpers import build_call_context, build_session_state
+from collection_agents.bots.observers import PipelineFlowWatchdog
+from collection_agents.bots.standard.grammar import _is_confirmation_phrase
+from collection_agents.bots.standard.lifecycle import finalize_call as _finalize_call
+from collection_agents.bots.standard.services import (
+    create_call_services as _create_call_services,
+)
 from collection_agents.transport.websocket_beta import (
     CustomProtocolFrameSerializer,
     TelephonyEventRouter,
@@ -63,18 +68,14 @@ from pipecat.frames.frames import (
     LLMFullResponseStartFrame,
     LLMTextFrame,
     OutputAudioRawFrame,
-    TTSAudioRawFrame,
     EndFrame,
-    StartFrame,
 )
-
-from pipecat.observers.base_observer import BaseObserver
 
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 
-from collection_agents.metrics.collector import CallMetricsCollector, CallMetricsObserver
+from collection_agents.metrics.collector import CallMetricsObserver
 from collection_agents.services.call_config import (
     BotV3ConfigManager,
     coerce_positive_int,
@@ -87,30 +88,13 @@ from collection_agents.services.audio_assets import (
     DEFAULT_MODEL,
     SAMPLE_RATE as AUDIO_ASSET_SAMPLE_RATE,
     TEXT_TYPE_VOICEMAIL,
-    ensure_voicemail_audio_asset,
     find_audio_asset,
     load_audio_frame,
     load_output_sounds,
     normalize_text as normalize_audio_asset_text,
-    split_voicemail_segments,
-)
-from collection_agents.notes.call_notes import intelligent_notes_distribution, save_conversation
-from collection_agents.services.providers import (
-    attach_llm_retry_counter,
-    create_llm_service,
-    create_stt_service,
-    create_tts_service,
-    resolve_bot_llm_runtime,
-    resolve_deepgram_shadow_config,
-    resolve_stt_provider,
 )
 from collection_agents.transport.websocket_safe_send import send_hangup_signal
-from collection_agents.services.stt_local import (
-    DeepgramShadowDecoder,
-    ShadowDecodeTap,
-    VoskFinalCollector,
-)
-from collection_agents.services.stt_local import save_asr_shadow_compare
+from collection_agents.services.stt_local import ShadowDecodeTap
 
 
 from collection_agents.infra.paths import PROJECT_ROOT
@@ -120,65 +104,6 @@ load_dotenv(override=True)
 
 WELCOME_AUDIO_PREROLL_MS = 500
 
-# Confirmation-turn grammar for Vosk: constrains decoding to the closed set of
-# answers the identity-confirmation question can get, which fixes the small
-# model's worst errors ("Sí, soy yo." -> "si suyo" in free decoding).
-# Unaccented on purpose: the model vocabulary has no accents, accented words
-# are silently dropped from the grammar. '[unk]' is prepended automatically by
-# VoskSTTService so off-list speech still decodes instead of failing.
-CONFIRMATION_GRAMMAR = [
-    "si", "no", "si soy yo", "no no soy yo",
-    "es mi esposo", "es mi esposa", "es mi hijo", "es mi hija",
-    "un momento", "quien es", "quien habla", "diga", "digame", "bueno", "hola", "mande",
-    "me equivoque de numero", "no vive aqui", "estoy ocupado", "llame mas tarde",
-    "ya pague", "puedo hablar", "correcto", "exacto", "claro", "como no",
-]
-# Fallback release: if the user never answers, free decoding must come back so
-# later open conversation is not forced onto the phrase list.
-CONFIRMATION_GRAMMAR_RELEASE_SEC = 20.0
-
-# Pre-normalized grammar set for the conditional release check: a final
-# transcript that still lands inside the confirmation phrase set means the
-# customer is still answering closed questions (e.g. "hola" then "si"), so
-# the grammar must stay armed for the next answer too. Only free-form
-# speech outside the set triggers the release. Normalization mirrors the
-# unaccented/lowercase vocabulary: strip accents, punctuation and case.
-import re as _re
-import unicodedata as _unicodedata
-
-_GRAMMAR_PHRASES = set(CONFIRMATION_GRAMMAR)
-
-
-def _normalize_for_grammar(text: str) -> str:
-    text = _unicodedata.normalize("NFD", text.lower())
-    text = "".join(ch for ch in text if _unicodedata.category(ch) != "Mn")
-    return " ".join(_re.findall(r"[a-z0-9]+", text))
-
-
-def _is_confirmation_phrase(text: str) -> bool:
-    """True if the transcript is fully covered by grammar-listed phrases.
-
-    Segmentation match (word sequence covered end-to-end by listed phrases,
-    e.g. "bueno si" -> "bueno" + "si") instead of exact match: the small
-    model may attach or drop fillers around a listed phrase, and full
-    coverage still means we are inside the confirmation window. Anything
-    with an off-list word (real conversation) returns False.
-    """
-    normalized = _normalize_for_grammar(text)
-    if not normalized:
-        return False
-    words = normalized.split()
-    max_phrase_words = max(len(p.split()) for p in _GRAMMAR_PHRASES)
-    # reachable[i]: words[:i] fully covered by grammar phrases
-    reachable = [False] * (len(words) + 1)
-    reachable[0] = True
-    for i in range(len(words)):
-        if not reachable[i]:
-            continue
-        for n in range(1, min(max_phrase_words, len(words) - i) + 1):
-            if " ".join(words[i:i + n]) in _GRAMMAR_PHRASES:
-                reachable[i + n] = True
-    return reachable[len(words)]
 
 
 def _get_env_bool(name: str, default: bool = False) -> bool:
@@ -205,511 +130,9 @@ def _build_silence_frame(duration_ms: int, sample_rate: int = 8000, channels: in
     )
 
 
-class PipelineFlowWatchdog(BaseObserver):
-    """Logs an ERROR if the pipeline produces no observable frame flow shortly after start.
-
-    Some failed calls show only "Queue fixed welcome TTS" and then nothing — no
-    frame summaries, no teardown logs — which is indistinguishable from a hung
-    pipeline or a dead pod from the business logs alone. This observer arms on
-    pipeline start and fires once if no frame reaches the transport sink within
-    `timeout_sec`, so the next such call is immediately classifiable.
-
-    StartFrame reaching the sink only proves the pipeline is wired up; the
-    welcome TTS is queued seconds later (on_answer), and a stall there leaves no
-    trace at all. So the watchdog re-arms on `rearm()` (called from _on_answer)
-    and only disarms once the first bot audio frame (TTSAudioRawFrame) reaches
-    the sink, i.e. the bot actually started speaking.
-    """
-
-    def __init__(self, timeout_sec: float = 10.0):
-        super().__init__()
-        self._timeout_sec = timeout_sec
-        self._armed = False
-        self._fired = False
-        self._watch_task: asyncio.Task | None = None
-
-    def rearm(self):
-        """Re-arm the watchdog when a new expected-flow point is reached (on_answer)."""
-        if self._fired:
-            return
-        self._armed = True
-        if self._watch_task and not self._watch_task.done():
-            self._watch_task.cancel()
-        self._watch_task = asyncio.ensure_future(self._watch_loop())
-
-    async def on_push_frame(self, data):
-        if self._fired:
-            return
-        if not self._armed and isinstance(data.frame, StartFrame):
-            self._armed = True
-            self._watch_task = asyncio.ensure_future(self._watch_loop())
-            return
-        if self._armed and data.destination is None:
-            # Frame reached the pipeline sink. Only bot audio counts as real
-            # flow: control frames (e.g. the StartFrame echo) reach the sink
-            # long before the welcome TTS is queued.
-            if isinstance(data.frame, TTSAudioRawFrame):
-                self._disarm()
-
-    async def _watch_loop(self):
-        try:
-            await asyncio.sleep(self._timeout_sec)
-            if self._armed and not self._fired:
-                self._fired = True
-                logging.error(
-                    "[pipeline_watchdog] no bot audio frame reached the pipeline sink %ss after "
-                    "pipeline start/answer; pipeline may be stalled or the pod dead",
-                    self._timeout_sec,
-                )
-        except asyncio.CancelledError:
-            raise
-
-    def _disarm(self):
-        self._armed = False
-        if self._watch_task and not self._watch_task.done():
-            self._watch_task.cancel()
-        self._watch_task = None
-
-    async def cleanup(self):
-        self._disarm()
-
-
-async def _create_call_services(call_ctx, session_context, session, call_data):
-    """创建通话所需的全部服务：ASR/TTS/LLM 实例、语音信箱模式、影子解码、指标收集器。
-
-    从 run_bot_beta 抽出的服务创建段；返回普通 dict，主函数显式解包。
-    失败时对已创建的影子解码器做 best-effort 清理，避免泄漏。
-    """
-    config_manager = call_ctx["config_manager"]
-    variables = call_ctx["variables"]
-    country = call_ctx["country"]
-    task_type = call_ctx["task_type"]
-    voicemail_config = call_ctx["voicemail_config"]
-    voicemail_action = call_ctx["voicemail_action"]
-    voicemail_hangup_on_detect = call_ctx["voicemail_hangup_on_detect"]
-    follower_id = call_ctx["follower_id"]
-    dial_schedule = call_ctx["dial_schedule"]
-    customer_group = call_ctx["customer_group"]
-    has_sms = call_ctx["has_sms"]
-    has_app_push = call_ctx["has_app_push"]
-    tenant_id = call_ctx["tenant_id"]
-    app_type = call_ctx["app_type"]
-    work_order_id = call_ctx["work_order_id"]
-    outbound_source = call_ctx["outbound_source"]
-    platform = call_ctx["platform"]
-    is_round_robin = call_ctx["is_round_robin"]
-    is_human_assist = call_ctx["is_human_assist"]
-    robot_code = call_ctx["robot_code"]
-    robot_name = call_ctx["robot_name"]
-    org_code = call_ctx["org_code"]
-    org_name = call_ctx["org_name"]
-    call_uuid = call_ctx["call_uuid"]
-    business_id = call_ctx["business_id"]
-
-    shadow_config = None
-    shadow_decoder = None
-    vosk_final_collector = None
-    try:
-        # Create services based on configuration
-        asr_config = config_manager.get_asr_config()
-        tts_config = config_manager.get_tts_config()
-        llm_config = config_manager.get_llm_config()
-
-        # Render voicemail templates before splitting it into the live first
-        # sentence and the cacheable remainder.  The cache builder applies the
-        # same transformation so its text hash matches this runtime lookup.
-        voicemail_content = normalize_audio_asset_text(
-            prepare_text_for_tts(
-                voicemail_config.get("content") or "",
-                tts_config,
-                variables,
-            )
-        )
-        fixed_voicemail_live_text, fixed_voicemail_text = split_voicemail_segments(
-            voicemail_content
-        )
-        fixed_voicemail_cache_enabled = bool(fixed_voicemail_text)
-        if voicemail_hangup_on_detect:
-            voicemail_mode = "hangup"
-        elif fixed_voicemail_live_text or fixed_voicemail_text:
-            voicemail_mode = "fixed_message"
-        else:
-            voicemail_mode = "legacy_llm"
-
-        logging.info("Voicemail handling mode=%s", voicemail_mode)
-        if voicemail_mode == "legacy_llm":
-            logging.info(
-                "flowConfig.voicemailNode.content is empty; using the legacy LLM voicemail flow."
-            )
-        elif not fixed_voicemail_text:
-            logging.info(
-                "Voicemail message has no cacheable second segment; using live TTS only."
-            )
-        else:
-            asyncio.create_task(ensure_voicemail_audio_asset(call_data))
-
-        stt_provider = resolve_stt_provider(asr_config, robot_code)
-        stt_service = create_stt_service(
-            asr_config,
-            robot_code,
-            robot_name,
-            grammar=CONFIRMATION_GRAMMAR if stt_provider == "vosk" else None,
-        )
-        # Shadow Deepgram decoding for Vosk calls: same audio is sent to
-        # Deepgram in parallel purely for offline A/B accuracy comparison.
-        # Never touches the live path (no frames pushed, no interruption).
-        if stt_provider == "vosk":
-            shadow_config = resolve_deepgram_shadow_config(asr_config, robot_code)
-            if shadow_config:
-                shadow_decoder = DeepgramShadowDecoder(**shadow_config)
-                vosk_final_collector = VoskFinalCollector()
-                logging.info(
-                    "[ShadowSTT] armed for Vosk call: deepgram model=%s language=%s",
-                    shadow_config.get("model"),
-                    shadow_config.get("language"),
-                )
-            else:
-                logging.info("[ShadowSTT] not available (no API key/SDK), skipping")
-        # The confirmation grammar is armed from call start (the first user
-        # utterance is the answer to the welcome confirmation question).
-        # Release is conditional: only an off-grammar final transcript (real
-        # free-form conversation) releases it; in-grammar answers ("hola",
-        # "bueno", "si") keep it armed so follow-up short answers are still
-        # decoded under the phrase list. A rolling timer is the fallback
-        # release for calls where the customer never goes off-grammar.
-        session_context["confirmation_grammar_active"] = stt_provider == "vosk"
-        session_context["last_transcription_at"] = 0.0
-
-        def _cancel_grammar_release_task():
-            release_task = session_context.get("confirmation_grammar_release_task")
-            if release_task and not release_task.done():
-                release_task.cancel()
-            session_context["confirmation_grammar_release_task"] = None
-
-        async def _release_confirmation_grammar(reason: str):
-            """Switch Vosk back to free decoding after the confirmation turn."""
-            if not session_context.get("confirmation_grammar_active"):
-                return
-            session_context["confirmation_grammar_active"] = False
-            _cancel_grammar_release_task()
-            if hasattr(stt_service, "set_grammar"):
-                await stt_service.set_grammar(None)
-            logging.info("Confirmation grammar released: %s", reason)
-
-        async def _grammar_release_timer():
-            try:
-                while True:
-                    await asyncio.sleep(CONFIRMATION_GRAMMAR_RELEASE_SEC)
-                    if not session_context.get("confirmation_grammar_active"):
-                        return
-                    # Roll the window forward while the customer is still
-                    # answering (in-grammar finals keep arriving); only
-                    # release after a full quiet interval.
-                    idle_for = (
-                        time.monotonic()
-                        - session_context.get("last_transcription_at", 0.0)
-                    )
-                    if idle_for < CONFIRMATION_GRAMMAR_RELEASE_SEC:
-                        logging.info(
-                            "Confirmation grammar release timer extended: "
-                            "user active %.1fs ago",
-                            idle_for,
-                        )
-                        continue
-                    await _release_confirmation_grammar("release timeout")
-                    return
-            except asyncio.CancelledError:
-                pass
-
-        def _rearm_grammar_release_timer():
-            """Restart the rolling release timer after an in-grammar answer."""
-            if not session_context.get("confirmation_grammar_active"):
-                return
-            _cancel_grammar_release_task()
-            session_context["confirmation_grammar_release_task"] = (
-                asyncio.create_task(_grammar_release_timer())
-            )
-        tts_service = create_tts_service(tts_config, session)
-
-        # Cartesia's own connect logs are DEBUG-only: without these, a failed
-        # TTS websocket is invisible at INFO level and the call looks like a
-        # silent bot.
-        @tts_service.event_handler("on_connected")
-        async def _tts_on_connected(service):
-            logging.info("[tts] websocket connected: %s", type(service).__name__)
-
-        @tts_service.event_handler("on_connection_error")
-        async def _tts_on_connection_error(service, error):
-            logging.error("[tts] websocket connection error: %s: %s", type(service).__name__, error)
-
-        @tts_service.event_handler("on_disconnected")
-        async def _tts_on_disconnected(service):
-            logging.info("[tts] websocket disconnected: %s", type(service).__name__)
-        llm_config, platform = resolve_bot_llm_runtime(
-            llm_config,
-            robot_name,
-            robot_code,
-        )
-        llm_service = create_llm_service(llm_config)
-
-        if asr_config.get("provider") == "cartesia":
-            _asr_model = asr_config.get("model", "ink-whisper")
-        else:
-            _asr_model = asr_config.get("model") or "nova-2"
-        llm_metrics_config = dict(llm_config)
-        metrics_collector = CallMetricsCollector(
-            call_uuid=call_uuid,
-            business_id = business_id,
-            tenant_id = tenant_id,
-            app_type = app_type,
-            work_order_id = work_order_id,
-            outbound_source = outbound_source,
-            platform = platform,
-            is_round_robin = is_round_robin,
-            is_human_assist = is_human_assist,
-            robot_code = robot_code,
-            robot_name = robot_name,
-            org_code = org_code,
-            org_name = org_name,
-            country = country,
-            task_type = task_type,
-            follower_id = follower_id,
-            dial_schedule = dial_schedule,
-            customer_group = customer_group,
-            has_sms = has_sms,
-            has_app_push = has_app_push,
-            task_start_time=datetime.datetime.now(),
-            asr_info={**asr_config, "model": _asr_model, "sample_rate": 8000},
-            llm_info=llm_metrics_config,
-            llm_prompt=llm_config.get("prompt", ""),
-            tts_info={**tts_config, "sample_rate": 8000},
-            # pricing_config overrides _DEFAULT_PRICING in collector.py.
-            # Default covers Deepgram, Cartesia STT/TTS, and supported LLMs.
-            # Uncomment and adjust if using a different model or pricing tier.
-            # pricing_config={
-            #     "asr_rate_per_hour": 0.31,   # e.g. nova-3 monolingual
-            # },
-        )
-        attach_llm_retry_counter(llm_service, metrics_collector)
-
-        # Track TTS reconnects via on_connected event (fires on initial connect
-        # and every subsequent reconnect; skip the first to count only reconnects).
-        _tts_connected_once = False
-
-        @tts_service.event_handler("on_connected")
-        async def _on_tts_connected(service):
-            nonlocal _tts_connected_once
-            if _tts_connected_once:
-                metrics_collector.increment_tts_reconnect()
-            else:
-                _tts_connected_once = True
-
-        # Track ASR reconnects as: after a Deepgram connection error, the next
-        # successful _connect() counts as one reconnect. Initial connect is not counted.
-        if hasattr(stt_service, "_connect") and hasattr(stt_service, "_on_error"):
-            _stt_reconnect_state = {
-                "saw_connection_error": False,
-            }
-            _original_stt_connect = stt_service._connect
-            _original_stt_on_error = stt_service._on_error
-
-            async def _tracked_stt_connect(self, *args, **kwargs):
-                await _original_stt_connect(*args, **kwargs)
-                if _stt_reconnect_state["saw_connection_error"]:
-                    metrics_collector.increment_asr_reconnect()
-                    logging.info(
-                        "ASR reconnect counted after Deepgram connection error. asr_reconnect_count=%d",
-                        metrics_collector.asr_reconnect_count,
-                    )
-                    _stt_reconnect_state["saw_connection_error"] = False
-
-            async def _tracked_stt_on_error(self, *args, **kwargs):
-                _stt_reconnect_state["saw_connection_error"] = True
-                logging.warning("Deepgram connection error detected; next successful _connect will count as ASR reconnect")
-                await _original_stt_on_error(*args, **kwargs)
-
-            stt_service._connect = MethodType(_tracked_stt_connect, stt_service)
-            stt_service._on_error = MethodType(_tracked_stt_on_error, stt_service)
-
-        # 🔍 服务配置详细调试日志
-        logging.info(
-            f"🔧 TTS服务配置: provider={tts_config.get('provider')}, voice_id={tts_config.get('voice_id')}, model={tts_config.get('model')}, locale={tts_config.get('locale')}")
-        logging.info(f"🔧 ASR服务配置: provider={asr_config.get('provider')}, locale={asr_config.get('locale')}")
-        logging.info(f"🔧 LLM服务配置: provider={llm_config.get('provider')}, model={llm_config.get('model')}")
-        logging.info("🎯 关键修复: TTS服务直接输出8kHz音频，消除24kHz->8kHz实时降采样造成的音质劣化")
-
-        # 🔍 TTS服务实例详细信息
-        if hasattr(tts_service, '_sample_rate'):
-            logging.info(f"🎵 TTS服务实例采样率: {tts_service._sample_rate}Hz")
-        if hasattr(tts_service, 'model_name'):
-            logging.info(f"🎵 TTS服务模型: {tts_service.model_name}")
-        else:
-            logging.info("🎵 TTS服务模型信息不可用")
-
-        logging.info(f"🎵 TTS服务类型: {type(tts_service).__name__}")
-        logging.info(f"🎵 TTS服务父类: {[cls.__name__ for cls in type(tts_service).__mro__[1:3]]}")
-
-    except Exception:
-        if shadow_decoder is not None:
-            try:
-                await shadow_decoder.stop()
-            except Exception:
-                pass
-        raise
-
-    return {
-        "asr_config": asr_config,
-        "tts_config": tts_config,
-        "llm_config": llm_config,
-        "stt_provider": stt_provider,
-        "stt_service": stt_service,
-        "tts_service": tts_service,
-        "llm_service": llm_service,
-        "metrics_collector": metrics_collector,
-        "shadow_config": shadow_config,
-        "shadow_decoder": shadow_decoder,
-        "vosk_final_collector": vosk_final_collector,
-        "voicemail_mode": voicemail_mode,
-        "fixed_voicemail_live_text": fixed_voicemail_live_text,
-        "fixed_voicemail_text": fixed_voicemail_text,
-        "fixed_voicemail_cache_enabled": fixed_voicemail_cache_enabled,
-        "release_confirmation_grammar": _release_confirmation_grammar,
-        "rearm_grammar_release_timer": _rearm_grammar_release_timer,
-    }
 
 
 
-async def _finalize_call(call_ctx, svc, session_context, context, duration_monitor, flow_watchdog):
-    """通话收尾：停监控/服务、影子对比落库、会话与纪要落库、指标落库、发送挂机信令。
-
-    从 run_bot_beta 的 finally 段抽出；svc / call_ctx 允许为 None
-    （服务创建中途失败时仍要完成能做的清理）。
-    """
-    call_ctx = call_ctx or {}
-    svc = svc or {}
-    call_data = call_ctx.get("call_data", {})
-    call_uuid = call_ctx.get("call_uuid", "")
-    robot_code = call_ctx.get("robot_code")
-    variables = call_ctx.get("variables", {})
-    business_id = call_ctx.get("business_id", "")
-    app_type = call_ctx.get("app_type", "")
-    country = call_ctx.get("country", "")
-    work_order_id = call_ctx.get("work_order_id", "")
-    websocket_client = session_context.get("websocket_client")
-    tts_service = svc.get("tts_service")
-    stt_service = svc.get("stt_service")
-    llm_service = svc.get("llm_service")
-    tts_config = svc.get("tts_config") or {}
-    metrics_collector = svc.get("metrics_collector")
-    shadow_config = svc.get("shadow_config")
-    shadow_decoder = svc.get("shadow_decoder")
-    vosk_final_collector = svc.get("vosk_final_collector")
-
-    if duration_monitor and not duration_monitor.done():
-        duration_monitor.cancel()
-    if flow_watchdog:
-        await flow_watchdog.cleanup()
-    if session_context.get("silence_check_task"):
-        session_context["silence_check_task"].cancel()
-    no_response_hangup_task = session_context.get("no_response_hangup_task")
-    if no_response_hangup_task and not no_response_hangup_task.done():
-        no_response_hangup_task.cancel()
-        try:
-            await no_response_hangup_task
-        except asyncio.CancelledError:
-            pass
-    voicemail_hangup_task = session_context.get("voicemail_hangup_task")
-    if voicemail_hangup_task and not voicemail_hangup_task.done():
-        voicemail_hangup_task.cancel()
-        try:
-            await voicemail_hangup_task
-        except asyncio.CancelledError:
-            pass
-
-    services_to_stop = [
-        ('TTS', tts_service),
-        ('STT', stt_service),
-        ('LLM', llm_service),
-    ]
-        
-    for name, service in services_to_stop:
-        if service and hasattr(service, 'stop'):
-            try:
-                logging.info(f'Stopping {name} service...')
-                await asyncio.wait_for(
-                    service.stop(EndFrame()),
-                    timeout=3.0
-                )
-                logging.info(f'{name} service stopped')
-            except asyncio.TimeoutError:
-                logging.warning(f'{name} service stop timeout')
-            except Exception as e:
-                logging.warning(f'{name} service stop error: {e}')
-
-    if shadow_decoder is not None:
-        # Stop after STT so any late Vosk finals are already collected;
-        # stop() drains queued audio so Deepgram's last finals arrive too.
-        try:
-            await asyncio.wait_for(shadow_decoder.stop(), timeout=5.0)
-        except asyncio.TimeoutError:
-            logging.warning("[ShadowSTT] stop timeout (continuing)")
-        except Exception as e:
-            logging.warning(f"[ShadowSTT] stop error (ignored): {e}")
-        try:
-            vosk_text = vosk_final_collector.text if vosk_final_collector else ""
-            deepgram_text = shadow_decoder.text
-            if vosk_text or deepgram_text:
-                save_asr_shadow_compare(
-                    call_uuid=call_uuid,
-                    robot_code=robot_code,
-                    language=(shadow_config or {}).get("language", ""),
-                    vosk_model="vosk-model-small-es-0.42",
-                    deepgram_model=(shadow_config or {}).get("model", ""),
-                    vosk_text=vosk_text,
-                    deepgram_text=deepgram_text,
-                    vosk_segments=(
-                        vosk_final_collector.final_segments
-                        if vosk_final_collector
-                        else []
-                    ),
-                    deepgram_segments=shadow_decoder.final_segments,
-                )
-            else:
-                logging.info("[ShadowSTT] no transcripts on either side, skipping compare row")
-        except Exception as e:
-            logging.warning(f"[ShadowSTT] compare persist failed (ignored): {e}")
-
-    logging.info('finally - bot_beta')
-    await send_hangup_signal(websocket_client)
-
-    if metrics_collector:
-        metrics_collector.finalize(datetime.datetime.now())
-
-    collection_note_result = None
-    if context:
-        await save_conversation(
-            context,
-            call_uuid=call_uuid,
-            conversation_meta={
-                "user_name": variables.get("user_name", ""),
-                "business_id": business_id,
-                "remaining_amount": variables.get("remaining_amount", 0),
-                "app_type": app_type,
-                "country": country,
-                "voicemail_audio_playback": session_context.get("voicemail_audio_playback"),
-            },
-            call_data=call_data,
-            metrics_collector=metrics_collector,
-            intent_label_override="G" if session_context.get("voicemail_detected") else None,
-        )
-        if work_order_id:
-            collection_note_result, task_type = await intelligent_notes_distribution(context, call_data, locale=tts_config.get("locale", "es-MX"))
-            if collection_note_result:
-                metrics_collector.set_collection_note_result(collection_note_result, task_type)
-
-    if metrics_collector:
-        logging.info(f"call_metrics: {metrics_collector.to_dict()}")
-        metrics_collector.save_to_db()
 
 
 async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180):
@@ -1527,7 +950,10 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
             #     )
             # ]
             # No observer mode / custom processor mode:
-            flow_watchdog = PipelineFlowWatchdog(timeout_sec=10.0)
+            flow_watchdog = PipelineFlowWatchdog(
+                sink=transport.output(),
+                timeout_sec=10.0,
+            )
             task_observers = [CallMetricsObserver(metrics_collector), flow_watchdog]
             logging.info("Using official DebugLogObserver for frame diagnostics.")
 

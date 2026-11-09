@@ -8,7 +8,6 @@ import inspect
 import json
 import logging
 import os
-import re
 import sys
 import time
 import traceback
@@ -19,6 +18,17 @@ from typing import Any
 from loguru import logger as loguru_logger
 from collection_agents.text.time_utils import utc2tz
 from dotenv import load_dotenv
+from collection_agents.bots.copilot.config import BotCopilotConfigManager
+from collection_agents.bots.copilot.processors import (
+    AICopilotVADProcessor,
+    ConditionalProcessor,
+    CopilotWordAwareHangupProcessor,
+)
+from collection_agents.bots.copilot.services import (
+    create_llm_service,
+    create_stt_service,
+    create_tts_service,
+)
 from collection_agents.transport.websocket_safe_send import (
     harden_pipecat_websocket_transport,
     safe_send_ws_message,
@@ -28,34 +38,20 @@ from collection_agents.transport.websocket_safe_send import (
 from openai.types.chat import ChatCompletionToolParam
 from pipecat.adapters.schemas.tools_schema import AdapterType, ToolsSchema
 from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.audio.vad.vad_analyzer import VADParams, VADState
+from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import (
-    CancelFrame,
     EndFrame,
-    InputAudioRawFrame,
-    InterruptionFrame,
-    LLMFullResponseEndFrame,
     LLMRunFrame,
     OutputTransportMessageUrgentFrame,
-    StartFrame,
-    SystemFrame,
-    TextFrame,
-    VADUserStartedSpeakingFrame,
-    VADUserStoppedSpeakingFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
-from pipecat.processors.frame_processor import FrameProcessor
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
 )
-from pipecat.services.azure.llm import AzureLLMService
-from pipecat.services.cartesia.tts import CartesiaTTSService, GenerationConfig
-from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.turns.user_start import TranscriptionUserTurnStartStrategy
 from pipecat.turns.user_stop import SpeechTimeoutUserTurnStopStrategy
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
@@ -63,7 +59,6 @@ from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
     FastAPIWebsocketTransport,
 )
-from deepgram import LiveOptions
 
 # Local imports
 from collection_agents.transport.fastapi_websocket_ai_copilot_beta import (
@@ -78,7 +73,7 @@ from collection_agents.transport.fastapi_websocket_ai_copilot_beta import (
 )
 from collection_agents.storage.db import MysqlClient
 from collection_agents.services.call_config import build_first_question_content, build_no_response_hangup_prompt
-from collection_agents.services.providers import attach_llm_retry_counter, select_azure_llm_target
+from collection_agents.services.providers import attach_llm_retry_counter
 from collection_agents.processors.common import SilenceDetector
 from collection_agents.metrics.collector import CallMetricsCollector, CallMetricsObserver
 from collection_agents.notes.call_notes import intelligent_notes_distribution
@@ -93,11 +88,6 @@ NO_RESPONSE_MAX_COUNT_CEILING = 1
 COPILOT_HANGUP_EXIT_DELAY_SEC = 15.0
 COPILOT_END_FRAME_DELAY_SEC = 4.0
 
-# LLM defaults (can be overridden by modelConfig.config when provided).
-LLM_TIMEOUT_SECS_DEFAULT = 6.0
-LLM_MAX_RETRIES_DEFAULT = 3
-LLM_RETRY_ON_TIMEOUT_DEFAULT = True
-
 def _coerce_int(value, default=0) -> int:
     try:
         return int(value)
@@ -105,369 +95,18 @@ def _coerce_int(value, default=0) -> int:
         return default
 
 
-class ConditionalProcessor(FrameProcessor):
-    """
-    Conditional processor that gates frame flow based on a condition function.
-    When condition returns True, frames are dropped (not passed downstream).
-    When condition returns False, frames pass through normally.
-
-    Note: System frames (StartFrame, EndFrame, etc.) always pass through.
-    """
-
-    def __init__(self, condition_func, **kwargs):
-        super().__init__(**kwargs)
-        self._condition_func = condition_func
-
-    async def process_frame(self, frame, direction):
-        """Process frame based on condition"""
-        # CRITICAL: Always call parent's process_frame first
-        # This ensures system frames (StartFrame, etc.) are properly handled
-        # and internal state (__started, __process_queue) is initialized
-        await super().process_frame(frame, direction)
-
-        # Always let system frames pass through
-        system_frames = (
-            StartFrame | EndFrame | CancelFrame | SystemFrame
-        )
-        if isinstance(frame, system_frames):
-            await self.push_frame(frame, direction)
-            return
-
-        # Check condition for non-system frames
-        if self._condition_func():
-            # Condition is True: drop the frame (don't pass downstream)
-            logging.debug(
-                f"{self.name}: Dropping frame {frame.__class__.__name__}"
-            )
-            return
-
-        # Condition is False: pass frame through normally
-        await self.push_frame(frame, direction)
 
 
-class AICopilotVADProcessor(FrameProcessor):
-    """Runs VAD after the copilot protocol router has materialized audio frames."""
-
-    def __init__(self, vad_analyzer, **kwargs):
-        super().__init__(**kwargs)
-        self._vad_analyzer = vad_analyzer
-        self._vad_state = VADState.QUIET
-
-    async def process_frame(self, frame, direction):
-        await super().process_frame(frame, direction)
-
-        if isinstance(frame, StartFrame):
-            sample_rate = getattr(frame, "audio_in_sample_rate", None) or 8000
-            self._vad_analyzer.set_sample_rate(sample_rate)
-            await self.push_frame(frame, direction)
-            return
-
-        if isinstance(frame, InputAudioRawFrame):
-            if not self._vad_analyzer.sample_rate:
-                self._vad_analyzer.set_sample_rate(frame.sample_rate or 8000)
-
-            new_vad_state = await self._vad_analyzer.analyze_audio(frame.audio)
-            if (
-                new_vad_state != self._vad_state
-                and new_vad_state not in (VADState.STARTING, VADState.STOPPING)
-            ):
-                if new_vad_state == VADState.SPEAKING:
-                    await self.push_frame(
-                        VADUserStartedSpeakingFrame(
-                            start_secs=self._vad_analyzer.params.start_secs,
-                        ),
-                        direction,
-                    )
-                elif new_vad_state == VADState.QUIET:
-                    await self.push_frame(
-                        VADUserStoppedSpeakingFrame(
-                            stop_secs=self._vad_analyzer.params.stop_secs,
-                        ),
-                        direction,
-                    )
-                self._vad_state = new_vad_state
-
-            await self.push_frame(frame, direction)
-            return
-
-        await self.push_frame(frame, direction)
 
 
-class CopilotWordAwareHangupProcessor(FrameProcessor):
-    """Starts the hangup flow only after the model has produced an ending phrase."""
-
-    def __init__(self, *, on_hangup_requested, on_hangup_started=None, **kwargs):
-        super().__init__(**kwargs)
-        self._on_hangup_requested = on_hangup_requested
-        self._on_hangup_started = on_hangup_started
-        self._buffer = ""
-        self._is_hanging_up = False
-        self._is_ended = False
-        self._endcall_regex = re.compile(
-            r"(?i)("
-            r"\b(?:goodbye|bye|bye-bye|see you|have a great day|have a good one|"
-            r"adi[oó]s|hasta\s+(?:luego|mañana|pronto)|nos\s+vemos|chao|chau|cu[ií]date|"
-            r"paalam|hanggang\s+sa\s+muli|ingat\s+ka|"
-            r"que\s+tenga\s+(?:un\s+)?(?:lindo|buen|excelente)\s+d[ií]a)\b|"
-            r"再见|拜拜|挂了|"
-            r"\[\[HANGUP\]\]"
-            r")"
-        )
-
-    async def process_frame(self, frame, direction):
-        await super().process_frame(frame, direction)
-
-        if self._is_hanging_up:
-            if isinstance(frame, (TextFrame, InterruptionFrame)):
-                return
-            if isinstance(frame, EndFrame):
-                self._is_ended = True
-            await self.push_frame(frame, direction)
-            return
-
-        if isinstance(frame, TextFrame):
-            self._buffer += frame.text
-            await self.push_frame(frame, direction)
-            self._maybe_start_hangup()
-            return
-
-        if isinstance(frame, (LLMFullResponseEndFrame, EndFrame)):
-            self._maybe_start_hangup()
-            self._buffer = ""
-            if isinstance(frame, EndFrame):
-                self._is_ended = True
-            await self.push_frame(frame, direction)
-            return
-
-        await self.push_frame(frame, direction)
-
-    def _maybe_start_hangup(self):
-        clean_text = self._buffer.strip()
-        if not clean_text or self._is_hanging_up:
-            return
-        if self._endcall_regex.search(clean_text):
-            logging.info(f"Detected copilot end phrase, start graceful hangup: {clean_text[:120]!r}")
-            self._is_hanging_up = True
-            if self._on_hangup_started:
-                self._on_hangup_started()
-            self.create_task(self._perform_hangup(), "copilot_graceful_hangup")
-
-    async def _perform_hangup(self):
-        try:
-            await self._on_hangup_requested()
-        except Exception as e:
-            logging.error(f"Copilot graceful hangup error: {e}")
 
 
-class BotCopilotConfigManager:
-    """Manages bot configuration from session_create data"""
-
-    def __init__(self, session_create: dict[str, Any]):
-        self.config = session_create.get("config", {})
-
-    def get_asr_config(self):
-        """Get ASR configuration"""
-        asr = self.config.get("asr", {})
-        return {
-            "code": asr.get("code", ""),
-            "provider": asr.get("provider", "deepgram"),
-            "locale": asr.get("locale", "zh-CN"),
-            "name": asr.get("name", "中文"),
-            "model": asr.get("model", "nova-2"),
-        }
-
-    def get_tts_config(self):
-        """Get TTS configuration"""
-        tts = self.config.get("tts", {})
-        ttsConfig = self.config.get("ttsConfig", {})
-        tts = tts if isinstance(tts, dict) else {}
-        ttsConfig = ttsConfig if isinstance(ttsConfig, dict) else {}
-        return {
-            "provider": tts.get("provider", "cartesia"),
-            "voice_id": tts.get("name", ""),
-            "model": tts.get("model", "sonic-3.6"),
-            "locale": tts.get("locale", "zh-CN"),
-            "volume": ttsConfig.get("volume", 1.0),
-            "speed": ttsConfig.get("rate", 0.9),
-        }
-
-    def get_llm_config(self):
-        """Get LLM configuration"""
-        model_config = self.config.get("modelConfig", {})
-        config = model_config.get("config", {}) if isinstance(model_config.get("config"), dict) else {}
-        provider = model_config.get("provider", "openrouter")
-
-        if provider == "openrouter":
-            default_base_url = "https://openrouter.ai/api/v1"
-            default_api_key = os.getenv("OPENROUTER_API_KEY")
-        elif provider == "azure":
-            default_base_url = ""
-            default_api_key = ""
-        else:
-            default_base_url = os.getenv("OPENAI_API_URL", "https://api.openai.com/v1")
-            default_api_key = os.getenv("OPENAI_API_KEY")
-
-        llm_timeout_secs = config.get("llmTimeoutSecs", LLM_TIMEOUT_SECS_DEFAULT)
-        max_retries = config.get("maxRetries", LLM_MAX_RETRIES_DEFAULT)
-        retry_on_timeout = config.get("retryOnTimeout", LLM_RETRY_ON_TIMEOUT_DEFAULT)
-        max_completion_tokens = config.get("maxTokens", 256)
-        temperature = config.get("temperature", 0.2)
-        top_p = config.get("topP", 0.9)
-        frequency_penalty = config.get("frequencyPenalty", 0)
-        presence_penalty = config.get("presencePenalty", 0)
-        seed = config.get("seed", 42)
-
-        return {
-            "provider": provider,
-            "model": model_config.get("name", "openai/gpt-4o"),
-            "base_url": model_config.get("url") or default_base_url,
-            "api_key": model_config.get("apiKey") or default_api_key,
-            "temperature": temperature,
-            "top_p": top_p,
-            "frequency_penalty": frequency_penalty,
-            "presence_penalty": presence_penalty,
-            "seed": seed,
-            "max_completion_tokens": max_completion_tokens,
-            "llm_timeout_secs": llm_timeout_secs,
-            "max_retries": max_retries,
-            "retry_on_timeout": retry_on_timeout,
-        }
-
-    def get_prompt_config(self):
-        """Get prompt configuration"""
-        prompt_config = self.config.get("promptConfig", {})
-        return prompt_config.get("content", "")
-
-    def get_flow_config(self):
-        """Get flow configuration"""
-        return self.config.get("flowConfig", {})
 
 
-def create_stt_service(asr_config):
-    """Create STT service based on configuration"""
-    provider = asr_config.get("provider", "deepgram")
-    locale = asr_config.get("locale", "zh-CN")
-    model = asr_config.get("model", "nova-2")
-
-    if provider == "deepgram":
-        return DeepgramSTTService(
-            api_key=os.environ.get("DEEPGRAM_API_KEY"),
-            live_options=LiveOptions(
-                encoding="linear16",
-                language=locale,
-                model=model,
-                sample_rate=8000,
-                channels=1,
-                interim_results=True,
-                smart_format=True,
-            )
-        )
-    else:
-        logging.warning(
-            f"Unknown STT provider: {provider}, using deepgram"
-        )
-        return create_stt_service({
-            "provider": "deepgram",
-            "locale": locale
-        })
 
 
-def create_tts_service(tts_config):
-    """Create TTS service based on configuration"""
-    provider = tts_config.get("provider", "cartesia")
-    voice_id = tts_config.get("voice_id", "")
-    model = tts_config.get("model", "sonic-3.6")
-    locale = tts_config.get("locale", "zh-CN")
-
-    if provider == "cartesia":
-        language = locale.split("-")[0]
-        generation_config_kwargs = {}
-        volume = tts_config.get("volume")
-        speed = tts_config.get("speed")
-        if volume is not None:
-            # backend [0, 100] → cartesia [0.5, 2.0]
-            generation_config_kwargs["volume"] = round(0.5 + float(volume) / 100.0 * 1.5, 4)
-        if speed is not None:
-            # backend [0.5, 2] → cartesia [0.6, 1.5]
-            generation_config_kwargs["speed"] = round(0.6 + (float(speed) - 0.5) / 1.5 * 0.9, 4)
-        generation_config = (
-            GenerationConfig(**generation_config_kwargs)
-            if generation_config_kwargs
-            else None
-        )
-        params = CartesiaTTSService.InputParams(
-            language=language,
-            generation_config=generation_config,
-        )
-        default_voice = "e50405f9-347e-4a1d-b5b6-943bbdb30cd5"
-        model_name = (
-            model if model.startswith("sonic")
-            else "sonic-multilingual"
-        )
-        return CartesiaTTSService(
-            api_key=os.getenv("CARTESIA_API_KEY"),
-            voice_id=voice_id or default_voice,
-            model=model_name,
-            params=params,
-            sample_rate=8000,
-        )
-    else:
-        logging.warning(
-            f"Unknown TTS provider: {provider}, using cartesia"
-        )
-        return create_tts_service({
-            "provider": "cartesia",
-            "voice_id": voice_id,
-            "model": model,
-            "locale": locale,
-            "volume": tts_config.get("volume"),
-            "speed": tts_config.get("speed"),
-        })
 
 
-def create_llm_service(llm_config):
-    """Create LLM service based on configuration"""
-    model = llm_config.get("model", "openai/gpt-4o")
-    base_url = llm_config.get("base_url", "https://openrouter.ai/api/v1")
-    api_key = llm_config.get("api_key") or os.getenv("OPENROUTER_API_KEY")
-    temperature = llm_config.get("temperature", 0.2)
-    top_p = llm_config.get("top_p", 0.9)
-    frequency_penalty = llm_config.get("frequency_penalty", 0)
-    presence_penalty = llm_config.get("presence_penalty", 0)
-    seed = llm_config.get("seed", 42)
-    max_completion_tokens = llm_config.get("max_completion_tokens", 256)
-    llm_timeout_secs = llm_config.get("llm_timeout_secs", LLM_TIMEOUT_SECS_DEFAULT)
-    retry_on_timeout = llm_config.get("retry_on_timeout", LLM_RETRY_ON_TIMEOUT_DEFAULT)
-
-    input_params_kwargs = {
-        "temperature": temperature,
-        "top_p": top_p,
-        "frequency_penalty": frequency_penalty,
-        "presence_penalty": presence_penalty,
-        "seed": seed,
-        "max_completion_tokens": max_completion_tokens,
-    }
-
-    if llm_config.get("provider") in {"openrouter", "azure"}:   #临时兼容，等后端接口支持后可去掉 openrouter
-        target = select_azure_llm_target()
-        return AzureLLMService(
-            api_key=target["api_key"],
-            endpoint=target["endpoint"],
-            api_version=target["api_version"],
-            model=target["deployment"],
-            retry_timeout_secs=llm_timeout_secs,
-            retry_on_timeout=retry_on_timeout,
-            params=OpenAILLMService.InputParams(**input_params_kwargs),
-        )
-
-    return OpenAILLMService(
-        api_key=api_key,
-        model=model,
-        base_url=base_url,
-        retry_timeout_secs=llm_timeout_secs,
-        retry_on_timeout=retry_on_timeout,
-        params=OpenAILLMService.InputParams(**input_params_kwargs),
-    )
 
 
 # def format_prompt_with_variables(template: str, variables: dict) -> str:
