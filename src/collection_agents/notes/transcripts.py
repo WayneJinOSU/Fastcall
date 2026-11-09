@@ -1,6 +1,6 @@
 """对话提取：把 pipecat LLMContext 转成带时间戳的消息列表与对话对。
 
-供纪要分发（call_notes）与通话结果回调（harness）使用。
+供纪要分发（call_notes）使用。
 """
 
 import json

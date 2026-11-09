@@ -92,9 +92,6 @@ from collection_agents.services.audio_assets import (
     split_voicemail_segments,
 )
 from collection_agents.notes.call_notes import intelligent_notes_distribution, save_conversation
-# 开源版：harness 外呼平台集成已下线，相关调用一并注释（见下方）。
-# from collection_agents.integrations.harness import resolve_collection_harness_llm_prompt
-# from collection_agents.integrations.harness import send_call_data_callback
 from collection_agents.services.providers import (
     attach_llm_retry_counter,
     create_llm_service,
@@ -451,18 +448,7 @@ async def _create_call_services(call_ctx, session_context, session, call_data):
             robot_name,
             robot_code,
         )
-        # 开源版：harness prompt 平台已下线，直接使用建联配置中的 prompt。
-        # prompt_uuid 保留为 None，下游 metrics 载荷结构不变。
-        # websocket_prompt = (
-        #     llm_config.get("prompt") or config_manager.get_prompt_config() or ""
-        # )
-        # prompt_uuid = await resolve_collection_harness_llm_prompt(
-        #     outbound_source=outbound_source,
-        #     variables=variables,
-        #     llm_config=llm_config,
-        #     fallback_prompt=websocket_prompt,
-        # )
-        prompt_uuid = None
+        # 开源版：prompt 直接来自机器人配置（conf/robots/<robot_code>.json）。
         llm_service = create_llm_service(llm_config)
 
         if asr_config.get("provider") == "cartesia":
@@ -470,11 +456,6 @@ async def _create_call_services(call_ctx, session_context, session, call_data):
         else:
             _asr_model = resolve_deepgram_model(robot_code)
         llm_metrics_config = dict(llm_config)
-        if prompt_uuid:
-            # The harness prompt is for this attempt only.  Keep it out of
-            # process_record and the completed-call business payload.
-            llm_metrics_config.pop("prompt", None)
-            llm_metrics_config.pop("api_key", None)
         metrics_collector = CallMetricsCollector(
             call_uuid=call_uuid,
             business_id = business_id,
@@ -499,8 +480,7 @@ async def _create_call_services(call_ctx, session_context, session, call_data):
             task_start_time=datetime.datetime.now(),
             asr_info={**asr_config, "model": _asr_model, "sample_rate": 8000},
             llm_info=llm_metrics_config,
-            llm_prompt="" if prompt_uuid else llm_config.get("prompt", ""),
-            prompt_uuid=prompt_uuid,
+            llm_prompt=llm_config.get("prompt", ""),
             tts_info={**tts_config, "sample_rate": 8000},
             # pricing_config overrides _DEFAULT_PRICING in collector.py.
             # Default covers Deepgram, Cartesia STT/TTS, and supported LLMs.
@@ -729,12 +709,6 @@ async def _finalize_call(call_ctx, svc, session_context, context, duration_monit
     if metrics_collector:
         logging.info(f"call_metrics: {metrics_collector.to_dict()}")
         metrics_collector.save_to_db()
-        # 开源版：harness 通话结果回调已下线。
-        # await send_call_data_callback(
-        #     context=context,
-        #     metrics_collector=metrics_collector,
-        #     collection_note=collection_note_result,
-        # )
 
 
 async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180):

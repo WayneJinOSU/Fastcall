@@ -77,9 +77,6 @@ from collection_agents.services.call_config import (
     normalize_language_code,
 )
 from collection_agents.notes.call_notes import intelligent_notes_distribution, save_conversation
-# 开源版：harness 外呼平台集成已下线，相关调用一并注释（见下方）。
-# from collection_agents.integrations.harness import send_call_data_callback
-# from collection_agents.integrations.harness import resolve_collection_harness_llm_prompt
 from collection_agents.services.audio_assets import load_output_sounds
 from collection_agents.bots.helpers import build_call_context, build_session_state
 from collection_agents.metrics.collector import CallMetricsCollector
@@ -1313,25 +1310,8 @@ async def _setup_realtime_call(call_ctx, session_context, websocket_client, stre
         asr_config = config_manager.get_asr_config()
         tts_config = config_manager.get_tts_config()
         llm_config = config_manager.get_llm_config()
-        # 开源版：harness prompt 平台已下线，直接使用建联配置中的 prompt。
-        # prompt_uuid 保留为 None，下游 metrics 载荷结构不变。
-        # websocket_prompt = (
-        #     llm_config.get("prompt") or config_manager.get_prompt_config() or ""
-        # )
-        prompt_uuid = None
-        # if outbound_source == "collection_harness":
-        #     prompt_uuid = await resolve_collection_harness_llm_prompt(
-        #         outbound_source=outbound_source,
-        #         variables=variables,
-        #         llm_config=llm_config,
-        #         fallback_prompt=websocket_prompt,
-        #     )
+        # 开源版：prompt 直接来自机器人配置（conf/robots/<robot_code>.json）。
         llm_metrics_config = dict(llm_config)
-        if prompt_uuid:
-            # The harness prompt is for this attempt only. Keep it out of
-            # process_record and the completed-call business payload.
-            llm_metrics_config.pop("prompt", None)
-            llm_metrics_config.pop("api_key", None)
 
         realtime_resource = await _get_realtime_resource_manager().acquire()
         realtime_url = realtime_resource["base_url"]
@@ -1380,8 +1360,7 @@ async def _setup_realtime_call(call_ctx, session_context, websocket_client, stre
                 "voice_id": realtime_voice,
                 "sample_rate": REALTIME_INPUT_SAMPLE_RATE,
             },
-            llm_prompt="" if prompt_uuid else llm_config.get("prompt", ""),
-            prompt_uuid=prompt_uuid,
+            llm_prompt=llm_config.get("prompt", ""),
         )
         metrics_collector.llm_model_name = realtime_model
 
@@ -1521,12 +1500,6 @@ async def _finalize_realtime_call(call_ctx, svc, session_context, context, durat
     if metrics_collector:
         logging.info(f"call_metrics: {metrics_collector.to_dict()}")
         metrics_collector.save_to_db()
-        # 开源版：harness 通话结果回调已下线。
-        # await send_call_data_callback(
-        #     context=context,
-        #     metrics_collector=metrics_collector,
-        #     collection_note=collection_note_result,
-        # )
 
 
 async def run_bot_realtime_alpha(

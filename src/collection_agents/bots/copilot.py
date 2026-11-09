@@ -82,8 +82,6 @@ from collection_agents.services.providers import attach_llm_retry_counter, selec
 from collection_agents.processors.common import SilenceDetector
 from collection_agents.metrics.collector import CallMetricsCollector, CallMetricsObserver
 from collection_agents.notes.call_notes import intelligent_notes_distribution
-# 开源版：harness 外呼平台集成已下线（下方回调调用本就已注释）。
-# from collection_agents.integrations.harness import send_call_data_callback
 
 load_dotenv(override=True)
 from collection_agents.infra.env import mode
@@ -1312,11 +1310,6 @@ async def run_copilot_bot_beta(websocket, event: dict[str, Any]):
         if metrics_collector is not None:
             logging.info(f"copilot call_metrics: {metrics_collector.to_dict()}")
             metrics_collector.save_to_db()
-            # await send_call_data_callback(
-            #     context=context,
-            #     metrics_collector=metrics_collector,
-            #     collection_note=collection_note_result,
-            # )
 
         logging.info("Copilot bot session ended")
 
