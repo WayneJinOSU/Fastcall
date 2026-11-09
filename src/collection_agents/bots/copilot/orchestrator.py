@@ -22,11 +22,9 @@ from collection_agents.bots.service_metrics import (
 )
 from collection_agents.bots.copilot.config import BotCopilotConfigManager
 from collection_agents.bots.copilot.protocol import CopilotProtocolClient
-from collection_agents.bots.copilot.processors import (
-    AICopilotVADProcessor,
-    ConditionalProcessor,
-    CopilotWordAwareHangupProcessor,
-)
+from collection_agents.handlers.copilot.hangup import CopilotWordAwareHangupProcessor
+from collection_agents.processors.copilot.conditional import ConditionalProcessor
+from collection_agents.processors.copilot.vad import AICopilotVADProcessor
 from collection_agents.bots.copilot.services import (
     create_llm_service,
     create_stt_service,
@@ -73,7 +71,7 @@ from collection_agents.transport.fastapi_websocket_ai_copilot_beta import (
 )
 from collection_agents.services.call_config import build_first_question_content, build_no_response_hangup_prompt
 from collection_agents.services.providers import attach_llm_retry_counter
-from collection_agents.processors.common import SilenceDetector
+from collection_agents.processors.common.silence import SilenceDetector
 from collection_agents.metrics.collector import CallMetricsCollector, CallMetricsObserver
 
 load_dotenv(override=True)

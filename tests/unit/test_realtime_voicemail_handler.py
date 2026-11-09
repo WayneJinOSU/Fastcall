@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace
 
 from collection_agents.events import VoicemailDetectedEvent
-from collection_agents.handlers.realtime_voicemail import RealtimeVoicemailHandler
+from collection_agents.handlers.realtime.voicemail import RealtimeVoicemailHandler
 
 
 class FakeContext:

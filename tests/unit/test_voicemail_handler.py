@@ -14,7 +14,7 @@ from collection_agents.events import (
     VoicemailDetectedEvent,
     VoicemailDetectedFrame,
 )
-from collection_agents.handlers.standard_voicemail import StandardVoicemailHandler
+from collection_agents.handlers.standard.voicemail import StandardVoicemailHandler
 from collection_agents.services.voicemail_audio_repository import (
     VoicemailAudioRepository,
 )

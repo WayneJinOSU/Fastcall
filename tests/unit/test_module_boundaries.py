@@ -22,7 +22,7 @@ def imported_modules(path: Path) -> set[str]:
 
 class ModuleBoundaryTests(unittest.TestCase):
     def test_handlers_do_not_depend_on_bot_assembly(self):
-        for path in (PACKAGE_ROOT / "handlers").glob("*.py"):
+        for path in (PACKAGE_ROOT / "handlers").rglob("*.py"):
             imports = imported_modules(path)
             self.assertFalse(
                 any(
@@ -35,7 +35,7 @@ class ModuleBoundaryTests(unittest.TestCase):
 
     def test_voicemail_detector_only_depends_on_detection_contract(self):
         imports = imported_modules(
-            PACKAGE_ROOT / "processors" / "voicemail_detector.py"
+            PACKAGE_ROOT / "processors" / "common" / "voicemail_detector.py"
         )
         forbidden_modules = (
             "collection_agents.bots",

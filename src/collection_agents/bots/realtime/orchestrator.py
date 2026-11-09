@@ -53,8 +53,8 @@ from collection_agents.services.call_config import (
 )
 from collection_agents.services.audio_assets import load_output_sounds
 from collection_agents.bots.helpers import build_call_context, build_session_state
-from collection_agents.handlers.no_response import NoResponseController
-from collection_agents.handlers.realtime_voicemail import RealtimeVoicemailHandler
+from collection_agents.handlers.common.no_response import NoResponseController
+from collection_agents.handlers.realtime.voicemail import RealtimeVoicemailHandler
 from collection_agents.bots.telephony import register_telephony_handlers
 from collection_agents.bots.realtime.azure_service import (
     RealtimePromptSyncAzureLLMService,
@@ -84,19 +84,14 @@ from collection_agents.transport.websocket_safe_send import (
     safe_send_text,
     send_hangup_signal,
 )
-from collection_agents.processors.common import (
-    ContextMessageTimestampTracker,
-    GracefulHangupController,
-    HangupState,
-    SilenceDetector,
-    WordAwareSanitizer,
-)
-from collection_agents.processors.voicemail_detector import VoicemailDetector
-from collection_agents.processors.realtime import (
-    RealtimeBotSpeakingStateTracker,
-    RealtimeHangupGate,
-    RealtimeInputTranscriptionMonitor,
-)
+from collection_agents.processors.common.context import ContextMessageTimestampTracker
+from collection_agents.processors.common.hangup import GracefulHangupController, HangupState
+from collection_agents.processors.common.sanitizer import WordAwareSanitizer
+from collection_agents.processors.common.silence import SilenceDetector
+from collection_agents.processors.common.voicemail_detector import VoicemailDetector
+from collection_agents.processors.realtime.hangup import RealtimeHangupGate
+from collection_agents.processors.realtime.speaking_state import RealtimeBotSpeakingStateTracker
+from collection_agents.processors.realtime.transcription_monitor import RealtimeInputTranscriptionMonitor
 
 RealtimeBargeInTranscriptMonitor = RealtimeInputTranscriptionMonitor
 

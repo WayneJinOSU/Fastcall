@@ -10,8 +10,8 @@ import json
 from functools import partial
 from dotenv import load_dotenv
 from collection_agents.bots.helpers import build_call_context, build_session_state
-from collection_agents.handlers.no_response import NoResponseController
-from collection_agents.handlers.standard_voicemail import StandardVoicemailHandler
+from collection_agents.handlers.common.no_response import NoResponseController
+from collection_agents.handlers.standard.voicemail import StandardVoicemailHandler
 from collection_agents.bots.observers import PipelineFlowWatchdog
 from collection_agents.bots.telephony import register_telephony_handlers
 from collection_agents.bots.standard.grammar import _is_confirmation_phrase
@@ -48,24 +48,20 @@ from pipecat.turns.user_mute import (
     AlwaysUserMuteStrategy,
     FunctionCallUserMuteStrategy,
 )
-from collection_agents.processors.common import (
-    ContextMessageTimestampTracker,
-    GracefulHangupController,
-    HangupState,
-    SilenceDetector,
-    WordAwareSanitizer,
-)
-from collection_agents.processors.voicemail_detector import VoicemailDetector
-from collection_agents.processors.standard import (
-    TranscriptionLogger,
-    FrameLogger,
-    HangupGate,
-    OpeningSilenceTimeoutProcessor,
+from collection_agents.handlers.standard.assistant_turns import ContextSafeAssistantTurnGate
+from collection_agents.handlers.standard.opening_silence import OpeningSilenceTimeoutProcessor
+from collection_agents.processors.common.context import ContextMessageTimestampTracker
+from collection_agents.processors.common.hangup import GracefulHangupController, HangupState
+from collection_agents.processors.common.sanitizer import WordAwareSanitizer
+from collection_agents.processors.common.silence import SilenceDetector
+from collection_agents.processors.common.voicemail_detector import VoicemailDetector
+from collection_agents.processors.standard.hangup import HangupGate
+from collection_agents.processors.standard.interruptions import (
     ReplyProtectionInterruptionGate,
     STTGatedInterruptor,
-    ContextSafeAssistantTurnGate,
-    STTPreRollMuteProcessor,
 )
+from collection_agents.processors.standard.logging import FrameLogger, TranscriptionLogger
+from collection_agents.processors.standard.stt_preroll import STTPreRollMuteProcessor
 
 from pipecat.frames.frames import (
     LLMFullResponseEndFrame,

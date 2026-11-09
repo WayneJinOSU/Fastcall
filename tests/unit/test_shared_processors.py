@@ -17,11 +17,9 @@ from collection_agents.events import (
     VoicemailDetectedEvent,
     VoicemailDetectedFrame,
 )
-from collection_agents.processors.common import (
-    HangupState,
-    WordAwareSanitizer,
-)
-from collection_agents.processors.voicemail_detector import VoicemailDetector
+from collection_agents.processors.common.hangup import HangupState
+from collection_agents.processors.common.sanitizer import WordAwareSanitizer
+from collection_agents.processors.common.voicemail_detector import VoicemailDetector
 
 
 class RecordingPushMixin:
