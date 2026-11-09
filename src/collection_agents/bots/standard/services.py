@@ -55,13 +55,13 @@ async def create_call_services(call_ctx, session_context, session, call_data):
                 variables,
             )
         )
-        fixed_voicemail_live_text, fixed_voicemail_text = split_voicemail_segments(
-            voicemail_content
+        fixed_voicemail_text = voicemail_content
+        fixed_voicemail_cache_enabled = bool(
+            split_voicemail_segments(fixed_voicemail_text)[1]
         )
-        fixed_voicemail_cache_enabled = bool(fixed_voicemail_text)
         if voicemail_hangup_on_detect:
             voicemail_mode = "hangup"
-        elif fixed_voicemail_live_text or fixed_voicemail_text:
+        elif fixed_voicemail_text:
             voicemail_mode = "fixed_message"
         else:
             voicemail_mode = "legacy_llm"
@@ -71,7 +71,7 @@ async def create_call_services(call_ctx, session_context, session, call_data):
             logging.info(
                 "flowConfig.voicemailNode.content is empty; using the legacy LLM voicemail flow."
             )
-        elif not fixed_voicemail_text:
+        elif not fixed_voicemail_cache_enabled:
             logging.info(
                 "Voicemail message has no cacheable second segment; using live TTS only."
             )
@@ -252,7 +252,6 @@ async def create_call_services(call_ctx, session_context, session, call_data):
         "shadow_decoder": shadow_decoder,
         "vosk_final_collector": vosk_final_collector,
         "voicemail_mode": voicemail_mode,
-        "fixed_voicemail_live_text": fixed_voicemail_live_text,
         "fixed_voicemail_text": fixed_voicemail_text,
         "fixed_voicemail_cache_enabled": fixed_voicemail_cache_enabled,
         "release_confirmation_grammar": _release_confirmation_grammar,

@@ -3,6 +3,7 @@ import logging
 import re
 import time
 from collections import deque
+from dataclasses import dataclass
 
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
@@ -15,11 +16,9 @@ from pipecat.frames.frames import (
     LLMFullResponseStartFrame,
     LLMMessagesAppendFrame,
     LLMTextFrame,
-    OutputAudioRawFrame,
     StartFrame,
     TextFrame,
     TranscriptionFrame,
-    TTSSpeakFrame,
     TTSTextFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
@@ -382,6 +381,12 @@ class GracefulHangupController(FrameProcessor):
             logging.error("[GracefulHangupController] Hangup sequence error: %s", exc)
 
 
+@dataclass
+class VoicemailDetectedFrame(Frame):
+    transcript_text: str = ""
+    prompt: str = ""
+
+
 class VoicemailDetector(FrameProcessor):
     def __init__(
         self,
@@ -390,12 +395,6 @@ class VoicemailDetector(FrameProcessor):
         instant_close=False,
         instant_close_cb=None,
         detected_cb=None,
-        finalize_stt_cb=None,
-        fixed_voicemail_text=None,
-        fixed_voicemail_live_text=None,
-        fixed_voicemail_audio_lookup=None,
-        fixed_voicemail_done_cb=None,
-        fixed_voicemail_audio_done_padding=0.3,
         voice_assistant_cb=None,
         mode="standard",
     ):
@@ -404,22 +403,10 @@ class VoicemailDetector(FrameProcessor):
             raise ValueError(f"Unsupported voicemail detector mode: {mode}")
         self._realtime = mode == "realtime"
         self._detected = False
-        self._pending = False
-        self._awaiting_fixed_voicemail_live_stop = False
-        self._awaiting_fixed_voicemail_stop = False
-        self._bot_speaking = False
-        self._fixed_voicemail_done_task = None
-        self._last_finalize_requested_at = None
         self._instant_close = instant_close
         self._instant_close_cb = instant_close_cb
         self._detected_cb = detected_cb
         self._voice_assistant_cb = voice_assistant_cb
-        self._finalize_stt_cb = finalize_stt_cb
-        self._fixed_voicemail_text = (fixed_voicemail_text or "").strip()
-        self._fixed_voicemail_live_text = (fixed_voicemail_live_text or "").strip()
-        self._fixed_voicemail_audio_lookup = fixed_voicemail_audio_lookup
-        self._fixed_voicemail_done_cb = fixed_voicemail_done_cb
-        self._fixed_voicemail_audio_done_padding = fixed_voicemail_audio_done_padding
         self._word_buffer = deque(maxlen=max_word_count)
 
         self._voicemail_regex = re.compile(
@@ -568,171 +555,16 @@ class VoicemailDetector(FrameProcessor):
         if asyncio.iscoroutine(result):
             await result
 
-    async def _call_fixed_voicemail_done_callback(self):
-        if self._fixed_voicemail_done_cb:
-            result = self._fixed_voicemail_done_cb()
-            if asyncio.iscoroutine(result):
-                await result
 
-    async def _lookup_fixed_voicemail_audio(self):
-        if not self._fixed_voicemail_audio_lookup:
-            return None
 
-        try:
-            result = self._fixed_voicemail_audio_lookup()
-            if asyncio.iscoroutine(result):
-                result = await result
-        except Exception as exc:
-            logging.warning(
-                "[VoicemailDetector] Fixed voicemail audio lookup failed: %s",
-                exc,
-            )
-            return None
 
-        if isinstance(result, OutputAudioRawFrame):
-            return {"frame": result, "asset": None}
 
-        if not isinstance(result, dict):
-            logging.warning(
-                "[VoicemailDetector] Fixed voicemail audio lookup returned unsupported payload: %s",
-                type(result).__name__,
-            )
-            return None
 
-        frame = result.get("frame") or result.get("audio_frame")
-        if not isinstance(frame, OutputAudioRawFrame):
-            logging.warning(
-                "[VoicemailDetector] Fixed voicemail audio lookup returned no OutputAudioRawFrame."
-            )
-            return None
 
-        return {
-            "frame": frame,
-            "asset": result.get("asset"),
-        }
 
-    def _estimate_audio_duration_secs(self, frame: OutputAudioRawFrame) -> float:
-        sample_rate = getattr(frame, "sample_rate", None) or 0
-        num_frames = getattr(frame, "num_frames", None) or 0
-        if sample_rate <= 0 or num_frames <= 0:
-            return 0.0
-        return num_frames / sample_rate
 
-    def _cancel_fixed_voicemail_done_fallback(self):
-        task = self._fixed_voicemail_done_task
-        if task and not task.done():
-            task.cancel()
-        self._fixed_voicemail_done_task = None
-
-    async def cleanup(self):
-        await super().cleanup()
-        self._cancel_fixed_voicemail_done_fallback()
-
-    def _schedule_fixed_voicemail_done_fallback(self, frame: OutputAudioRawFrame):
-        self._cancel_fixed_voicemail_done_fallback()
-        delay_secs = (
-            self._estimate_audio_duration_secs(frame)
-            + self._fixed_voicemail_audio_done_padding
-        )
-        self._fixed_voicemail_done_task = asyncio.create_task(
-            self._fixed_voicemail_done_fallback(delay_secs)
-        )
-
-    async def _fixed_voicemail_done_fallback(self, delay_secs: float):
-        try:
-            await asyncio.sleep(max(delay_secs, 0.0))
-            if not self._awaiting_fixed_voicemail_stop:
-                return
-            self._awaiting_fixed_voicemail_stop = False
-            logging.warning(
-                "[VoicemailDetector] Fixed voicemail audio finished by duration fallback."
-            )
-            await self._call_fixed_voicemail_done_callback()
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            logging.warning(
-                "[VoicemailDetector] Fixed voicemail audio done fallback failed: %s",
-                exc,
-            )
-
-    async def _push_fixed_voicemail_context(self, direction: FrameDirection):
-        voicemail_text = " ".join(
-            text
-            for text in (
-                self._fixed_voicemail_live_text,
-                self._fixed_voicemail_text,
-            )
-            if text
-        )
-        await self.push_frame(
-            LLMMessagesAppendFrame(
-                messages=[
-                    {
-                        "role": "assistant",
-                        "content": voicemail_text,
-                    }
-                ],
-                run_llm=False,
-            ),
-            direction,
-        )
-
-    async def _push_cached_voicemail_segment(self, direction: FrameDirection):
-        if not self._fixed_voicemail_text:
-            await self._call_fixed_voicemail_done_callback()
-            return
-
-        audio_payload = await self._lookup_fixed_voicemail_audio()
-        if audio_payload:
-            audio_frame = audio_payload["frame"]
-            asset = audio_payload.get("asset") or {}
-            logging.info(
-                "[VoicemailDetector] Queueing fixed voicemail local audio. "
-                "text_hash=%s file_path=%s",
-                asset.get("text_hash"),
-                asset.get("file_path"),
-            )
-            self._awaiting_fixed_voicemail_stop = True
-            await self.push_frame(audio_frame, direction)
-            self._schedule_fixed_voicemail_done_fallback(audio_frame)
-            return
-
-        logging.info("[VoicemailDetector] Queueing fixed voicemail cache segment without LLM.")
-        self._awaiting_fixed_voicemail_stop = True
-        await self.push_frame(
-            TTSSpeakFrame(
-                self._fixed_voicemail_text,
-                append_to_context=False,
-            ),
-            direction,
-        )
 
     async def _push_voicemail_prompt(self, direction: FrameDirection):
-        if self._fixed_voicemail_live_text or self._fixed_voicemail_text:
-            await self._push_fixed_voicemail_context(direction)
-            if self._fixed_voicemail_live_text:
-                logging.info(
-                    "[VoicemailDetector] Queueing live voicemail first segment without LLM. "
-                    "text_length=%s",
-                    len(self._fixed_voicemail_live_text),
-                )
-                self._awaiting_fixed_voicemail_live_stop = True
-                await self.push_frame(
-                    TTSSpeakFrame(
-                        self._fixed_voicemail_live_text,
-                        append_to_context=False,
-                    ),
-                    direction,
-                )
-                return
-
-            await self._push_cached_voicemail_segment(direction)
-            return
-
-        logging.warning(
-            "[VoicemailDetector] No fixed voicemail message configured; falling back to LLM voicemail prompt."
-        )
         await self.push_frame(
             LLMMessagesAppendFrame(
                 messages=[{"role": "system", "content": self._prompt}],
@@ -744,126 +576,69 @@ class VoicemailDetector(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
-        if not self._realtime and isinstance(frame, BotStartedSpeakingFrame):
-            self._bot_speaking = True
+        is_transcription = (
+            isinstance(frame, TranscriptionFrame)
+            if self._realtime
+            else isinstance(frame, (TextFrame, TranscriptionFrame))
+            or type(frame).__name__ == "InterimTranscriptionFrame"
+        )
+        if (
+            is_transcription
+            and not self._detected
+            and (not self._realtime or direction == FrameDirection.UPSTREAM)
+        ):
+            text = frame.text.strip()
+            if text:
+                self._word_buffer.extend(text.split())
+                check_text = " ".join(self._word_buffer)
+                if self._voicemail_regex.search(check_text.lower()):
+                    logging.info(
+                        "[VoicemailDetector] Detected voicemail. mode=%s matched_text=%r",
+                        "realtime" if self._realtime else "standard",
+                        check_text,
+                    )
+                    self._detected = True
+                    self._word_buffer.clear()
 
-        elif not self._realtime and isinstance(frame, BotStoppedSpeakingFrame):
-            self._bot_speaking = False
-            if self._pending:
-                self._pending = False
-                logging.info(
-                    "[VoicemailDetector] Bot stopped speaking, triggering deferred voicemail message."
-                )
-                await self._push_voicemail_prompt(FrameDirection.DOWNSTREAM)
-            elif self._awaiting_fixed_voicemail_live_stop:
-                self._awaiting_fixed_voicemail_live_stop = False
-                logging.info(
-                    "[VoicemailDetector] Live voicemail first segment completed; queueing cache segment."
-                )
-                await self._push_cached_voicemail_segment(FrameDirection.DOWNSTREAM)
-            elif self._awaiting_fixed_voicemail_stop:
-                self._cancel_fixed_voicemail_done_fallback()
-                self._awaiting_fixed_voicemail_stop = False
-                logging.info("[VoicemailDetector] Fixed voicemail message completed.")
-                await self._call_fixed_voicemail_done_callback()
-
-        else:
-            is_transcription = (
-                isinstance(frame, TranscriptionFrame)
-                if self._realtime
-                else isinstance(frame, (TextFrame, TranscriptionFrame))
-                or type(frame).__name__ == "InterimTranscriptionFrame"
-            )
-            if (
-                is_transcription
-                and not self._detected
-                and (not self._realtime or direction == FrameDirection.UPSTREAM)
-            ):
-                text = frame.text.strip()
-                if text:
-                    self._word_buffer.extend(text.split())
-                    check_text = " ".join(self._word_buffer)
-                    if self._voicemail_regex.search(check_text.lower()):
-                        logging.info(
-                            "[VoicemailDetector] Detected keywords in word-window. "
-                            "mode=%s frame_type=%s matched_text=%r current_text=%r",
-                            "realtime" if self._realtime else "standard",
-                            type(frame).__name__,
-                            check_text,
-                            text,
+                    if not self._realtime:
+                        await self.push_frame(
+                            VoicemailDetectedFrame(
+                                transcript_text=check_text,
+                                prompt=self._prompt,
+                            ),
+                            direction,
                         )
-                        self._detected = True
-                        self._word_buffer.clear()
-
-                        if self._realtime and self._voice_assistant_cb:
-                            result = getattr(frame, "result", None)
-                            event = {
-                                "item_id": str(getattr(result, "item_id", "") or ""),
-                                "text": text,
-                                "transcript_text": check_text,
-                                "check_text": check_text,
-                                "classification": "voice_assistant",
-                                "classification_detail": "voicemail",
-                                "is_barge_in": False,
-                                "is_final": True,
-                                "action": "detected",
-                            }
-                            await self._call_voice_assistant_callback(event)
-                            return
-
-                        if not self._realtime:
-                            self._last_finalize_requested_at = time.monotonic()
-                        if self._finalize_stt_cb:
-                            try:
-                                result = self._finalize_stt_cb()
-                                if asyncio.iscoroutine(result):
-                                    await result
-                                logging.info(
-                                    "[VoicemailDetector] Triggered STT finalize after voicemail detection. "
-                                    "frame_type=%s",
-                                    type(frame).__name__,
-                                )
-                            except Exception as exc:
-                                logging.warning(
-                                    f"[VoicemailDetector] Failed to trigger STT finalize: {exc}"
-                                )
-                        await self._call_detected_callback()
-                        if self._instant_close:
-                            logging.info(
-                                "[VoicemailDetector] Instant close enabled; "
-                                "skipping voicemail message flow."
-                            )
-                            if self._instant_close_cb:
-                                result = self._instant_close_cb()
-                                if asyncio.iscoroutine(result):
-                                    await result
-                            else:
-                                await self.push_frame(EndFrame(), direction)
-                            return
-                        if not self._realtime and self._bot_speaking:
-                            self._pending = True
-                            logging.info(
-                                "[VoicemailDetector] Detected during bot speech, deferring until BotStoppedSpeakingFrame."
-                            )
-                        else:
-                            logging.info(
-                                "[VoicemailDetector] Detected keywords, triggering voicemail message immediately."
-                            )
-                            await self._push_voicemail_prompt(direction)
                         return
 
-            elif isinstance(frame, TranscriptionFrame) and self._last_finalize_requested_at is not None:
-                elapsed_ms = (time.monotonic() - self._last_finalize_requested_at) * 1000
-                logging.info(
-                    "[VoicemailDetector] Final transcript arrived after forced finalize: "
-                    "elapsed_ms=%.1f current_text=%r",
-                    elapsed_ms,
-                    frame.text,
-                )
-                self._last_finalize_requested_at = None
+                    if self._voice_assistant_cb:
+                        result = getattr(frame, "result", None)
+                        event = {
+                            "item_id": str(getattr(result, "item_id", "") or ""),
+                            "text": text,
+                            "transcript_text": check_text,
+                            "check_text": check_text,
+                            "classification": "voice_assistant",
+                            "classification_detail": "voicemail",
+                            "is_barge_in": False,
+                            "is_final": True,
+                            "action": "detected",
+                        }
+                        await self._call_voice_assistant_callback(event)
+                        return
 
-        if isinstance(frame, (EndFrame, CancelFrame)):
-            self._cancel_fixed_voicemail_done_fallback()
+                    await self._call_detected_callback()
+                    if self._instant_close:
+                        if self._instant_close_cb:
+                            result = self._instant_close_cb()
+                            if asyncio.iscoroutine(result):
+                                await result
+                        else:
+                            await self.push_frame(EndFrame(), direction)
+                        return
+
+                    await self._push_voicemail_prompt(direction)
+                    return
+
         if isinstance(frame, EndFrame):
             logging.info(f"[VoicemailDetector] Pushing EndFrame: {frame}")
         await self.push_frame(frame, direction)

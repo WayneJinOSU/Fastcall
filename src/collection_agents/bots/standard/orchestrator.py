@@ -16,6 +16,7 @@ from collection_agents.bots.standard.lifecycle import finalize_call as _finalize
 from collection_agents.bots.standard.services import (
     create_call_services as _create_call_services,
 )
+from collection_agents.bots.standard.voicemail import StandardVoicemailHandler
 from collection_agents.transport.websocket_beta import (
     CustomProtocolFrameSerializer,
     TelephonyEventRouter,
@@ -92,6 +93,7 @@ from collection_agents.services.audio_assets import (
     load_audio_frame,
     load_output_sounds,
     normalize_text as normalize_audio_asset_text,
+    split_voicemail_segments,
 )
 from collection_agents.transport.websocket_safe_send import send_hangup_signal
 from collection_agents.services.stt_local import ShadowDecodeTap
@@ -202,7 +204,6 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
             shadow_decoder = svc["shadow_decoder"]
             vosk_final_collector = svc["vosk_final_collector"]
             voicemail_mode = svc["voicemail_mode"]
-            fixed_voicemail_live_text = svc["fixed_voicemail_live_text"]
             fixed_voicemail_text = svc["fixed_voicemail_text"]
             fixed_voicemail_cache_enabled = svc["fixed_voicemail_cache_enabled"]
             _release_confirmation_grammar = svc["release_confirmation_grammar"]
@@ -697,6 +698,7 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
                     logging.warning(f"Forced Deepgram finalize failed: {exc}")
 
             def _build_voicemail_remote_audio_config():
+                live_text, cached_text = split_voicemail_segments(fixed_voicemail_text)
                 return {
                     "bot_code": robot_code,
                     "provider": (tts_config.get("provider") or "cartesia").strip().lower(),
@@ -709,9 +711,9 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
                     "sample_rate": AUDIO_ASSET_SAMPLE_RATE,
                     "audio_format": "wav",
                     "text_type": TEXT_TYPE_VOICEMAIL,
-                    "live_text": fixed_voicemail_live_text,
-                    "text": fixed_voicemail_text,
-                    "full_text": voicemail_content,
+                    "live_text": live_text,
+                    "text": cached_text,
+                    "full_text": fixed_voicemail_text,
                 }
 
             def _build_voicemail_local_audio_config(asset: dict | None):
@@ -854,34 +856,19 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
                 VoicemailDetector(
                     max_word_count=30,
                     language=language,
-                    instant_close=voicemail_mode == "hangup",
-                    instant_close_cb=(
-                        _voicemail_hangup_on_detect
-                        if voicemail_mode == "hangup"
-                        else None
-                    ),
-                    detected_cb=_on_voicemail_detected,
+                ),
+                StandardVoicemailHandler(
+                    mode=voicemail_mode,
+                    on_detected=_on_voicemail_detected,
                     finalize_stt_cb=_finalize_stt_after_voicemail,
-                    fixed_voicemail_text=(
+                    instant_close_cb=_voicemail_hangup_on_detect,
+                    fixed_text=(
                         fixed_voicemail_text
                         if voicemail_mode == "fixed_message"
                         else None
                     ),
-                    fixed_voicemail_live_text=(
-                        fixed_voicemail_live_text
-                        if voicemail_mode == "fixed_message"
-                        else None
-                    ),
-                    fixed_voicemail_audio_lookup=(
-                        _lookup_fixed_voicemail_audio
-                        if voicemail_mode == "fixed_message"
-                        else None
-                    ),
-                    fixed_voicemail_done_cb=(
-                        _voicemail_fixed_message_done
-                        if voicemail_mode == "fixed_message"
-                        else None
-                    ),
+                    fixed_audio_lookup=_lookup_fixed_voicemail_audio,
+                    fixed_done_cb=_voicemail_fixed_message_done,
                 ),
                 transcription_logger,
                 STTGatedInterruptor(),

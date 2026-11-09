@@ -16,6 +16,7 @@ from pipecat.processors.frame_processor import FrameDirection
 
 from collection_agents.processors.common import (
     HangupState,
+    VoicemailDetectedFrame,
     VoicemailDetector,
     WordAwareSanitizer,
 )
@@ -48,56 +49,19 @@ def transcription(text, *, result=None):
 
 
 class VoicemailDetectorTests(unittest.IsolatedAsyncioTestCase):
-    async def test_standard_fixed_message_and_finalize_flow(self):
-        detected = []
-        finalized = []
-
-        async def on_detected():
-            detected.append(True)
-
-        async def on_finalize():
-            finalized.append(True)
-
-        detector = RecordingVoicemailDetector(
-            language="fil-PH",
-            detected_cb=on_detected,
-            finalize_stt_cb=on_finalize,
-            fixed_voicemail_text="Payment reminder",
-        )
+    async def test_standard_emits_detection_event(self):
+        detector = RecordingVoicemailDetector(language="fil-PH")
 
         await detector.process_frame(
             TextFrame("Please leave a message after the tone"),
             FrameDirection.DOWNSTREAM,
         )
 
-        self.assertEqual(detected, [True])
-        self.assertEqual(finalized, [True])
-        self.assertEqual(len(detector.pushed), 2)
-        context, _ = detector.pushed[0]
-        speech, _ = detector.pushed[1]
-        self.assertIsInstance(context, LLMMessagesAppendFrame)
-        self.assertFalse(context.run_llm)
-        self.assertEqual(context.messages[0]["content"], "Payment reminder")
-        self.assertIsInstance(speech, TTSSpeakFrame)
-        self.assertEqual(speech.text, "Payment reminder")
-
-    async def test_standard_defers_message_while_bot_is_speaking(self):
-        detector = RecordingVoicemailDetector(fixed_voicemail_text="Reminder")
-        await detector.process_frame(BotStartedSpeakingFrame(), FrameDirection.DOWNSTREAM)
-        await detector.process_frame(
-            TextFrame("Please leave a message"),
-            FrameDirection.DOWNSTREAM,
-        )
-
-        self.assertEqual([type(frame) for frame, _ in detector.pushed], [BotStartedSpeakingFrame])
-        self.assertTrue(detector._pending)
-
-        await detector.process_frame(
-            BotStoppedSpeakingFrame(),
-            FrameDirection.DOWNSTREAM,
-        )
-        self.assertFalse(detector._pending)
-        self.assertTrue(any(isinstance(frame, TTSSpeakFrame) for frame, _ in detector.pushed))
+        self.assertEqual(len(detector.pushed), 1)
+        event, _ = detector.pushed[0]
+        self.assertIsInstance(event, VoicemailDetectedFrame)
+        self.assertIn("leave a message", event.transcript_text)
+        self.assertIn("Paalam", event.prompt)
 
     async def test_realtime_only_detects_upstream_and_emits_event(self):
         events = []
