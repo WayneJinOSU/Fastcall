@@ -219,8 +219,6 @@ def _build_rnnoise_filter(enabled: bool = False):
         return None
 
 
-
-
 async def _setup_realtime_call(call_ctx, session_context, websocket_client, stream_sid, realtime_rnnoise_enabled):
     """Realtime 通话设置：配置解析、Azure 资源获取、指标收集器、序列化器与传输层。
 
@@ -330,7 +328,6 @@ async def _setup_realtime_call(call_ctx, session_context, websocket_client, stre
         "transport": transport,
         "allow_interruptions": allow_interruptions,
     }
-
 
 
 async def _finalize_realtime_call(call_ctx, svc, session_context, context, duration_monitor, llm_service):
@@ -659,8 +656,6 @@ async def run_bot_realtime_alpha(
 
             event_router = TelephonyEventRouter(cancel_task_cb=_router_hangup_cancel)
 
-
-
             async def _on_answer(frame):
                 if session_context["on_answer"]:
                     logging.info(f"on_answer ignored duplicate: {frame.payload}")
@@ -705,10 +700,6 @@ async def run_bot_realtime_alpha(
                 if task:
                     await task.queue_frame(LLMRunFrame())
 
-
-
-
-
             register_telephony_handlers(
                 event_router,
                 transport,
@@ -716,13 +707,7 @@ async def run_bot_realtime_alpha(
                 on_end=_queue_end_frame,
             )
 
-
-
             hangup_state = HangupState()
-
-
-
-
 
             realtime_voicemail_handler = RealtimeVoicemailHandler(
                 session_context=session_context,

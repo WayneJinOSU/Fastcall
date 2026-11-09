@@ -84,20 +84,6 @@ COPILOT_HANGUP_EXIT_DELAY_SEC = 15.0
 COPILOT_END_FRAME_DELAY_SEC = 4.0
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # def format_prompt_with_variables(template: str, variables: dict) -> str:
 #     """Format prompt template with variables"""
 #     result = template

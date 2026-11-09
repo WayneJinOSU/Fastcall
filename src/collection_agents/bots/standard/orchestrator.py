@@ -99,8 +99,6 @@ load_dotenv(override=True)
 
 WELCOME_AUDIO_PREROLL_MS = 500
 
-
-
 def _get_env_bool(name: str, default: bool = False) -> bool:
     value = os.environ.get(name)
     if value is None:
@@ -123,11 +121,6 @@ def _build_silence_frame(duration_ms: int, sample_rate: int = 8000, channels: in
         sample_rate=sample_rate,
         num_channels=channels,
     )
-
-
-
-
-
 
 
 async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180):
@@ -347,7 +340,6 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
                 description="bot_beta Pipecat websocket transport send",
             )
 
-
             # Timeout monitor
             async def monitor_call_duration():
                 while True:
@@ -407,15 +399,12 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
                 audio_out_sample_rate=8000,
             )
 
-
             language = tts_config.get("locale", "zh-CN")
 
             async def _router_hangup_cancel():
                 await _queue_end_frame("router_on_hangup")
 
             event_router = TelephonyEventRouter(cancel_task_cb=_router_hangup_cancel)
-
-
 
             async def _on_answer(frame):
                 if session_context["on_answer"]:
@@ -489,17 +478,12 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
                     # Best-effort: start() swallows its own errors.
                     await shadow_decoder.start()
 
-
-
-
-
             register_telephony_handlers(
                 event_router,
                 transport,
                 on_answer=_on_answer,
                 on_end=_queue_end_frame,
             )
-
 
             hangup_state = HangupState()
 
