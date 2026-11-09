@@ -44,7 +44,7 @@ from pipecat.frames.frames import (
     StartFrame,
     VADUserStoppedSpeakingFrame,
 )
-from bot_beta_modules.vosk_stt import VoskSTTService
+from collection_agents.services.stt_local import VoskSTTService
 
 MODEL = sys.argv[1] if len(sys.argv) > 1 else "/Users/wjq/Downloads/vosk-model-small-es-0.42"
 WAV = sys.argv[2] if len(sys.argv) > 2 else "assets/14287.wav"
