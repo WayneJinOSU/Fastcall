@@ -39,13 +39,16 @@ from pipecat.turns.user_mute import (
     AlwaysUserMuteStrategy,
     FunctionCallUserMuteStrategy,
 )
-from collection_agents.processors.common import ContextMessageTimestampTracker, SilenceDetector
+from collection_agents.processors.common import (
+    ContextMessageTimestampTracker,
+    GracefulHangupController,
+    HangupState,
+    SilenceDetector,
+)
 from collection_agents.processors.standard import (
     TranscriptionLogger,
     FrameLogger,
-    GracefulHangupController,
     HangupGate,
-    HangupState,
     OpeningSilenceTimeoutProcessor,
     ReplyProtectionInterruptionGate,
     STTGatedInterruptor,

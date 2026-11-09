@@ -91,12 +91,15 @@ from collection_agents.transport.websocket_safe_send import (
     safe_send_text,
     send_hangup_signal,
 )
-from collection_agents.processors.common import ContextMessageTimestampTracker, SilenceDetector
-from collection_agents.processors.realtime import (
+from collection_agents.processors.common import (
+    ContextMessageTimestampTracker,
     GracefulHangupController,
+    HangupState,
+    SilenceDetector,
+)
+from collection_agents.processors.realtime import (
     RealtimeBotSpeakingStateTracker,
     RealtimeHangupGate,
-    RealtimeHangupState,
     RealtimeInputTranscriptionMonitor,
     RealtimeVoicemailDetector,
     RealtimeWordAwareSanitizer,
@@ -1964,7 +1967,7 @@ async def run_bot_realtime_alpha(
                     logging.info(f"on_session_timeout: {client}")
                     await _queue_end_frame("session_timeout")
 
-            hangup_state = RealtimeHangupState()
+            hangup_state = HangupState()
 
             def _on_voicemail_detected():
                 session_context["voicemail_detected"] = True
