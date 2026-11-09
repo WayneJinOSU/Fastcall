@@ -33,28 +33,12 @@ from collection_agents.services.stt_local import (
 async def create_call_services(call_ctx, session_context, session, call_data):
     config_manager = call_ctx["config_manager"]
     variables = call_ctx["variables"]
-    country = call_ctx["country"]
-    task_type = call_ctx["task_type"]
     voicemail_config = call_ctx["voicemail_config"]
     voicemail_hangup_on_detect = call_ctx["voicemail_hangup_on_detect"]
-    follower_id = call_ctx["follower_id"]
-    dial_schedule = call_ctx["dial_schedule"]
-    customer_group = call_ctx["customer_group"]
-    has_sms = call_ctx["has_sms"]
-    has_app_push = call_ctx["has_app_push"]
-    tenant_id = call_ctx["tenant_id"]
-    app_type = call_ctx["app_type"]
-    work_order_id = call_ctx["work_order_id"]
-    outbound_source = call_ctx["outbound_source"]
-    platform = call_ctx["platform"]
-    is_round_robin = call_ctx["is_round_robin"]
-    is_human_assist = call_ctx["is_human_assist"]
     robot_code = call_ctx["robot_code"]
     robot_name = call_ctx["robot_name"]
-    org_code = call_ctx["org_code"]
-    org_name = call_ctx["org_name"]
+    robot_version_id = call_ctx["robot_version_id"]
     call_uuid = call_ctx["call_uuid"]
-    business_id = call_ctx["business_id"]
 
     shadow_config = None
     shadow_decoder = None
@@ -173,7 +157,7 @@ async def create_call_services(call_ctx, session_context, session, call_data):
         @tts_service.event_handler("on_disconnected")
         async def _tts_on_disconnected(service):
             logging.info("[tts] websocket disconnected: %s", type(service).__name__)
-        llm_config, platform = resolve_bot_llm_runtime(
+        llm_config, _ = resolve_bot_llm_runtime(
             llm_config,
             robot_name,
             robot_code,
@@ -184,32 +168,14 @@ async def create_call_services(call_ctx, session_context, session, call_data):
             _asr_model = asr_config.get("model", "ink-whisper")
         else:
             _asr_model = asr_config.get("model") or "nova-2"
-        llm_metrics_config = dict(llm_config)
         metrics_collector = CallMetricsCollector(
             call_uuid=call_uuid,
-            business_id=business_id,
-            tenant_id=tenant_id,
-            app_type=app_type,
-            work_order_id=work_order_id,
-            outbound_source=outbound_source,
-            platform=platform,
-            is_round_robin=is_round_robin,
-            is_human_assist=is_human_assist,
             robot_code=robot_code,
-            robot_name=robot_name,
-            org_code=org_code,
-            org_name=org_name,
-            country=country,
-            task_type=task_type,
-            follower_id=follower_id,
-            dial_schedule=dial_schedule,
-            customer_group=customer_group,
-            has_sms=has_sms,
-            has_app_push=has_app_push,
+            robot_version_id=robot_version_id,
+            bot_mode="standard",
             task_start_time=datetime.datetime.now(),
             asr_info={**asr_config, "model": _asr_model, "sample_rate": 8000},
-            llm_info=llm_metrics_config,
-            llm_prompt=llm_config.get("prompt", ""),
+            llm_info=llm_config,
             tts_info={**tts_config, "sample_rate": 8000},
         )
         attach_llm_retry_counter(llm_service, metrics_collector)

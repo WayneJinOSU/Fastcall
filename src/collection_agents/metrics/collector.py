@@ -1,14 +1,15 @@
 """
 Call-level metrics collector and pipecat observer.
 
-Usage in bot_beta.py:
+Usage:
     collector = CallMetricsCollector(
         call_uuid=call_uuid,
-        start_time=datetime.datetime.now(),
-        asr_info={"model": "nova-2", "language": "zh-CN", "sample_rate": 8000},
-        llm_info={"model": "openai/gpt-4o", "temperature": 0, "max_tokens": 100},
-        tts_info={"model": "sonic-2", "voice_id": "...", "sample_rate": 8000},
-        llm_prompt="...",
+        robot_code=robot_code,
+        bot_mode="standard",
+        task_start_time=datetime.datetime.now(),
+        asr_info={"provider": "deepgram", "model": "nova-2"},
+        llm_info={"provider": "deepseek", "model": "deepseek-flash"},
+        tts_info={"provider": "cartesia", "model": "sonic-2"},
     )
     task_observers = [CallMetricsObserver(collector)]
     # In finally block:
@@ -82,92 +83,40 @@ class CallMetricsCollector:
     def __init__(
         self,
         call_uuid: str,
-        business_id: str,
-        tenant_id: str,
-        app_type: str,
-        work_order_id: str,
-        platform: str,
-        is_round_robin: int,
-        is_human_assist:int,
         robot_code: str,
-        robot_name: str,
-        org_code: str,
-        org_name: str,
-        country: str,
-        task_type: str,
-        follower_id: str,
-        dial_schedule: list,
-        customer_group: str,
-        has_sms: int,
-        has_app_push: int,
         task_start_time: datetime.datetime,
         asr_info: dict,
         llm_info: dict,
         tts_info: dict,
-        llm_prompt: str = "",
+        *,
+        bot_mode: str,
+        robot_version_id: Optional[str] = None,
         pricing_config: Optional[dict] = None,
-        outbound_source: str = "hermes",
-        prompt_uuid: str = "",
     ):
-        """
-        Args:
-            call_uuid: Unique call identifier.
-            start_time: When the call started.
-            asr_info: e.g. {"model": "nova-2", "language": "zh-CN", "sample_rate": 8000}
-            llm_info: e.g. {"model": "openai/gpt-4o", "temperature": 0, "max_tokens": 100}
-            tts_info: e.g. {"model": "sonic-2", "voice_id": "...", "sample_rate": 8000}
-            llm_prompt: System prompt content (version record).
-            pricing_config: Optional pricing for cost calculation, e.g.
-                {
-                    "llm_prompt_per_1k": 0.005,       # USD per 1k prompt tokens
-                    "llm_completion_per_1k": 0.015,   # USD per 1k completion tokens
-                    "tts_per_char": 0.000015,         # USD per character
-                }
-        """
         self.call_uuid = call_uuid
-        self.task_start_time = task_start_time
-        self.business_id = business_id
-        self.tenant_id = tenant_id
-        self.app_type = app_type
-        self.work_order_id = work_order_id
-        self.outbound_source = outbound_source or "hermes"
-        self.platform = platform
-        self.is_round_robin = is_round_robin
-        self.is_human_assist = is_human_assist
+        self.bot_mode = bot_mode
         self.robot_code = robot_code
-        self.robot_name = robot_name
-        self.org_code = org_code
-        self.org_name = org_name
-        self.country = country
-        self.task_type = task_type
-        self.follower_id = follower_id
-        self.dial_schedule = dial_schedule
-        self.customer_group = customer_group
-        self.has_sms = has_sms
-        self.has_app_push = has_app_push
+        self.robot_version_id = robot_version_id or None
+        self.task_start_time = task_start_time
         self.task_end_time: Optional[datetime.datetime] = None
+
+        def technical_info(info):
+            return {
+                key: value
+                for key, value in info.items()
+                if key in {"provider", "model", "locale", "sample_rate"}
+            }
 
         # ASR fields
         self.asr_model_name: str = asr_info.get("model", "")
-        self.asr_param_config: dict = asr_info
+        self.asr_param_config: dict = technical_info(asr_info)
         self.asr_ttfb_list: list = []            # ms per turn
         self.asr_total_transcribed_chars: int = 0
         self.asr_total_audio_duration: float = 0.0   # seconds of user audio sent to STT
         self.asr_reconnect_count: int = 0
 
         # LLM fields
-        # DeepSeek 和 Ali Qwen 使用实际运行模型名；Azure/openrouter 机器人的
-        # model 配置仍是 "openai/gpt-4o" 占位符，因此取实际部署模型名。
-        _llm_provider = llm_info.get("provider", "")
-        if _llm_provider == "deepseek":
-            self.llm_model_name: str = "deepseek-flash"
-        elif _llm_provider == "ali_qwen":
-            self.llm_model_name: str = llm_info.get("model") or "d-1_model"
-        else:
-            self.llm_model_name: str = "gpt-5.4-mini"
-        self.llm_param: dict = llm_info
-        self.llm_prompt: str = llm_prompt
-        self.prompt_uuid: str = prompt_uuid or ""
+        self.llm_model_name: str = llm_info.get("model", "")
         self.llm_retry_count: int = 0
         self.llm_dialogue_turns: int = 0
         self.llm_ttfb_list: list = []            # ms per turn
@@ -175,31 +124,32 @@ class CallMetricsCollector:
 
         # TTS fields
         self.tts_model_name: str = tts_info.get("model", "")
-        self.tts_param_config: dict = tts_info
+        self.tts_param_config: dict = technical_info(tts_info)
         self.tts_ttfb_list: list = []            # ms per turn
         self.tts_total_output_duration: float = 0.0   # seconds
         self.tts_total_chars: int = 0            # actual chars sent to TTS (for cost calc)
         self.tts_reconnect_count: int = 0
 
-        # Internal token accumulators (for cost calculation)
+        self.technical_config = {
+            "asr": self.asr_param_config,
+            "llm": technical_info(llm_info),
+            "tts": self.tts_param_config,
+        }
+
         self._prompt_tokens: int = 0
         self._completion_tokens: int = 0
         self._cache_read_tokens: int = 0
         self._pricing = {**_DEFAULT_PRICING, **(pricing_config or {})}
 
-        # Derived (set by finalize)
         self.task_duration_sec: float = 0.0
         self.asr_cost: float = 0.0
         self.llm_cost: float = 0.0
         self.tts_cost: float = 0.0
         self.total_cost: float = 0.0
 
-        # Intent/callback-derived fields
         self.intent_label: str = ""
-        self.is_recovered: int = 0
         self.is_voicemail: int = 0
         self.forced_response_ttfb_breakdown: list[dict] = []
-        self.collection_result: str = ""  # raw collectionResult from the note analysis
 
     # --- Increment APIs for reconnect/retry tracking ---
 
@@ -219,22 +169,7 @@ class CallMetricsCollector:
         try:
             label = str(intent_label or "").strip().upper()
             self.intent_label = label
-            self.is_recovered = 1 if label == "A" else 0
             self.is_voicemail = 1 if label == "G" else 0
-        except Exception:
-            pass
-
-    def set_collection_note_result(self, note_result: dict, task_type: Optional[str] = None):
-        """Extract collection_result from the collection-note analysis result.
-
-        Args:
-            note_result: The parsed analysis result dict, e.g.
-                {"collectionResult": "yes_voicemail", "repaymentWish": "yes", ...}
-            task_type: Reserved for backward compatibility.
-        """
-        try:
-            if task_type != "marketing":
-                self.collection_result = (note_result or {}).get("collectionResult", "")
         except Exception:
             pass
 
@@ -326,29 +261,11 @@ class CallMetricsCollector:
             "total_cost": self.total_cost,
             "task_start_time": int(self.task_start_time.timestamp() * 1000) if self.task_start_time else None,
             "task_end_time": int(self.task_end_time.timestamp() * 1000) if self.task_end_time else None,
-            # Business
-            "business_id": self.business_id,
-            "tenant_id": self.tenant_id,
-            "app_type": self.app_type,
-            "work_order_id": self.work_order_id,
-            "outbound_source": self.outbound_source,
-            "platform": self.platform,
-            "is_round_robin": self.is_round_robin,
-            "is_human_assist":self.is_human_assist,
-            "is_recovered": self.is_recovered,
-            "is_voicemail": self.is_voicemail,
-            "collection_result": self.collection_result,
+            "bot_mode": self.bot_mode,
             "robot_code": self.robot_code,
-            "robot_name": self.robot_name,
-            "org_code": self.org_code,
-            "org_name": self.org_name,
-            "country": self.country,
-            "task_type": self.task_type,
-            "follower_id": self.follower_id,
-            "dial_schedule": self.dial_schedule,
-            "customer_group": self.customer_group,
-            "has_sms": self.has_sms,
-            "has_app_push": self.has_app_push,
+            "robot_version_id": self.robot_version_id,
+            "is_voicemail": self.is_voicemail,
+            "technical_config": self.technical_config,
             # ASR
             "asr_model_name": self.asr_model_name,
             "asr_param_config": self.asr_param_config,
@@ -359,9 +276,6 @@ class CallMetricsCollector:
             "asr_connection_requests": self.asr_reconnect_count + 1,
             # LLM
             "llm_model_name": self.llm_model_name,
-            "llm_param": self.llm_param,
-            "llm_prompt": self.llm_prompt,
-            "prompt_uuid": self.prompt_uuid,
             "llm_retry_count": self.llm_retry_count,
             "llm_dialogue_turns": self.llm_dialogue_turns,
             "llm_ttfb_list": self.llm_ttfb_list,
@@ -381,51 +295,42 @@ class CallMetricsCollector:
         }
 
     def save_to_db(self):
-        """Insert metrics into process_record table. Must be called after finalize()."""
+        """Insert technical metrics into process_record after finalization."""
         try:
             d = self.to_dict()
-            # Serialize list/dict fields to JSON strings
             json_fields = [
-                "dial_schedule", "asr_param_config", "asr_ttfb_list",
-                "llm_param", "llm_ttfb_list", "tts_param_config", "tts_ttfb_list",
+                "technical_config", "asr_param_config", "asr_ttfb_list",
+                "llm_ttfb_list", "tts_param_config", "tts_ttfb_list",
             ]
-            for f in json_fields:
-                if d.get(f) is not None:
-                    d[f] = json.dumps(d[f], ensure_ascii=False)
+            for field in json_fields:
+                if d.get(field) is not None:
+                    d[field] = json.dumps(d[field], ensure_ascii=False)
 
             sql = text("""
                 INSERT INTO process_record (
-                    call_uuid, task_duration_sec, task_start_time, task_end_time,
+                    call_uuid, bot_mode, robot_code, robot_version_id,
+                    task_duration_sec, task_start_time, task_end_time,
+                    is_voicemail, technical_config,
                     asr_cost, llm_cost, tts_cost, total_cost,
-                    business_id, tenant_id, app_type, follower_id, dial_schedule,
-                    customer_group, has_sms, has_app_push, work_order_id, outbound_source, platform,
-                    is_round_robin, is_human_assist, is_recovered, is_voicemail,
-                    collection_result, robot_code, robot_name, org_code, org_name,
-                    country, task_type,
                     asr_model_name, asr_param_config, asr_ttfb_list,
                     asr_total_transcribed_chars, asr_total_audio_duration,
                     asr_reconnect_count, asr_connection_requests,
-                    llm_model_name, llm_param, llm_prompt,
-                    llm_retry_count, llm_dialogue_turns, llm_ttfb_list,
-                    llm_total_generated_chars, llm_prompt_tokens,
+                    llm_model_name, llm_retry_count, llm_dialogue_turns,
+                    llm_ttfb_list, llm_total_generated_chars, llm_prompt_tokens,
                     llm_completion_tokens, llm_cache_read_tokens,
                     tts_model_name, tts_param_config, tts_ttfb_list,
                     tts_total_output_duration, tts_total_chars,
                     tts_reconnect_count, tts_connection_requests
                 ) VALUES (
-                    :call_uuid, :task_duration_sec, :task_start_time, :task_end_time,
+                    :call_uuid, :bot_mode, :robot_code, :robot_version_id,
+                    :task_duration_sec, :task_start_time, :task_end_time,
+                    :is_voicemail, :technical_config,
                     :asr_cost, :llm_cost, :tts_cost, :total_cost,
-                    :business_id, :tenant_id, :app_type, :follower_id, :dial_schedule,
-                    :customer_group, :has_sms, :has_app_push, :work_order_id, :outbound_source, :platform,
-                    :is_round_robin, :is_human_assist, :is_recovered, :is_voicemail,
-                    :collection_result, :robot_code, :robot_name, :org_code, :org_name,
-                    :country, :task_type,
                     :asr_model_name, :asr_param_config, :asr_ttfb_list,
                     :asr_total_transcribed_chars, :asr_total_audio_duration,
                     :asr_reconnect_count, :asr_connection_requests,
-                    :llm_model_name, :llm_param, :llm_prompt,
-                    :llm_retry_count, :llm_dialogue_turns, :llm_ttfb_list,
-                    :llm_total_generated_chars, :llm_prompt_tokens,
+                    :llm_model_name, :llm_retry_count, :llm_dialogue_turns,
+                    :llm_ttfb_list, :llm_total_generated_chars, :llm_prompt_tokens,
                     :llm_completion_tokens, :llm_cache_read_tokens,
                     :tts_model_name, :tts_param_config, :tts_ttfb_list,
                     :tts_total_output_duration, :tts_total_chars,
@@ -630,7 +535,7 @@ class RealtimeMiniCallMetricsCollector(CallMetricsCollector):
         self._realtime_mini_cached_audio_tokens += self._int_at(
             cached_details, "audio_tokens"
         )
-        self._sync_realtime_mini_usage_to_llm_param()
+        self._sync_realtime_mini_usage()
 
     def add_realtime_transcription_usage(self, usage):
         if not usage:
@@ -670,7 +575,7 @@ class RealtimeMiniCallMetricsCollector(CallMetricsCollector):
         self.llm_cost = round(self._calculate_realtime_mini_llm_cost(), 8)
         self.tts_cost = 0.0
         self.total_cost = round(self.asr_cost + self.llm_cost + self.tts_cost, 8)
-        self._sync_realtime_mini_usage_to_llm_param()
+        self._sync_realtime_mini_usage()
 
     def _finalize_realtime_transcription_cost(self):
         model = (self.asr_model_name or "").lower()
@@ -838,8 +743,8 @@ class RealtimeMiniCallMetricsCollector(CallMetricsCollector):
         }
         return total
 
-    def _sync_realtime_mini_usage_to_llm_param(self):
-        self.llm_param["realtime_mini_usage"] = {
+    def _sync_realtime_mini_usage(self):
+        self.technical_config["llm"]["realtime_mini_usage"] = {
             "discount": self._DISCOUNT,
             "usage_count": self._realtime_mini_usage_count,
             "input_text_tokens": self._realtime_mini_input_text_tokens,

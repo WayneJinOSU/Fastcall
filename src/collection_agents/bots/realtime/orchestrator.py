@@ -52,7 +52,6 @@ from collection_agents.services.call_config import (
     create_system_prompt,
     normalize_language_code,
 )
-from collection_agents.notes.call_notes import intelligent_notes_distribution, save_conversation
 from collection_agents.services.audio_assets import load_output_sounds
 from collection_agents.bots.helpers import build_call_context, build_session_state
 from collection_agents.bots.realtime.azure_service import (
@@ -229,26 +228,9 @@ async def _setup_realtime_call(call_ctx, session_context, websocket_client, stre
     失败时释放已获取的 realtime 资源，避免泄漏。
     """
     config_manager = call_ctx["config_manager"]
-    country = call_ctx["country"]
-    task_type = call_ctx["task_type"]
-    follower_id = call_ctx["follower_id"]
-    dial_schedule = call_ctx["dial_schedule"]
-    customer_group = call_ctx["customer_group"]
-    has_sms = call_ctx["has_sms"]
-    has_app_push = call_ctx["has_app_push"]
-    tenant_id = call_ctx["tenant_id"]
-    app_type = call_ctx["app_type"]
-    work_order_id = call_ctx["work_order_id"]
-    outbound_source = call_ctx["outbound_source"]
-    platform = call_ctx["platform"]
-    is_round_robin = call_ctx["is_round_robin"]
-    is_human_assist = call_ctx["is_human_assist"]
     robot_code = call_ctx["robot_code"]
-    robot_name = call_ctx["robot_name"]
-    org_code = call_ctx["org_code"]
-    org_name = call_ctx["org_name"]
+    robot_version_id = call_ctx["robot_version_id"]
     call_uuid = call_ctx["call_uuid"]
-    business_id = call_ctx["business_id"]
 
     realtime_resource = None
     try:
@@ -265,25 +247,9 @@ async def _setup_realtime_call(call_ctx, session_context, websocket_client, stre
 
         metrics_collector = RealtimeMiniCallMetricsCollector(
             call_uuid=call_uuid,
-            business_id=business_id,
-            tenant_id=tenant_id,
-            app_type=app_type,
-            work_order_id=work_order_id,
-            outbound_source=outbound_source,
-            platform=platform,
-            is_round_robin=is_round_robin,
-            is_human_assist=is_human_assist,
             robot_code=robot_code,
-            robot_name=robot_name,
-            org_code=org_code,
-            org_name=org_name,
-            country=country,
-            task_type=task_type,
-            follower_id=follower_id,
-            dial_schedule=dial_schedule,
-            customer_group=customer_group,
-            has_sms=has_sms,
-            has_app_push=has_app_push,
+            robot_version_id=robot_version_id,
+            bot_mode="realtime",
             task_start_time=datetime.datetime.now(),
             asr_info={
                 **asr_config,
@@ -304,7 +270,6 @@ async def _setup_realtime_call(call_ctx, session_context, websocket_client, stre
                 "voice_id": realtime_voice,
                 "sample_rate": REALTIME_INPUT_SAMPLE_RATE,
             },
-            llm_prompt=llm_config.get("prompt", ""),
         )
         metrics_collector.llm_model_name = realtime_model
 
@@ -375,15 +340,8 @@ async def _finalize_realtime_call(call_ctx, svc, session_context, context, durat
     """
     call_ctx = call_ctx or {}
     svc = svc or {}
-    call_data = call_ctx.get("call_data", {})
     call_uuid = call_ctx.get("call_uuid", "")
-    variables = call_ctx.get("variables", {})
-    business_id = call_ctx.get("business_id", "")
-    app_type = call_ctx.get("app_type", "")
-    country = call_ctx.get("country", "")
-    work_order_id = call_ctx.get("work_order_id", "")
     websocket_client = session_context.get("websocket_client")
-    tts_config = svc.get("tts_config") or {}
     metrics_collector = svc.get("metrics_collector")
     realtime_resource = svc.get("realtime_resource")
 
@@ -416,31 +374,6 @@ async def _finalize_realtime_call(call_ctx, svc, session_context, context, durat
     if metrics_collector:
         metrics_collector.finalize(datetime.datetime.now())
 
-    collection_note_result = None
-    if context:
-        await save_conversation(
-            context,
-            call_uuid=call_uuid,
-            conversation_meta={
-                "user_name": variables.get("user_name", ""),
-                "business_id": business_id,
-                "remaining_amount": variables.get("remaining_amount", 0),
-                "app_type": app_type,
-                "country": country,
-            },
-            call_data=call_data,
-            metrics_collector=metrics_collector,
-            intent_label_override="G" if session_context.get("voicemail_detected") else None,
-        )
-        if work_order_id:
-            collection_note_result, task_type = await intelligent_notes_distribution(
-                context,
-                call_data,
-                locale=tts_config.get("locale", "es-MX"),
-            )
-            if collection_note_result and metrics_collector:
-                metrics_collector.set_collection_note_result(collection_note_result, task_type)
-
     if metrics_collector:
         logging.info(f"call_metrics: {metrics_collector.to_dict()}")
         metrics_collector.save_to_db()
@@ -461,42 +394,22 @@ async def run_bot_realtime_alpha(
     call_uuid = ""
     task = None
     duration_monitor = None
-    work_order_id = ""
     llm_service = None
     realtime_resource = None
     metrics_collector: Optional[CallMetricsCollector] = None
 
     try:
-        # 通话上下文字段提取统一收口在 bots/helpers.py，这里显式解包所需字段。
-        call_ctx = build_call_context(call_data, platform="AzureRealtime")
+        call_ctx = build_call_context(call_data)
         config_manager = call_ctx["config_manager"]
         call_uuid = call_ctx["call_uuid"]
-        business_id = call_ctx["business_id"]
         variables = call_ctx["variables"]
-        country = call_ctx["country"]
-        task_type = call_ctx["task_type"]
         voicemail_action = call_ctx["voicemail_action"]
         voicemail_instant_close = call_ctx["voicemail_hangup_on_detect"]
         realtime_rnnoise_enabled = _coerce_bool_flag(
             variables.get("realtime_rnnoise_enabled", 0),
             default=False,
         )
-        follower_id = call_ctx["follower_id"]
-        dial_schedule = call_ctx["dial_schedule"]
-        customer_group = call_ctx["customer_group"]
-        has_sms = call_ctx["has_sms"]
-        has_app_push = call_ctx["has_app_push"]
-        tenant_id = call_ctx["tenant_id"]
-        app_type = call_ctx["app_type"]
-        work_order_id = call_ctx["work_order_id"]
-        outbound_source = call_ctx["outbound_source"]
-        platform = call_ctx["platform"]
-        is_round_robin = call_ctx["is_round_robin"]
-        is_human_assist = call_ctx["is_human_assist"]
         robot_code = call_ctx["robot_code"]
-        robot_name = call_ctx["robot_name"]
-        org_code = call_ctx["org_code"]
-        org_name = call_ctx["org_name"]
 
         async with aiohttp.ClientSession():
             session_context = build_session_state(websocket_client, stream_sid, config_manager)

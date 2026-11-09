@@ -146,7 +146,6 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
     task = None
     duration_monitor = None
     flow_watchdog = None
-    work_order_id = ""
     metrics_collector = None
     llm_service = None
     # Deepgram shadow (A/B comparison vs live Vosk). Created only when the
@@ -157,33 +156,15 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
     vosk_final_collector = None
 
     try:
-        # 通话上下文字段提取统一收口在 bots/helpers.py，这里显式解包所需字段。
-        call_ctx = build_call_context(call_data, platform="CPU")
+        call_ctx = build_call_context(call_data)
         config_manager = call_ctx["config_manager"]
         call_uuid = call_ctx["call_uuid"]
-        business_id = call_ctx["business_id"]
         variables = call_ctx["variables"]
-        country = call_ctx["country"]
-        task_type = call_ctx["task_type"]
         voicemail_config = call_ctx["voicemail_config"]
         voicemail_action = call_ctx["voicemail_action"]
         voicemail_hangup_on_detect = call_ctx["voicemail_hangup_on_detect"]
-        follower_id = call_ctx["follower_id"]
-        dial_schedule = call_ctx["dial_schedule"]
-        customer_group = call_ctx["customer_group"]
-        has_sms = call_ctx["has_sms"]
-        has_app_push = call_ctx["has_app_push"]
-        tenant_id = call_ctx["tenant_id"]
-        app_type = call_ctx["app_type"]
-        work_order_id = call_ctx["work_order_id"]
-        outbound_source = call_ctx["outbound_source"]
-        platform = call_ctx["platform"]
-        is_round_robin = call_ctx["is_round_robin"]
-        is_human_assist = call_ctx["is_human_assist"]
         robot_code = call_ctx["robot_code"]
         robot_name = call_ctx["robot_name"]
-        org_code = call_ctx["org_code"]
-        org_name = call_ctx["org_name"]
 
         async with aiohttp.ClientSession() as session:
             session_context = build_session_state(

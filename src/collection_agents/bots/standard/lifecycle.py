@@ -4,7 +4,6 @@ import logging
 
 from pipecat.frames.frames import EndFrame
 
-from collection_agents.notes.call_notes import intelligent_notes_distribution, save_conversation
 from collection_agents.services.stt_local import save_asr_shadow_compare
 from collection_agents.transport.websocket_safe_send import send_hangup_signal
 
@@ -12,19 +11,12 @@ from collection_agents.transport.websocket_safe_send import send_hangup_signal
 async def finalize_call(call_ctx, svc, session_context, context, duration_monitor, flow_watchdog):
     call_ctx = call_ctx or {}
     svc = svc or {}
-    call_data = call_ctx.get("call_data", {})
     call_uuid = call_ctx.get("call_uuid", "")
     robot_code = call_ctx.get("robot_code")
-    variables = call_ctx.get("variables", {})
-    business_id = call_ctx.get("business_id", "")
-    app_type = call_ctx.get("app_type", "")
-    country = call_ctx.get("country", "")
-    work_order_id = call_ctx.get("work_order_id", "")
     websocket_client = session_context.get("websocket_client")
     tts_service = svc.get("tts_service")
     stt_service = svc.get("stt_service")
     llm_service = svc.get("llm_service")
-    tts_config = svc.get("tts_config") or {}
     metrics_collector = svc.get("metrics_collector")
     shadow_config = svc.get("shadow_config")
     shadow_decoder = svc.get("shadow_decoder")
@@ -107,28 +99,6 @@ async def finalize_call(call_ctx, svc, session_context, context, duration_monito
 
     if metrics_collector:
         metrics_collector.finalize(datetime.datetime.now())
-
-    collection_note_result = None
-    if context:
-        await save_conversation(
-            context,
-            call_uuid=call_uuid,
-            conversation_meta={
-                "user_name": variables.get("user_name", ""),
-                "business_id": business_id,
-                "remaining_amount": variables.get("remaining_amount", 0),
-                "app_type": app_type,
-                "country": country,
-                "voicemail_audio_playback": session_context.get("voicemail_audio_playback"),
-            },
-            call_data=call_data,
-            metrics_collector=metrics_collector,
-            intent_label_override="G" if session_context.get("voicemail_detected") else None,
-        )
-        if work_order_id:
-            collection_note_result, task_type = await intelligent_notes_distribution(context, call_data, locale=tts_config.get("locale", "es-MX"))
-            if collection_note_result:
-                metrics_collector.set_collection_note_result(collection_note_result, task_type)
 
     if metrics_collector:
         logging.info(f"call_metrics: {metrics_collector.to_dict()}")

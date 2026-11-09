@@ -9,20 +9,6 @@ LLM_TIMEOUT_SECS_DEFAULT = 6.0
 LLM_RETRY_ON_TIMEOUT_DEFAULT = True
 
 
-def resolve_task_type(task_type, robot_name) -> str:
-    """Resolve the call task type, using the robot name as a marketing hint.
-
-    Robot names are controlled by the bot configuration and may use different
-    casing, so the check is case-insensitive. An explicit marketing marker in
-    the robot name takes precedence over the variable value; all other values
-    preserve the existing task type and default to collection.
-    """
-    normalized_task_type = str(task_type or "collection").strip() or "collection"
-    normalized_robot_name = str(robot_name or "").strip().lower()
-    if "marketing" in normalized_robot_name:
-        return "marketing"
-    return normalized_task_type
-
 _FIRST_QUESTION_BY_LANGUAGE = {
     "zh": "你好",
     "en": "Hello",

@@ -16,7 +16,6 @@ from functools import partial
 from types import MethodType
 from typing import Any
 from loguru import logger as loguru_logger
-from collection_agents.text.time_utils import utc2tz
 from dotenv import load_dotenv
 from collection_agents.bots.copilot.config import BotCopilotConfigManager
 from collection_agents.bots.copilot.processors import (
@@ -71,28 +70,17 @@ from collection_agents.transport.fastapi_websocket_ai_copilot_beta import (
     create_heartbeat_event,
     create_text_event,
 )
-from collection_agents.storage.db import MysqlClient
 from collection_agents.services.call_config import build_first_question_content, build_no_response_hangup_prompt
 from collection_agents.services.providers import attach_llm_retry_counter
 from collection_agents.processors.common import SilenceDetector
 from collection_agents.metrics.collector import CallMetricsCollector, CallMetricsObserver
-from collection_agents.notes.call_notes import intelligent_notes_distribution
 
 load_dotenv(override=True)
-from collection_agents.infra.env import mode
-
-
 
 NO_RESPONSE_TIMEOUT_SEC_FLOOR = 24
 NO_RESPONSE_MAX_COUNT_CEILING = 1
 COPILOT_HANGUP_EXIT_DELAY_SEC = 15.0
 COPILOT_END_FRAME_DELAY_SEC = 4.0
-
-def _coerce_int(value, default=0) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
 
 
 
@@ -146,30 +134,8 @@ async def run_copilot_bot_beta(websocket, event: dict[str, Any]):
     variables = config.get("variables", {}) or {}
     if not isinstance(variables, dict):
         variables = {}
-    work_order_id = variables.get("work_order_id") or (business_id.split("___")[0] if business_id else "")
-    variables['work_order_id'] = work_order_id
-    country = variables.get("country", "mexico")
-    contact_time = utc2tz(time.time(), country)
-    variables['contact_time'] = contact_time
-
-    tenant_id = variables.get("tenant_id", "100035")
-    app_type = variables.get("app_type", "")
-    outbound_source = variables.get("outbound_source") or "hermes"
-    task_type = "collection"
-    follower_id = "待传入"
-    dial_schedule = ["待传入"]
-    customer_group = "待传入"
-    has_sms = 0
-    has_app_push = 0
-
-    platform = variables.get("platform", "CPU")
-    is_round_robin = 0 #_coerce_int(variables.get("is_round_robin", 1), 1)
-    is_human_assist = 1 #_coerce_int(variables.get("is_human_assist", 1), 1)
-
     robot_code = config.get("code", "")
-    robot_name = config.get("name", "")
-    org_code = config.get("orgCode", "")
-    org_name = config.get("orgName", "")
+    robot_version_id = config.get("robotVersionId") or config.get("robot_version_id")
 
     # Session state
     session_context = {
@@ -207,29 +173,12 @@ async def run_copilot_bot_beta(websocket, event: dict[str, Any]):
         system_prompt_content = config_manager.get_prompt_config()
         metrics_collector = CallMetricsCollector(
             call_uuid=call_uuid,
-            business_id=business_id,
-            tenant_id=tenant_id,
-            app_type=app_type,
-            work_order_id=work_order_id,
-            outbound_source=outbound_source,
-            platform=platform,
-            is_round_robin=is_round_robin,
-            is_human_assist=is_human_assist,
             robot_code=robot_code,
-            robot_name=robot_name,
-            org_code=org_code,
-            org_name=org_name,
-            country=country,
-            task_type=task_type,
-            follower_id=follower_id,
-            dial_schedule=dial_schedule,
-            customer_group=customer_group,
-            has_sms=has_sms,
-            has_app_push=has_app_push,
+            robot_version_id=robot_version_id,
+            bot_mode="copilot",
             task_start_time=datetime.datetime.now(),
             asr_info={**asr_config, "sample_rate": 8000},
             llm_info=llm_config,
-            llm_prompt=system_prompt_content,
             tts_info={**tts_config, "sample_rate": 8000},
         )
 
@@ -889,52 +838,7 @@ async def run_copilot_bot_beta(websocket, event: dict[str, Any]):
         if metrics_collector is not None:
             metrics_collector.finalize(datetime.datetime.now())
 
-        # Save intelligent notes and feed the result into process_record metrics.
-        collection_note_result = None
-        if context is not None:
-            try:
-                collection_note_result, note_task_type = await intelligent_notes_distribution(
-                    context,
-                    event,
-                    locale=tts_config.get("locale", "es-MX"),
-                )
-                if collection_note_result and metrics_collector is not None:
-                    metrics_collector.set_collection_note_result(collection_note_result, note_task_type)
-            except Exception as e:
-                logging.error(f"Error in intelligent_notes_distribution: {e}")
-
         session_context["is_ended"] = True
-        user_name = variables.get("user_name")
-        app_type = variables.get("app_type")
-        remaining_amount = variables.get("remaining_amount")
-        country = variables.get("country", "mexico")
-
-        # Save conversation if needed
-        if mode != 'local' and business_id:
-            try:
-                context_json = json.dumps(
-                    message_history,
-                    ensure_ascii=False
-                )
-                insert_sql = """
-                    INSERT INTO context_log
-                    (business_id, context, ctime1, uuid, user_name, app_type, remaining_amount, country)
-                    VALUES
-                    (:business_id, :context, :ctime1, :uuid, :user_name, :app_type, :remaining_amount, :country)
-                """
-                params = {
-                    'business_id': business_id,
-                    'context': context_json,
-                    'ctime1': int(time.time() * 1000),
-                    'uuid': call_uuid,
-                    'user_name':user_name,
-                    'app_type': app_type,
-                    'remaining_amount':remaining_amount,
-                    'country':country
-                }
-                MysqlClient.execute(insert_sql, params)
-            except Exception as e:
-                logging.error(f"Error saving conversation: {e}")
 
         if metrics_collector is not None:
             logging.info(f"copilot call_metrics: {metrics_collector.to_dict()}")

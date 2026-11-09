@@ -6,16 +6,14 @@
   - GET  ``/state/up``              健康检查
   - WS   ``/ws-v2``                 外呼机器人入口（standard / realtime 按 agent 名分流）
   - WS   ``/ws-ai-copilot``         人工坐席 AI Copilot（事件驱动协议）
-  - POST ``/callback/call_record``  外呼平台通话记录回调
 """
 
 import asyncio
 import json
 import logging
-import time
 import traceback
 
-from fastapi import FastAPI, Request, WebSocket
+from fastapi import FastAPI, WebSocket
 from starlette.responses import HTMLResponse
 
 from collection_agents.bots.copilot import run_copilot_bot_beta
@@ -23,7 +21,6 @@ from collection_agents.bots.realtime import run_bot_realtime_alpha
 from collection_agents.bots.standard import run_bot_beta
 from collection_agents.infra.logging import set_request_trace_code
 from collection_agents.infra.paths import PROJECT_ROOT
-from collection_agents.storage.db import MysqlClient
 
 _TWIML_PATH = PROJECT_ROOT / "templates" / "streams.xml"
 
@@ -151,43 +148,3 @@ def register_routes(app: FastAPI):
                 await websocket.close()
             except Exception:
                 pass  # Already closed or error closing
-
-    @app.post("/callback/call_record")
-    async def call_record(req: dict):
-        '''
-        外呼平台回调入口，支持两类负载：
-
-        1) 任务回调：{"code": "...", "name": "...", "status": 7, "numberCount": ..., ...}
-        2) 通话记录回调：{"uuid": "...", "caller": "...", "callee": "...", "status": 4,
-           "beginTime": "...", "recordPath": "<录音文件 URL>", "businessId": "...", ...}
-
-        完整字段示例见 examples/request.json / 文档。
-        '''
-
-        logging.info("call_record")
-        logging.info(f"call_record_raw: {req}")
-
-        def etl_callback_log(data):
-            data_copy = data.copy()
-            data_copy['data'] = json.dumps(data)
-            return data_copy
-
-        callback_log = etl_callback_log(req)
-
-        insert_sql = """
-            INSERT INTO callback_log
-            (callee, business_id, data, ctime1, uuid)
-            VALUES
-            (:callee, :business_id, :data, :ctime1, :uuid)
-        """
-        params = {
-            "callee": callback_log.get("callee"),
-            "business_id": callback_log.get("businessId"),
-            "data": callback_log["data"],
-            "ctime1": int(time.time() * 1000),
-            "uuid": callback_log.get("uuid"),
-        }
-
-        MysqlClient.execute(insert_sql, params)
-
-        return {'code': 200, 'msg': 'success', 'data': None}

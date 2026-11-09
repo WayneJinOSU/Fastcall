@@ -45,29 +45,6 @@ Session = sessionmaker(engine, expire_on_commit=False)
 
 _SQLITE_DDL = [
     """
-    CREATE TABLE IF NOT EXISTS callback_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        callee TEXT,
-        business_id TEXT,
-        data TEXT,
-        ctime1 INTEGER,
-        uuid TEXT
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS context_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_name TEXT,
-        business_id TEXT,
-        remaining_amount TEXT,
-        context TEXT,
-        app_type TEXT,
-        country TEXT,
-        ctime1 INTEGER,
-        uuid TEXT
-    )
-    """,
-    """
     CREATE TABLE IF NOT EXISTS asr_shadow_compare (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         call_uuid TEXT,
@@ -86,35 +63,18 @@ _SQLITE_DDL = [
     CREATE TABLE IF NOT EXISTS process_record (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         call_uuid TEXT,
+        bot_mode TEXT,
+        robot_code TEXT,
+        robot_version_id TEXT,
         task_duration_sec REAL,
         task_start_time INTEGER,
         task_end_time INTEGER,
+        is_voicemail TEXT,
+        technical_config TEXT,
         asr_cost REAL,
         llm_cost REAL,
         tts_cost REAL,
         total_cost REAL,
-        business_id TEXT,
-        tenant_id TEXT,
-        app_type TEXT,
-        follower_id TEXT,
-        dial_schedule TEXT,
-        customer_group TEXT,
-        has_sms TEXT,
-        has_app_push TEXT,
-        work_order_id TEXT,
-        outbound_source TEXT,
-        platform TEXT,
-        is_round_robin TEXT,
-        is_human_assist TEXT,
-        is_recovered TEXT,
-        is_voicemail TEXT,
-        collection_result TEXT,
-        robot_code TEXT,
-        robot_name TEXT,
-        org_code TEXT,
-        org_name TEXT,
-        country TEXT,
-        task_type TEXT,
         asr_model_name TEXT,
         asr_param_config TEXT,
         asr_ttfb_list TEXT,
@@ -123,8 +83,6 @@ _SQLITE_DDL = [
         asr_reconnect_count INTEGER,
         asr_connection_requests INTEGER,
         llm_model_name TEXT,
-        llm_param TEXT,
-        llm_prompt TEXT,
         llm_retry_count INTEGER,
         llm_dialogue_turns INTEGER,
         llm_ttfb_list TEXT,
@@ -141,13 +99,53 @@ _SQLITE_DDL = [
         tts_connection_requests INTEGER
     )
     """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_process_record_call_uuid
+    ON process_record(call_uuid)
+    """,
 ]
+
+_PROCESS_RECORD_LEGACY_COLUMNS = (
+    "call_uuid", "task_duration_sec", "task_start_time", "task_end_time",
+    "is_voicemail", "asr_cost", "llm_cost", "tts_cost", "total_cost",
+    "asr_model_name", "asr_param_config", "asr_ttfb_list",
+    "asr_total_transcribed_chars", "asr_total_audio_duration",
+    "asr_reconnect_count", "asr_connection_requests", "llm_model_name",
+    "llm_retry_count", "llm_dialogue_turns", "llm_ttfb_list",
+    "llm_total_generated_chars", "llm_prompt_tokens", "llm_completion_tokens",
+    "llm_cache_read_tokens", "tts_model_name", "tts_param_config",
+    "tts_ttfb_list", "tts_total_output_duration", "tts_total_chars",
+    "tts_reconnect_count", "tts_connection_requests", "robot_code",
+)
+
+
+def _prepare_sqlite_process_record(conn) -> bool:
+    columns = {
+        row[1]
+        for row in conn.execute(text("PRAGMA table_info(process_record)")).fetchall()
+    }
+    if not columns or "bot_mode" in columns:
+        return False
+    conn.execute(text("ALTER TABLE process_record RENAME TO process_record_legacy"))
+    return True
+
+
+def _copy_legacy_process_records(conn):
+    columns = ", ".join(_PROCESS_RECORD_LEGACY_COLUMNS)
+    conn.execute(text(
+        f"INSERT INTO process_record ({columns}) "
+        f"SELECT {columns} FROM process_record_legacy"
+    ))
 
 
 def _init_sqlite_schema():
     with engine.begin() as conn:
+        migrated = _prepare_sqlite_process_record(conn)
         for ddl in _SQLITE_DDL:
             conn.execute(text(ddl))
+        if migrated:
+            _copy_legacy_process_records(conn)
+            LOGGER.info("Legacy process_record data copied; original table retained as process_record_legacy")
     LOGGER.info("SQLite storage initialized: %s", DATABASE_URL)
 
 
