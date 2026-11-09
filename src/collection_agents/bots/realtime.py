@@ -1313,7 +1313,6 @@ async def _setup_realtime_call(call_ctx, session_context, websocket_client, stre
         asr_config = config_manager.get_asr_config()
         tts_config = config_manager.get_tts_config()
         llm_config = config_manager.get_llm_config()
-        # 开源版：prompt 直接来自机器人配置（conf/robots/<robot_code>.json）。
         llm_metrics_config = dict(llm_config)
 
         realtime_resource = await _get_realtime_resource_manager().acquire()

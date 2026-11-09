@@ -451,7 +451,6 @@ async def _create_call_services(call_ctx, session_context, session, call_data):
             robot_name,
             robot_code,
         )
-        # 开源版：prompt 直接来自机器人配置（conf/robots/<robot_code>.json）。
         llm_service = create_llm_service(llm_config)
 
         if asr_config.get("provider") == "cartesia":
