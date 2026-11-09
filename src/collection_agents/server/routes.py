@@ -23,6 +23,7 @@ from collection_agents.bots.realtime import run_bot_realtime_alpha
 from collection_agents.bots.standard import run_bot_beta
 from collection_agents.infra.logging import set_request_trace_code
 from collection_agents.infra.paths import PROJECT_ROOT
+from collection_agents.services.robot_config import apply_robot_config
 from collection_agents.storage.db import MysqlClient
 
 _TWIML_PATH = PROJECT_ROOT / "templates" / "streams.xml"
@@ -59,6 +60,17 @@ def register_routes(app: FastAPI):
 
                     if call_data.get("action") == "start":
                         data = call_data.get("data", {})
+
+                        # 开源协议：允许只传 robot_code，配置由服务端本地解析注入；
+                        # 携带完整 config 的旧协议消息原样透传。
+                        try:
+                            data = apply_robot_config(data)
+                            call_data["data"] = data
+                        except (ValueError, FileNotFoundError) as exc:
+                            logging.error(f"机器人配置解析失败: {exc}")
+                            await websocket.close(code=1008, reason=str(exc))
+                            return
+
                         callee = str(data.get("callee", ""))[-10:]
                         business_id = data.get("businessID")
                         agent_id = data.get("agentID", "")
@@ -125,6 +137,15 @@ def register_routes(app: FastAPI):
                     code=1008,
                     reason="Missing session_create data"
                 )
+                return
+
+            # 开源协议：允许只传 robot_code，配置由服务端本地解析注入。
+            try:
+                session_create = apply_robot_config(session_create)
+                event["session_create"] = session_create
+            except (ValueError, FileNotFoundError) as exc:
+                logging.error(f"机器人配置解析失败: {exc}")
+                await websocket.close(code=1008, reason=str(exc))
                 return
 
             # Run the copilot bot with event-driven protocol
