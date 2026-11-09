@@ -53,9 +53,9 @@ from collection_agents.processors.common import (
     GracefulHangupController,
     HangupState,
     SilenceDetector,
-    VoicemailDetector,
     WordAwareSanitizer,
 )
+from collection_agents.processors.voicemail_detector import VoicemailDetector
 from collection_agents.processors.standard import (
     TranscriptionLogger,
     FrameLogger,
@@ -596,10 +596,10 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
                 *([vosk_final_collector] if vosk_final_collector else []),
                 VoicemailDetector(
                     max_word_count=30,
-                    language=language,
                 ),
                 StandardVoicemailHandler(
                     mode=voicemail_mode,
+                    locale=language,
                     on_detected=_on_voicemail_detected,
                     finalize_stt_cb=_finalize_stt_after_voicemail,
                     instant_close_cb=_voicemail_hangup_on_detect,

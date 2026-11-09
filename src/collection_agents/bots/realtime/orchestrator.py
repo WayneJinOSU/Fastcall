@@ -89,9 +89,9 @@ from collection_agents.processors.common import (
     GracefulHangupController,
     HangupState,
     SilenceDetector,
-    VoicemailDetector,
     WordAwareSanitizer,
 )
+from collection_agents.processors.voicemail_detector import VoicemailDetector
 from collection_agents.processors.realtime import (
     RealtimeBotSpeakingStateTracker,
     RealtimeHangupGate,
@@ -729,11 +729,8 @@ async def run_bot_realtime_alpha(
                 user_context_aggregator,
                 VoicemailDetector(
                     max_word_count=256,
-                    language=language,
-                    instant_close=voicemail_instant_close,
-                    instant_close_cb=realtime_voicemail_handler.instant_close,
-                    voice_assistant_cb=realtime_voicemail_handler.handle,
                     mode="realtime",
+                    on_detected=realtime_voicemail_handler.handle,
                 ),
                 transcript_context_persister,
                 silence_detector,

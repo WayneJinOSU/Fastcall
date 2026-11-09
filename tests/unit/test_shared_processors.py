@@ -5,7 +5,6 @@ from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
     LLMFullResponseEndFrame,
-    LLMMessagesAppendFrame,
     LLMTextFrame,
     TextFrame,
     TranscriptionFrame,
@@ -14,12 +13,15 @@ from pipecat.frames.frames import (
 )
 from pipecat.processors.frame_processor import FrameDirection
 
-from collection_agents.events import VoicemailDetectedFrame
+from collection_agents.events import (
+    VoicemailDetectedEvent,
+    VoicemailDetectedFrame,
+)
 from collection_agents.processors.common import (
     HangupState,
-    VoicemailDetector,
     WordAwareSanitizer,
 )
+from collection_agents.processors.voicemail_detector import VoicemailDetector
 
 
 class RecordingPushMixin:
@@ -50,7 +52,7 @@ def transcription(text, *, result=None):
 
 class VoicemailDetectorTests(unittest.IsolatedAsyncioTestCase):
     async def test_standard_emits_detection_event(self):
-        detector = RecordingVoicemailDetector(language="fil-PH")
+        detector = RecordingVoicemailDetector()
 
         await detector.process_frame(
             TextFrame("Please leave a message after the tone"),
@@ -58,16 +60,19 @@ class VoicemailDetectorTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(len(detector.pushed), 1)
-        event, _ = detector.pushed[0]
-        self.assertIsInstance(event, VoicemailDetectedFrame)
-        self.assertIn("leave a message", event.transcript_text)
-        self.assertIn("Paalam", event.prompt)
+        frame, _ = detector.pushed[0]
+        self.assertIsInstance(frame, VoicemailDetectedFrame)
+        self.assertIn("leave a message", frame.event.transcript_text)
+        self.assertIn("leave a message", frame.event.matched_text)
+        self.assertEqual(frame.event.source, "standard")
+        self.assertIn("leave a message", frame.event.trigger_text)
+        self.assertFalse(hasattr(frame.event, "prompt"))
 
     async def test_realtime_only_detects_upstream_and_emits_event(self):
         events = []
         detector = RecordingVoicemailDetector(
             mode="realtime",
-            voice_assistant_cb=events.append,
+            on_detected=events.append,
         )
         downstream = transcription("Please leave a message")
 
@@ -86,20 +91,18 @@ class VoicemailDetectorTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(len(events), 1)
-        self.assertEqual(events[0]["item_id"], "item-123")
-        self.assertEqual(events[0]["classification_detail"], "voicemail")
-        self.assertEqual(events[0]["action"], "detected")
+        self.assertIsInstance(events[0], VoicemailDetectedEvent)
+        self.assertEqual(events[0].item_id, "item-123")
+        self.assertEqual(events[0].source, "realtime")
+        self.assertIn("leave a message", events[0].transcript_text)
         self.assertEqual(
             [type(frame) for frame, _ in detector.pushed],
             [BotStartedSpeakingFrame],
         )
 
-    async def test_realtime_without_event_callback_uses_realtime_prompt(self):
-        detected = []
+    async def test_realtime_without_event_callback_emits_frame_only(self):
         detector = RecordingVoicemailDetector(
             mode="realtime",
-            language="en-US",
-            detected_cb=lambda: detected.append(True),
         )
 
         await detector.process_frame(
@@ -107,13 +110,11 @@ class VoicemailDetectorTests(unittest.IsolatedAsyncioTestCase):
             FrameDirection.UPSTREAM,
         )
 
-        self.assertEqual(detected, [True])
         self.assertEqual(len(detector.pushed), 1)
-        prompt, direction = detector.pushed[0]
+        frame, direction = detector.pushed[0]
         self.assertEqual(direction, FrameDirection.UPSTREAM)
-        self.assertIsInstance(prompt, LLMMessagesAppendFrame)
-        self.assertTrue(prompt.run_llm)
-        self.assertIn("Leave the debt-collection voicemail immediately", prompt.messages[0]["content"])
+        self.assertIsInstance(frame, VoicemailDetectedFrame)
+        self.assertEqual(frame.event.source, "realtime")
 
 
 class WordAwareSanitizerTests(unittest.IsolatedAsyncioTestCase):

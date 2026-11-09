@@ -10,7 +10,10 @@ from pipecat.frames.frames import (
 )
 from pipecat.processors.frame_processor import FrameDirection
 
-from collection_agents.events import VoicemailDetectedFrame
+from collection_agents.events import (
+    VoicemailDetectedEvent,
+    VoicemailDetectedFrame,
+)
 from collection_agents.handlers.standard_voicemail import StandardVoicemailHandler
 from collection_agents.services.voicemail_audio_repository import (
     VoicemailAudioRepository,
@@ -41,7 +44,9 @@ class VoicemailHandlerTests(unittest.IsolatedAsyncioTestCase):
         )
 
         await handler.process_frame(
-            VoicemailDetectedFrame(transcript_text="voicemail"),
+            VoicemailDetectedFrame(
+                event=VoicemailDetectedEvent(transcript_text="voicemail")
+            ),
             FrameDirection.DOWNSTREAM,
         )
         self.assertEqual(detected, [True])
@@ -71,16 +76,22 @@ class VoicemailHandlerTests(unittest.IsolatedAsyncioTestCase):
         await handler.process_frame(BotStoppedSpeakingFrame(), FrameDirection.DOWNSTREAM)
         self.assertTrue(any(isinstance(frame, LLMMessagesAppendFrame) for frame in handler.pushed))
 
-    async def test_legacy_mode_uses_prompt_from_detection_event(self):
-        handler = RecordingHandler(mode="legacy_llm")
+    async def test_legacy_mode_builds_prompt_in_handler(self):
+        handler = RecordingHandler(mode="legacy_llm", locale="en-US")
         await handler.process_frame(
-            VoicemailDetectedFrame(prompt="Leave a message"),
+            VoicemailDetectedFrame(
+                event=VoicemailDetectedEvent(
+                    transcript_text="Please leave a message"
+                )
+            ),
             FrameDirection.DOWNSTREAM,
         )
         self.assertEqual(len(handler.pushed), 1)
         self.assertIsInstance(handler.pushed[0], LLMMessagesAppendFrame)
         self.assertTrue(handler.pushed[0].run_llm)
-        self.assertEqual(handler.pushed[0].messages[0]["content"], "Leave a message")
+        prompt = handler.pushed[0].messages[0]["content"]
+        self.assertIn("Trigger flow : Voicemail detected", prompt)
+        self.assertIn("hang up the call: Goodbye", prompt)
 
     async def test_hangup_mode_calls_instant_close(self):
         closed = []
