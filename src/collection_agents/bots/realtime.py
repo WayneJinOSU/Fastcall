@@ -96,13 +96,13 @@ from collection_agents.processors.common import (
     GracefulHangupController,
     HangupState,
     SilenceDetector,
+    VoicemailDetector,
+    WordAwareSanitizer,
 )
 from collection_agents.processors.realtime import (
     RealtimeBotSpeakingStateTracker,
     RealtimeHangupGate,
     RealtimeInputTranscriptionMonitor,
-    RealtimeVoicemailDetector,
-    RealtimeWordAwareSanitizer,
 )
 
 RealtimeBargeInTranscriptMonitor = RealtimeInputTranscriptionMonitor
@@ -2085,12 +2085,13 @@ async def run_bot_realtime_alpha(
                 transport.input(),
                 event_router,
                 user_context_aggregator,
-                RealtimeVoicemailDetector(
+                VoicemailDetector(
                     max_word_count=256,
                     language=language,
                     instant_close=voicemail_instant_close,
                     instant_close_cb=_voicemail_instant_close,
                     voice_assistant_cb=_on_voice_assistant_detected,
+                    mode="realtime",
                 ),
                 transcript_context_persister,
                 silence_detector,
@@ -2107,11 +2108,12 @@ async def run_bot_realtime_alpha(
                     realtime_monitor_state,
                     on_bot_stopped_speaking_cb=llm_service._drain_pending_forced_responses,
                 ),
-                RealtimeWordAwareSanitizer(
+                WordAwareSanitizer(
                     config_manager=config_manager,
                     transport=transport,
                     websocket_client=websocket_client,
                     hangup_state=hangup_state,
+                    mode="realtime",
                 ),
                 GracefulHangupController(
                     hangup_state=hangup_state,

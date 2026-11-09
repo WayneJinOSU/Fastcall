@@ -274,7 +274,7 @@ Graceful 优雅挂断
 
 **Azure Realtime 配置**:
 ```python
-# 来自 .env:
+# 来自 .env.temp:
 AZURE_LLM_1_ENDPOINT = "https://jinle-openai-us-east.openai.azure.com/"
 AZURE_LLM_1_API_KEY = "..."
 AZURE_LLM_1_DEPLOYMENT = "gpt-5.4-mini"
@@ -286,7 +286,7 @@ AZURE_LLM_1_API_VERSION = "2025-04-01-preview"
 - `GracefulHangupController` - 优雅挂断
 - `RealtimeBotSpeakingStateTracker` - Bot说话状态
 - `RealtimeInputTranscriptionMonitor` - 输入转录监控
-- `RealtimeVoicemailDetector` - 语音信箱检测
+- `VoicemailDetector(mode="realtime")` - 语音信箱检测
 
 ---
 
@@ -528,7 +528,7 @@ def create_stt_service(asr_config, robot_code, robot_name):
 3. **RealtimeInputTranscriptionMonitor**
    - 监控用户输入转录
 
-4. **RealtimeVoicemailDetector**
+4. **VoicemailDetector(mode="realtime")**
    - 检测语音信箱
 
 ---
@@ -894,8 +894,8 @@ pip install -r requirements.txt
 
 ### 配置环境
 ```bash
-cp .env.example .env
-# 编辑 .env，填入必要的API Key
+cp .env.temp.example .env.temp
+# 编辑 .env.temp，填入必要的API Key
 ```
 
 ### 启动服务

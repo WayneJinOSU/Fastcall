@@ -626,4 +626,4 @@ if __name__ == "__main__":
         asyncio.run(_run_demo())
     except Exception as exc:
         print(f"Workflow demo failed: {exc}")
-        print("Check `.env` Vertex AI settings and ensure the current environment can access Google OAuth and Vertex AI endpoints.")
+        print("Check `.env.temp` Vertex AI settings and ensure the current environment can access Google OAuth and Vertex AI endpoints.")

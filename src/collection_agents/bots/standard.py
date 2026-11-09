@@ -44,6 +44,8 @@ from collection_agents.processors.common import (
     GracefulHangupController,
     HangupState,
     SilenceDetector,
+    VoicemailDetector,
+    WordAwareSanitizer,
 )
 from collection_agents.processors.standard import (
     TranscriptionLogger,
@@ -54,8 +56,6 @@ from collection_agents.processors.standard import (
     STTGatedInterruptor,
     ContextSafeAssistantTurnGate,
     STTPreRollMuteProcessor,
-    WordAwareSanitizer,
-    VoicemailDetector,
 )
 
 from pipecat.frames.frames import (
