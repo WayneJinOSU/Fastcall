@@ -36,12 +36,6 @@ from collection_agents.services.call_config import (
     coerce_positive_int,
 )
 
-from collection_agents.services.routing import (
-    DEEPSEEK_ROBOT_CODES,
-    VOSK_FORCED_ROBOT_CODES,
-    resolve_deepgram_model,
-)
-
 
 ALI_QWEN_PROVIDER = "ali_qwen"
 # Private OpenAI-compatible endpoint for Ali Qwen agents. Must be supplied via
@@ -59,8 +53,7 @@ def resolve_bot_llm_runtime(llm_config, agent_name, robot_code):
     """Resolve bot_beta's effective LLM config and database platform value."""
     resolved = dict(llm_config or {})
 
-    # Agent-name routing has the highest priority: Qwen agents must never fall
-    # through to the Azure/DeepSeek routes used by other agents.
+    # Agent-name routing has the highest priority for private Qwen agents.
     if is_ali_qwen_agent(agent_name):
         resolved.pop("api_key", None)
         resolved.pop("max_completion_tokens", None)
@@ -77,14 +70,6 @@ def resolve_bot_llm_runtime(llm_config, agent_name, robot_code):
             }
         )
         return resolved, "gpu"
-
-    if robot_code in DEEPSEEK_ROBOT_CODES:
-        resolved.update(
-            {
-                "provider": "deepseek",
-                "model": "deepseek-flash",
-            }
-        )
 
     return resolved, "CPU"
 
@@ -122,20 +107,8 @@ def select_azure_llm_target():
 
 
 def resolve_stt_provider(asr_config, robot_code):
-    """Return the effective STT provider for this call.
-
-    An explicit asr_config["provider"] always wins so a robot can be rolled
-    back to deepgram (or pushed to vosk) from the platform config without a
-    release. The robot_code fallback below only applies while the config
-    carries no provider of its own.
-    """
-    if robot_code in VOSK_FORCED_ROBOT_CODES:
-        return "vosk"
-    else:
-        configured = str(asr_config.get("provider") or "").strip().lower()
-    if configured:
-        return configured
-    return "deepgram"
+    configured = str(asr_config.get("provider") or "").strip().lower()
+    return configured or "deepgram"
 
 
 def create_stt_service(asr_config, robot_code, robot_name, grammar=None):
@@ -190,7 +163,7 @@ def create_stt_service(asr_config, robot_code, robot_name, grammar=None):
             live_options=LiveOptions(
                 encoding="linear16",
                 language=_deepgram_stt_language(locale=locale),
-                model=resolve_deepgram_model(robot_code),
+                model=asr_config.get("model") or "nova-2",
                 sample_rate=8000,
                 channels=1,
                 interim_results=True,
@@ -208,22 +181,10 @@ def create_stt_service(asr_config, robot_code, robot_name, grammar=None):
 
 
 def resolve_deepgram_shadow_config(asr_config, robot_code):
-    """Config for the Deepgram shadow decoder used to A/B against live Vosk.
-
-    Mirrors exactly what create_stt_service would build for a Deepgram call on
-    this robot (same model tier + language) so the comparison is apples-to-apples.
-    Returns None when the shadow cannot run (no API key / SDK missing), letting
-    the caller skip wiring entirely.
-
-    Scope gate: the shadow runs ONLY for robots in VOSK_FORCED_ROBOT_CODES.
-    Any other robot (including one that opts into Vosk via asr_config
-    provider="vosk") gets None so no Deepgram call/cost is incurred.
-    """
+    """Build the opt-in Deepgram shadow configuration for a Vosk call."""
     from collection_agents.services.stt_local import _DEEPGRAM_AVAILABLE
 
-    if robot_code not in VOSK_FORCED_ROBOT_CODES:
-        return None
-    if not _DEEPGRAM_AVAILABLE:
+    if not asr_config.get("deepgram_shadow", False) or not _DEEPGRAM_AVAILABLE:
         return None
     api_key = os.environ.get("DEEPGRAM_API_KEY")
     if not api_key:
@@ -232,7 +193,7 @@ def resolve_deepgram_shadow_config(asr_config, robot_code):
     return {
         "api_key": api_key,
         "language": _deepgram_stt_language(locale=locale),
-        "model": resolve_deepgram_model(robot_code),
+        "model": asr_config.get("model") or "nova-2",
         "sample_rate": 8000,
     }
 

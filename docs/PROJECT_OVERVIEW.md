@@ -87,7 +87,6 @@ collection-agents/
 ├── templates/
 │   └── streams.xml                   # TwiML 流媒体模板
 ├── assets/                           # 音频资源 (WAV文件)
-├── conf/                             # 配置文件
 ├── deploy/
 │   ├── Dockerfile                    # CPU版本镜像
 │   ├── Dockerfile-gpu                # GPU版本镜像

@@ -120,9 +120,8 @@ AZURE_REALTIME_VOICE_POOL = (
     "shimmer",
     "verse",
 )
-from collection_agents.infra.paths import CONF_DIR, PROJECT_ROOT
+from collection_agents.infra.paths import PROJECT_ROOT
 
-DEFAULT_REALTIME_RESOURCE_CONFIG = str(CONF_DIR / "realtime_resources.json")
 _REALTIME_RESOURCE_MANAGER = None
 
 
@@ -330,88 +329,43 @@ def _build_realtime_base_url(endpoint: str, model: str) -> str:
 
 
 class RealtimeResourceManager:
-    def __init__(self, config_path: str):
-        self._resources = self._load_resources(config_path)
+    def __init__(self):
+        self._resources = [self._load_resource()]
         self._active_counts = {resource["id"]: 0 for resource in self._resources}
         self._assigned_counts = {resource["id"]: 0 for resource in self._resources}
         self._lock = asyncio.Lock()
         self._cursor = 0
 
-    def _load_resources(self, config_path: str) -> list[dict]:
-        if os.path.exists(config_path):
-            with open(config_path, "r", encoding="utf-8") as file_obj:
-                payload = json.load(file_obj)
-            raw_resources = payload.get("resources", [])
-        else:
-            raw_resources = [
-                {
-                    "id": "env-default",
-                    "endpoint": os.getenv("AZURE_REALTIME_ENDPOINT", ""),
-                    "model": os.getenv("AZURE_REALTIME_MODEL", ""),
-                    "asr_model": os.getenv(
-                        "AZURE_REALTIME_TRANSCRIPTION_MODEL",
-                        "whisper-1",
-                    ),
-                    "api_key": os.getenv("AZURE_REALTIME_API_KEY", ""),
-                    "weight": 1,
-                    "max_concurrency": 1000000,
-                    "enabled": True,
-                }
-            ]
-
-        resources = []
-        for index, raw_resource in enumerate(raw_resources):
-            if not raw_resource.get("enabled", True):
-                continue
-            resource_id = str(raw_resource.get("id") or f"resource-{index + 1}")
-            endpoint = str(raw_resource.get("endpoint") or "").strip()
-            model = str(raw_resource.get("model") or "").strip()
-            api_key = str(raw_resource.get("api_key") or "").strip()
-            if not endpoint or not model or not api_key:
-                logging.warning(
-                    "Skipping invalid realtime resource %s: endpoint/model/api_key required",
-                    resource_id,
-                )
-                continue
-
-            resources.append(
-                {
-                    "id": resource_id,
-                    "endpoint": endpoint,
-                    "base_url": _build_realtime_base_url(endpoint, model),
-                    "model": model,
-                    "asr_model": str(
-                        raw_resource.get("asr_model") or "whisper-1"
-                    ).strip(),
-                    "api_key": api_key,
-                    "weight": max(1, int(raw_resource.get("weight", 1))),
-                    "max_concurrency": max(
-                        1,
-                        int(raw_resource.get("max_concurrency", 1000000)),
-                    ),
-                }
-            )
-
-        if not resources:
+    def _load_resource(self) -> dict:
+        endpoint = os.getenv("AZURE_REALTIME_ENDPOINT", "").strip()
+        model = os.getenv("AZURE_REALTIME_MODEL", "").strip()
+        api_key = os.getenv("AZURE_REALTIME_API_KEY", "").strip()
+        if not endpoint or not model or not api_key:
             raise ValueError(
-                "No valid Azure realtime resources configured. "
-                "Check conf/realtime_resources.json or AZURE_REALTIME_* env vars."
+                "Azure realtime requires AZURE_REALTIME_ENDPOINT, "
+                "AZURE_REALTIME_MODEL and AZURE_REALTIME_API_KEY."
             )
 
+        resource = {
+            "id": "env-default",
+            "endpoint": endpoint,
+            "base_url": _build_realtime_base_url(endpoint, model),
+            "model": model,
+            "asr_model": os.getenv(
+                "AZURE_REALTIME_TRANSCRIPTION_MODEL",
+                "whisper-1",
+            ).strip(),
+            "api_key": api_key,
+            "weight": 1,
+            "max_concurrency": 1000000,
+        }
         logging.info(
-            "Loaded Azure realtime resources: %s",
-            [
-                {
-                    "id": resource["id"],
-                    "model": resource["model"],
-                    "asr_model": resource["asr_model"],
-                    "weight": resource["weight"],
-                    "max_concurrency": resource["max_concurrency"],
-                }
-                for resource in resources
-            ],
+            "Loaded Azure realtime resource: id=%s model=%s asr_model=%s",
+            resource["id"],
+            resource["model"],
+            resource["asr_model"],
         )
-        return resources
+        return resource
 
     async def acquire(self) -> dict:
         async with self._lock:
@@ -473,9 +427,7 @@ class RealtimeResourceManager:
 def _get_realtime_resource_manager() -> RealtimeResourceManager:
     global _REALTIME_RESOURCE_MANAGER
     if _REALTIME_RESOURCE_MANAGER is None:
-        _REALTIME_RESOURCE_MANAGER = RealtimeResourceManager(
-            DEFAULT_REALTIME_RESOURCE_CONFIG
-        )
+        _REALTIME_RESOURCE_MANAGER = RealtimeResourceManager()
     return _REALTIME_RESOURCE_MANAGER
 
 

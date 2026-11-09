@@ -98,20 +98,11 @@ LLM_TIMEOUT_SECS_DEFAULT = 6.0
 LLM_MAX_RETRIES_DEFAULT = 3
 LLM_RETRY_ON_TIMEOUT_DEFAULT = True
 
-# nova-3/nova-2 分流名单统一由 bot_beta_modules.services.resolve_deepgram_model
-# 从 conf/routing.json 读取，此处不再维护硬编码名单。
-from collection_agents.services.providers import resolve_deepgram_model
-
-
 def _coerce_int(value, default=0) -> int:
     try:
         return int(value)
     except (TypeError, ValueError):
         return default
-
-
-def _resolve_deepgram_asr_model(robot_code: str) -> str:
-    return resolve_deepgram_model(robot_code)
 
 
 class ConditionalProcessor(FrameProcessor):
@@ -569,7 +560,6 @@ async def run_copilot_bot_beta(websocket, event: dict[str, Any]):
         asr_config = config_manager.get_asr_config()
         tts_config = config_manager.get_tts_config()
         llm_config = config_manager.get_llm_config()
-        asr_config["model"] = _resolve_deepgram_asr_model(robot_code)
 
         logging.info(f"ASR Config: {asr_config}")
         logging.info(f"TTS Config: {tts_config}")

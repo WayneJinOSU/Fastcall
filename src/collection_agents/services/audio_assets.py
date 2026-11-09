@@ -19,9 +19,9 @@ from collection_agents.services.call_config import (
 )
 
 
-from collection_agents.infra.paths import PROJECT_ROOT
+from collection_agents.infra.paths import DATA_DIR, PROJECT_ROOT
 
-REGISTRY_PATH = PROJECT_ROOT / "conf" / "cartesia_audio_assets.json"
+REGISTRY_PATH = DATA_DIR / "cartesia_audio_assets.json"
 ASSETS_ROOT = PROJECT_ROOT / "assets" / "generated_tts"
 
 DEFAULT_CARTESIA_VOICE_ID = "71a7ad14-091c-4e8e-a314-022ece01c121"

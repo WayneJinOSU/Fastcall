@@ -13,8 +13,6 @@ venv/
 
 # ===== 运行时产物 =====
 assets/generated_tts/
-conf/cartesia_audio_assets.json
-conf/realtime_resources.json
 data/
 *.db
 *.sqlite3

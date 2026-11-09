@@ -101,7 +101,6 @@ from collection_agents.services.providers import (
     create_stt_service,
     create_tts_service,
     resolve_bot_llm_runtime,
-    resolve_deepgram_model,
     resolve_deepgram_shadow_config,
     resolve_stt_provider,
 )
@@ -456,7 +455,7 @@ async def _create_call_services(call_ctx, session_context, session, call_data):
         if asr_config.get("provider") == "cartesia":
             _asr_model = asr_config.get("model", "ink-whisper")
         else:
-            _asr_model = resolve_deepgram_model(robot_code)
+            _asr_model = asr_config.get("model") or "nova-2"
         llm_metrics_config = dict(llm_config)
         metrics_collector = CallMetricsCollector(
             call_uuid=call_uuid,
