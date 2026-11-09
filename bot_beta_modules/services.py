@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import os
-import random
 import wave
 from types import MethodType
 
@@ -121,44 +120,36 @@ def resolve_bot_llm_runtime(llm_config, agent_name, robot_code):
     return resolved, "CPU"
 
 
-def _load_azure_llm_targets():
-    targets = []
-    for index in range(1, 9):
-        endpoint = os.getenv(f"AZURE_LLM_{index}_ENDPOINT", "").strip()
-        api_key = os.getenv(f"AZURE_LLM_{index}_API_KEY", "").strip()
-        deployment = os.getenv(f"AZURE_LLM_{index}_DEPLOYMENT", "").strip()
-        api_version = os.getenv(f"AZURE_LLM_{index}_API_VERSION", "").strip()
-        values = [endpoint, api_key, deployment, api_version]
-        if not any(values):
-            continue
-        if not all(values):
-            raise ValueError(f"Azure LLM target {index} is incomplete")
-        if "****" in values:
-            raise ValueError(f"Azure LLM target {index} still contains placeholder values")
-        weight = {
-            5: 4,
-            6: 4,
-            7: 4,
-            8: 0,
-        }.get(index, 1)
-        targets.append(
-            {
-                "index": index,
-                "endpoint": endpoint,
-                "api_key": api_key,
-                "deployment": deployment,
-                "api_version": api_version,
-                "weight": weight,
-            }
-        )
-    if not targets:
-        raise ValueError("No Azure LLM targets configured")
-    return targets
-
-
 def select_azure_llm_target():
-    targets = _load_azure_llm_targets()
-    return random.choices(targets, weights=[target["weight"] for target in targets], k=1)[0]
+    """Load the single Azure OpenAI target from the environment.
+
+    Kept as the single Azure platform capability: one endpoint, no pool.
+    Required env vars: AZURE_LLM_ENDPOINT / AZURE_LLM_API_KEY /
+    AZURE_LLM_DEPLOYMENT / AZURE_LLM_API_VERSION.
+    """
+    endpoint = os.getenv("AZURE_LLM_ENDPOINT", "").strip()
+    api_key = os.getenv("AZURE_LLM_API_KEY", "").strip()
+    deployment = os.getenv("AZURE_LLM_DEPLOYMENT", "").strip()
+    api_version = os.getenv("AZURE_LLM_API_VERSION", "").strip()
+    values = {
+        "AZURE_LLM_ENDPOINT": endpoint,
+        "AZURE_LLM_API_KEY": api_key,
+        "AZURE_LLM_DEPLOYMENT": deployment,
+        "AZURE_LLM_API_VERSION": api_version,
+    }
+    missing = [name for name, value in values.items() if not value]
+    if missing:
+        raise ValueError(
+            "Azure LLM target is incomplete; missing env vars: " + ", ".join(missing)
+        )
+    if "****" in values.values():
+        raise ValueError("Azure LLM target still contains placeholder values")
+    return {
+        "endpoint": endpoint,
+        "api_key": api_key,
+        "deployment": deployment,
+        "api_version": api_version,
+    }
 
 
 def resolve_stt_provider(asr_config, robot_code):

@@ -1271,7 +1271,7 @@ async def run_copilot_bot_beta(websocket, event: dict[str, Any]):
                     locale=tts_config.get("locale", "es-MX"),
                 )
                 if collection_note_result and metrics_collector is not None:
-                    metrics_collector.set_dify_result(collection_note_result, note_task_type)
+                    metrics_collector.set_collection_note_result(collection_note_result, note_task_type)
             except Exception as e:
                 logging.error(f"Error in intelligent_notes_distribution: {e}")
 

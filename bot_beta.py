@@ -1471,7 +1471,7 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
             if work_order_id:
                 collection_note_result, task_type = await intelligent_notes_distribution(context, call_data, locale=tts_config.get("locale", "es-MX"))
                 if collection_note_result:
-                    metrics_collector.set_dify_result(collection_note_result, task_type)
+                    metrics_collector.set_collection_note_result(collection_note_result, task_type)
 
         if metrics_collector:
             logging.info(f"call_metrics: {metrics_collector.to_dict()}")

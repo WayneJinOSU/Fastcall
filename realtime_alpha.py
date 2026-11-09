@@ -2105,7 +2105,7 @@ async def run_bot_realtime_alpha(
                     locale=tts_config.get("locale", "es-MX"),
                 )
                 if collection_note_result and metrics_collector:
-                    metrics_collector.set_dify_result(collection_note_result, task_type)
+                    metrics_collector.set_collection_note_result(collection_note_result, task_type)
 
         if metrics_collector:
             logging.info(f"call_metrics: {metrics_collector.to_dict()}")

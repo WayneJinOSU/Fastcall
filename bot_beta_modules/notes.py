@@ -9,7 +9,6 @@ import traceback
 
 from collection_note import OpenRouterOpenAIClient, analyze_collection_dialogs
 from bot_beta_modules.config import is_synthetic_first_question
-from dify.dify_client import difyCollectionNoteClient, difyMarketingNoteClient
 from my_utils.env import mode, mode_k8s
 from my_utils.mysql import MysqlClient
 
@@ -228,36 +227,6 @@ def _extract_note_request_meta(call_data):
     }
 
 
-async def _apply_dify_analysis(dialogs, language, work_order_id, final_payload, dify_client, note_type):
-    if dify_client is None:
-        logging.warning(
-            "%s Dify client not configured (DIFY_BASE_URL / DIFY_*_API_KEY); keeping default note payload.",
-            note_type,
-        )
-        final_payload["remark"] = "access of ai-notebook is not available (Dify not configured)"
-        return
-    try:
-        logging.info(f"{note_type} Requesting Dify analysis for WorkOrder: {work_order_id}")
-        dify_result = await dify_client.chat(
-            query=str(dialogs),
-            user_id="abc-123",
-            inputs={"language": language},
-        )
-
-        if dify_result == 500 or dify_result == "500":
-            logging.warning("Dify workflow returned error code 500. Using fallback defaults.")
-            final_payload["remark"] = "access of ai-notebook is not available (Workflow Error 500)"
-        elif isinstance(dify_result, dict):
-            logging.info("Dify analysis success.")
-            final_payload.update(dify_result)
-        else:
-            logging.warning(f"Unexpected return type from Dify: {type(dify_result)} - {dify_result}")
-            final_payload["remark"] = f"access of ai-notebook is not available (Invalid Format: {dify_result})"
-    except Exception as exc:
-        logging.error(f"Dify analysis system exception: {exc}")
-        final_payload["remark"] = f"access of ai-notebook is not available (System Error: {str(exc)[:50]})"
-
-
 def _resolve_collection_note_engine() -> str:
     engine = os.getenv("COLLECTION_NOTE_ENGINE", "post_process").strip().lower()
     if engine in {"post_process", "local", "langgraph_openai", "langgraph_openrouter"}:
@@ -338,7 +307,6 @@ async def _send_intelligent_note(
     language,
     default_payload,
     callback_path,
-    dify_client,
     note_type,
     skip_prompt_prefix=False,
 ):
@@ -367,9 +335,8 @@ async def _send_intelligent_note(
 
     engine = _resolve_collection_note_engine()
     logging.info(f"{note_type} engine selected: {engine}")
-    use_local_collection_engine = note_type == "collection_notes" and engine == "post_process"
 
-    if use_local_collection_engine:
+    if note_type == "collection_notes":
         local_success = await _apply_local_collection_analysis(
             dialogs=dialogs,
             language=language,
@@ -379,28 +346,6 @@ async def _send_intelligent_note(
         )
         if not local_success:
             logging.warning("Local collection workflow failed; using default collection note payload.")
-    else:
-        remark_before = final_payload.get("remark", "")
-        await _apply_dify_analysis(
-            dialogs=dialogs,
-            language=language,
-            work_order_id=work_order_id,
-            final_payload=final_payload,
-            dify_client=dify_client,
-            note_type=note_type,
-        )
-        dify_failed = final_payload.get("remark", "") != remark_before and "access of ai-notebook is not available" in final_payload.get("remark", "")
-        if note_type == "collection_notes" and engine == "fallback" and dify_failed:
-            logging.info("Dify collection note analysis failed, fallback to local workflow")
-            local_success = await _apply_local_collection_analysis(
-                dialogs=dialogs,
-                language=language,
-                final_payload=final_payload,
-                country=country,
-            )
-            if not local_success:
-                final_payload["remark"] = remark_before
-                logging.warning("Dify and local collection workflows both failed; keeping default payload without error remark.")
 
     await _post_json_callback(callback_url=callback_url, payload=final_payload, headers=headers)
     return final_payload
@@ -747,10 +692,8 @@ async def intelligent_notes_distribution(context, call_data, locale):
     task_type = variables.get("task_type")
     if task_type == "marketing":
         return None, task_type
-        # dify_result = await intelligent_telemarketing_notes(context, call_data, language=language)
-    else:
-        dify_result = await intelligent_collection_notes(context, call_data, language=language)
-    return dify_result, task_type
+    note_result = await intelligent_collection_notes(context, call_data, language=language)
+    return note_result, task_type
 
 
 async def intelligent_collection_notes(context, call_data, language="Spanish"):
@@ -771,30 +714,8 @@ async def intelligent_collection_notes(context, call_data, language="Spanish"):
             "touchWay": "ai_agent",
         },
         callback_path="/internal/collection/note/createByFollower",
-        dify_client=difyCollectionNoteClient,
         note_type="collection_notes",
         skip_prompt_prefix=True,
-    )
-
-
-async def intelligent_telemarketing_notes(context, call_data, language="Spanish"):
-    return await _send_intelligent_note(
-        context=context,
-        call_data=call_data,
-        language=language,
-        default_payload={
-            "contactTarget": 1,
-            "contactWay": "PHONE",
-            "contactSuccess": True,
-            "remark": "",
-            "intentionLevel": "",
-            "touchWay": "ai_agent",
-            "submitSource": "",
-        },
-        callback_path="/internal/telemarketing/note/create",
-        dify_client=difyMarketingNoteClient,
-        note_type="telemarketing_notes",
-        skip_prompt_prefix=False,
     )
 
 

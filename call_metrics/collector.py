@@ -199,7 +199,7 @@ class CallMetricsCollector:
         self.is_recovered: int = 0
         self.is_voicemail: int = 0
         self.forced_response_ttfb_breakdown: list[dict] = []
-        self.collection_result: str = ""  # raw collectionResult from dify
+        self.collection_result: str = ""  # raw collectionResult from the note analysis
 
     # --- Increment APIs for reconnect/retry tracking ---
 
@@ -224,17 +224,17 @@ class CallMetricsCollector:
         except Exception:
             pass
 
-    def set_dify_result(self, dify_result: dict, task_type: Optional[str] = None):
-        """Extract collection_result from dify result.
+    def set_collection_note_result(self, note_result: dict, task_type: Optional[str] = None):
+        """Extract collection_result from the collection-note analysis result.
 
         Args:
-            dify_result: The parsed dify result dict, e.g.
+            note_result: The parsed analysis result dict, e.g.
                 {"collectionResult": "yes_voicemail", "repaymentWish": "yes", ...}
             task_type: Reserved for backward compatibility.
         """
         try:
             if task_type != "marketing":
-                self.collection_result = dify_result.get("collectionResult", "")
+                self.collection_result = (note_result or {}).get("collectionResult", "")
         except Exception:
             pass
 

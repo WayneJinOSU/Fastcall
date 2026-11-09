@@ -14,8 +14,8 @@ Collection Agents 是一个基于 **Pipecat** 框架的企业级 **AI 语音交�
 - ✅ **多语言支持**：中文、英文、西班牙文、菲律宾语等
 - ✅ **智能通话管理**：自动中断检测、无响应处理、语音信箱识别、优雅挂断
 - ✅ **完整分析和记录**：通话记录生成、意图标签提取、成本计算、指标追踪
-- ✅ **企业级可靠性**：Sentry 错误追踪、结构化日志、MySQL 持久化、Kubernetes 部署
-- ✅ **生态集成**：Dify工作流 + N8N自动化 + 云平台部署
+- ✅ **企业级可靠性**：Sentry 错误追踪、结构化日志、SQLite/MySQL 持久化、Kubernetes 部署
+- ✅ **自主部署友好**：默认 SQLite 零配置存储，LLM 支持任意 OpenAI 兼容端点（可接本地 vLLM/Ollama）
 
 ---
 
@@ -377,12 +377,10 @@ curl http://localhost:8765/state/up
 
 编辑 `bot_beta_modules/config.py` 中的 `_FIRST_QUESTION_BY_LANGUAGE`
 
-### Q4: 如何集成Dify工作流？
+### Q4: 通话小结分析用的是什么引擎？
 
-设置环境变量：
-```bash
-COLLECTION_NOTE_ENGINE=dify
-```
+默认使用内置的本地后处理工作流（`collection_note/` 模块），
+通过 OpenAI 兼容接口完成意图分析，无需外部工作流平台。
 
 更多问题见 [快速开始 - 故障排除](QUICK_START.md#-故障排除)
 

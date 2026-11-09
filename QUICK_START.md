@@ -513,16 +513,15 @@ class MyCustomProcessor(FrameProcessor):
         await self.push_frame(frame, direction)
 ```
 
-### 集成Dify工作流
+### 通话小结分析引擎
 
 ```python
 # bot_beta_modules/notes.py
 
-# 设置环境变量
-COLLECTION_NOTE_ENGINE=dify
-
-# 配置Dify客户端
-# dify/dify_client.py 中定义
+# 默认使用内置的本地后处理工作流（collection_note/），
+# 通过 OpenAI 兼容接口完成意图分析，无需外部工作流平台。
+# 如需调整，设置环境变量：
+COLLECTION_NOTE_ENGINE=post_process
 ```
 
 ---

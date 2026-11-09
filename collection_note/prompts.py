@@ -1,4 +1,4 @@
-"""Prompt assets that mirror the original Dify workflow as closely as practical."""
+"""Prompt assets for the collection-note post-processing workflow."""
 
 ROUTING_SUMMARY_PROMPT = """Summarize the call in {language}.
 
