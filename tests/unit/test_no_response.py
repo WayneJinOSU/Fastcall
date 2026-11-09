@@ -1,6 +1,6 @@
 import unittest
 
-from collection_agents.bots.no_response import NoResponseController
+from collection_agents.handlers.no_response import NoResponseController
 
 
 class ConfigManager:

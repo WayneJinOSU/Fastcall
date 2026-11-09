@@ -14,9 +14,9 @@ from pipecat.frames.frames import (
 )
 from pipecat.processors.frame_processor import FrameDirection
 
+from collection_agents.events import VoicemailDetectedFrame
 from collection_agents.processors.common import (
     HangupState,
-    VoicemailDetectedFrame,
     VoicemailDetector,
     WordAwareSanitizer,
 )

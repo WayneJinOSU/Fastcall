@@ -3,7 +3,6 @@ import logging
 import re
 import time
 from collections import deque
-from dataclasses import dataclass
 
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
@@ -22,6 +21,8 @@ from pipecat.frames.frames import (
     TTSTextFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+
+from collection_agents.events import VoicemailDetectedFrame
 
 
 class ContextMessageTimestampTracker(FrameProcessor):
@@ -379,12 +380,6 @@ class GracefulHangupController(FrameProcessor):
             raise
         except Exception as exc:
             logging.error("[GracefulHangupController] Hangup sequence error: %s", exc)
-
-
-@dataclass
-class VoicemailDetectedFrame(Frame):
-    transcript_text: str = ""
-    prompt: str = ""
 
 
 class VoicemailDetector(FrameProcessor):

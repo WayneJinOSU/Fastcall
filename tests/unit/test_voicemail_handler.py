@@ -10,12 +10,12 @@ from pipecat.frames.frames import (
 )
 from pipecat.processors.frame_processor import FrameDirection
 
-from collection_agents.bots.standard.voicemail import (
-    FixedVoicemailPlayer,
-    StandardVoicemailHandler,
+from collection_agents.events import VoicemailDetectedFrame
+from collection_agents.handlers.standard_voicemail import StandardVoicemailHandler
+from collection_agents.services.voicemail_audio_repository import (
     VoicemailAudioRepository,
 )
-from collection_agents.processors.common import VoicemailDetectedFrame
+from collection_agents.services.voicemail_player import FixedVoicemailPlayer
 
 
 class RecordingHandler(StandardVoicemailHandler):
@@ -149,10 +149,10 @@ class VoicemailHandlerTests(unittest.IsolatedAsyncioTestCase):
             on_playback=playback.append,
         )
         with patch(
-            "collection_agents.bots.standard.voicemail.find_audio_asset",
+            "collection_agents.services.voicemail_audio_repository.find_audio_asset",
             return_value=asset,
         ), patch(
-            "collection_agents.bots.standard.voicemail.load_audio_frame",
+            "collection_agents.services.voicemail_audio_repository.load_audio_frame",
             return_value=audio,
         ):
             result = repository.find_cached_audio()

@@ -53,14 +53,15 @@ from collection_agents.services.call_config import (
 )
 from collection_agents.services.audio_assets import load_output_sounds
 from collection_agents.bots.helpers import build_call_context, build_session_state
-from collection_agents.bots.no_response import NoResponseController
+from collection_agents.handlers.no_response import NoResponseController
+from collection_agents.handlers.realtime_voicemail import RealtimeVoicemailHandler
 from collection_agents.bots.telephony import register_telephony_handlers
 from collection_agents.bots.realtime.azure_service import (
     RealtimePromptSyncAzureLLMService,
 )
 from collection_agents.bots.realtime.context import RealtimeTranscriptContextPersister
 from collection_agents.bots.realtime.metrics import RealtimeCallMetricsObserver
-from collection_agents.bots.realtime.prompts import (
+from collection_agents.services.realtime_prompts import (
     build_exact_say_prompt as _build_realtime_exact_say_prompt,
     build_no_response_hangup_prompt as _build_realtime_no_response_hangup_prompt,
 )
@@ -71,7 +72,6 @@ from collection_agents.bots.realtime.utils import (
     _is_effective_realtime_transcript,
     _summarize_for_log,
 )
-from collection_agents.bots.realtime.voicemail import RealtimeVoicemailHandler
 from collection_agents.metrics.collector import CallMetricsCollector
 from collection_agents.metrics.collector import RealtimeMiniCallMetricsCollector
 from collection_agents.transport.websocket_beta import (

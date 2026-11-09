@@ -10,7 +10,8 @@ import json
 from functools import partial
 from dotenv import load_dotenv
 from collection_agents.bots.helpers import build_call_context, build_session_state
-from collection_agents.bots.no_response import NoResponseController
+from collection_agents.handlers.no_response import NoResponseController
+from collection_agents.handlers.standard_voicemail import StandardVoicemailHandler
 from collection_agents.bots.observers import PipelineFlowWatchdog
 from collection_agents.bots.telephony import register_telephony_handlers
 from collection_agents.bots.standard.grammar import _is_confirmation_phrase
@@ -18,10 +19,7 @@ from collection_agents.bots.standard.lifecycle import finalize_call as _finalize
 from collection_agents.bots.standard.services import (
     create_call_services as _create_call_services,
 )
-from collection_agents.bots.standard.voicemail import (
-    StandardVoicemailHandler,
-    VoicemailAudioRepository,
-)
+from collection_agents.services.voicemail_audio_repository import VoicemailAudioRepository
 from collection_agents.transport.websocket_beta import (
     CustomProtocolFrameSerializer,
     TelephonyEventRouter,
