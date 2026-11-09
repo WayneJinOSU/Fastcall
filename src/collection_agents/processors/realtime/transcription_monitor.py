@@ -4,22 +4,9 @@ import re
 from collections import deque
 
 from pipecat.frames.frames import (
-    BotStartedSpeakingFrame,
-    BotStoppedSpeakingFrame,
-    CancelFrame,
-    EndFrame,
     Frame,
-    InputAudioRawFrame,
     InterimTranscriptionFrame,
-    InterruptionFrame,
-    LLMRunFrame,
-    LLMMessagesAppendFrame,
-    TextFrame,
     TranscriptionFrame,
-    TTSStartedFrame,
-    UserStartedSpeakingFrame,
-    UserStoppedSpeakingFrame,
-    UserSpeakingFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -27,7 +14,6 @@ from collection_agents.processors.common.voicemail_patterns import VOICEMAIL_REG
 
 REALTIME_VOICEMAIL_REGEX = VOICEMAIL_REGEX
 
-from collection_agents.processors.common.hangup import GracefulHangupController, HangupState
 
 
 def _compile_any(patterns):

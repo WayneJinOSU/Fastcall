@@ -24,11 +24,7 @@ from collection_agents.transport.websocket_beta import (
     CustomProtocolFrameSerializer,
     TelephonyEventRouter,
 )
-from collection_agents.transport.websocket_safe_send import (
-    harden_pipecat_websocket_transport,
-    safe_send_bytes,
-    safe_send_text,
-)
+from collection_agents.transport.websocket_safe_send import harden_pipecat_websocket_transport
 from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
     FastAPIWebsocketTransport
@@ -81,14 +77,10 @@ from collection_agents.services.call_config import (
     create_system_prompt,
     prepare_text_for_tts,
 )
-from collection_agents.services.audio_assets import load_output_sounds
 from collection_agents.transport.websocket_safe_send import send_hangup_signal
 from collection_agents.services.stt_local import ShadowDecodeTap
 
 
-from collection_agents.infra.paths import PROJECT_ROOT
-
-sounds = load_output_sounds(PROJECT_ROOT)
 load_dotenv(override=True)
 
 WELCOME_AUDIO_PREROLL_MS = 500
@@ -409,37 +401,6 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
                 session_context["on_answer"] = True
                 session_context["no_response_count"] = 0
                 logging.info("trigger event: on_answer successfully")
-                play_answer_prelude = False
-                if play_answer_prelude:
-                    audio_frame = sounds.get("incoming4.wav")
-                    if audio_frame:
-                        serialized_audio = await _serialize_frame(audio_frame)
-                        if isinstance(serialized_audio, str):
-                            sent = await safe_send_text(
-                                websocket_client,
-                                serialized_audio,
-                                description="bot_beta incoming audio prelude (text)",
-                                logger=logging.getLogger(__name__),
-                                on_disconnect=partial(
-                                    _queue_end_frame,
-                                    "incoming_audio_send_disconnected",
-                                ),
-                            )
-                            if not sent:
-                                return
-                        elif isinstance(serialized_audio, (bytes, bytearray)):
-                            sent = await safe_send_bytes(
-                                websocket_client,
-                                bytes(serialized_audio),
-                                description="bot_beta incoming audio prelude (bytes)",
-                                logger=logging.getLogger(__name__),
-                                on_disconnect=partial(
-                                    _queue_end_frame,
-                                    "incoming_audio_send_disconnected",
-                                ),
-                            )
-                            if not sent:
-                                return
 
                 if task and welcome_text:
                     # Re-arm the flow watchdog: from here on we expect bot audio

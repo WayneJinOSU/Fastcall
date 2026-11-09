@@ -18,7 +18,8 @@ from pipecat.services.openai.realtime.events import (
     ResponseProperties,
 )
 
-from collection_agents.bots.realtime.utils import _content_to_text, _summarize_for_log
+from collection_agents.bots.realtime.utils import _content_to_text
+from collection_agents.services.realtime_context import summarize_for_log as _summarize_for_log
 from collection_agents.metrics.collector import CallMetricsCollector
 
 
@@ -36,7 +37,6 @@ class RealtimePromptSyncAzureLLMService(AzureRealtimeLLMService):
     ):
         super().__init__(*args, **kwargs)
         self._server_vad_interruptions = allow_interruptions
-        self._realtime_voice = realtime_voice
         self._metrics_collector = metrics_collector
         self._realtime_monitor_state = realtime_monitor_state
         self._session_voice_sent = False

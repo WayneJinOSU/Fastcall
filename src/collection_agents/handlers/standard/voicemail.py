@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import time
 
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
@@ -9,7 +8,6 @@ from pipecat.frames.frames import (
     EndFrame,
     Frame,
     LLMMessagesAppendFrame,
-    TranscriptionFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -51,7 +49,6 @@ class StandardVoicemailHandler(FrameProcessor):
         self._bot_speaking = False
         self._pending = False
         self._detected = False
-        self._finalize_requested_at = None
 
     @staticmethod
     async def _call(callback):
@@ -96,7 +93,6 @@ class StandardVoicemailHandler(FrameProcessor):
             if self._finalize_stt_cb:
                 try:
                     await self._call(self._finalize_stt_cb)
-                    self._finalize_requested_at = time.monotonic()
                 except Exception as exc:
                     logging.warning("[VoicemailHandler] STT finalize failed: %s", exc)
             if self._mode == "hangup":
@@ -110,8 +106,6 @@ class StandardVoicemailHandler(FrameProcessor):
                 return
             await self._dispatch(frame, direction)
             return
-        elif isinstance(frame, TranscriptionFrame) and self._finalize_requested_at is not None:
-            self._finalize_requested_at = None
 
         if isinstance(frame, (EndFrame, CancelFrame)) and self._player:
             await self._player.cleanup()

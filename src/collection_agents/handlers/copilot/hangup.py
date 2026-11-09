@@ -1,18 +1,11 @@
 import logging
 import re
 
-from pipecat.audio.vad.vad_analyzer import VADState
 from pipecat.frames.frames import (
-    CancelFrame,
     EndFrame,
-    InputAudioRawFrame,
     InterruptionFrame,
     LLMFullResponseEndFrame,
-    StartFrame,
-    SystemFrame,
     TextFrame,
-    VADUserStartedSpeakingFrame,
-    VADUserStoppedSpeakingFrame,
 )
 from pipecat.processors.frame_processor import FrameProcessor
 
@@ -26,7 +19,6 @@ class CopilotWordAwareHangupProcessor(FrameProcessor):
         self._on_hangup_started = on_hangup_started
         self._buffer = ""
         self._is_hanging_up = False
-        self._is_ended = False
         self._endcall_regex = re.compile(
             r"(?i)("
             r"\b(?:goodbye|bye|bye-bye|see you|have a great day|have a good one|"
@@ -44,8 +36,6 @@ class CopilotWordAwareHangupProcessor(FrameProcessor):
         if self._is_hanging_up:
             if isinstance(frame, (TextFrame, InterruptionFrame)):
                 return
-            if isinstance(frame, EndFrame):
-                self._is_ended = True
             await self.push_frame(frame, direction)
             return
 
@@ -58,8 +48,6 @@ class CopilotWordAwareHangupProcessor(FrameProcessor):
         if isinstance(frame, (LLMFullResponseEndFrame, EndFrame)):
             self._maybe_start_hangup()
             self._buffer = ""
-            if isinstance(frame, EndFrame):
-                self._is_ended = True
             await self.push_frame(frame, direction)
             return
 

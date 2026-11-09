@@ -8,13 +8,11 @@ import inspect
 import json
 import logging
 import os
-import sys
 import time
 import traceback
 import uuid
 from functools import partial
 from typing import Any
-from loguru import logger as loguru_logger
 from dotenv import load_dotenv
 from collection_agents.bots.service_metrics import (
     track_stt_reconnects,
@@ -40,7 +38,6 @@ from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import (
     EndFrame,
     LLMRunFrame,
-    OutputTransportMessageUrgentFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
@@ -65,9 +62,6 @@ from collection_agents.transport.fastapi_websocket_ai_copilot_beta import (
     AICopilotFrameSerializer,
     InnerEventRouter,
     Role,
-    create_hangup_event,
-    create_heartbeat_event,
-    create_text_event,
 )
 from collection_agents.services.call_config import build_first_question_content, build_no_response_hangup_prompt
 from collection_agents.services.providers import attach_llm_retry_counter

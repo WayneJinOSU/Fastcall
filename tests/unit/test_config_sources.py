@@ -45,10 +45,9 @@ class ConfigSourceTests(unittest.TestCase):
         }
         with patch.dict(os.environ, env):
             manager = RealtimeResourceManager()
-        self.assertEqual(len(manager._resources), 1)
-        self.assertEqual(manager._resources[0]["model"], "gpt-realtime-mini")
+        self.assertEqual(manager._resource["model"], "gpt-realtime-mini")
         self.assertEqual(
-            manager._resources[0]["asr_model"],
+            manager._resource["asr_model"],
             "gpt-4o-mini-transcribe",
         )
 

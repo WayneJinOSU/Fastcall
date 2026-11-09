@@ -22,11 +22,9 @@ def _build_realtime_base_url(endpoint: str, model: str) -> str:
 
 class RealtimeResourceManager:
     def __init__(self):
-        self._resources = [self._load_resource()]
-        self._active_counts = {resource["id"]: 0 for resource in self._resources}
-        self._assigned_counts = {resource["id"]: 0 for resource in self._resources}
+        self._resource = self._load_resource()
+        self._active_count = 0
         self._lock = asyncio.Lock()
-        self._cursor = 0
 
     def _load_resource(self) -> dict:
         endpoint = os.getenv("AZURE_REALTIME_ENDPOINT", "").strip()
@@ -48,8 +46,6 @@ class RealtimeResourceManager:
                 "whisper-1",
             ).strip(),
             "api_key": api_key,
-            "weight": 1,
-            "max_concurrency": 1000000,
         }
         logging.info(
             "Loaded Azure realtime resource: id=%s model=%s asr_model=%s",
@@ -61,58 +57,24 @@ class RealtimeResourceManager:
 
     async def acquire(self) -> dict:
         async with self._lock:
-
-            def resource_score(resource: dict):
-                resource_id = resource["id"]
-                weight = resource["weight"]
-                return (
-                    self._active_counts[resource_id] / weight,
-                    self._assigned_counts[resource_id] / weight,
-                )
-
-            min_score = min(resource_score(resource) for resource in self._resources)
-            best_candidates = [
-                resource
-                for resource in self._resources
-                if resource_score(resource) == min_score
-            ]
-            selected = best_candidates[self._cursor % len(best_candidates)]
-            self._cursor += 1
-            self._active_counts[selected["id"]] += 1
-            self._assigned_counts[selected["id"]] += 1
-            active = self._active_counts[selected["id"]]
-            assigned = self._assigned_counts[selected["id"]]
-            max_concurrency = selected["max_concurrency"]
-            if active > max_concurrency:
-                logging.warning(
-                    "Azure realtime resource above configured max_concurrency: "
-                    "id=%s active=%s max_concurrency=%s",
-                    selected["id"],
-                    active,
-                    max_concurrency,
-                )
+            self._active_count += 1
             logging.info(
-                "Acquired Azure realtime resource: id=%s active=%s assigned=%s",
-                selected["id"],
-                active,
-                assigned,
+                "Acquired Azure realtime resource: id=%s active=%s",
+                self._resource["id"],
+                self._active_count,
             )
-            return selected
+            return self._resource
 
     async def release(self, resource: dict):
         if not resource:
             return
         async with self._lock:
-            resource_id = resource.get("id")
-            if resource_id in self._active_counts:
-                self._active_counts[resource_id] = max(
-                    0,
-                    self._active_counts[resource_id] - 1,
-                )
+            if resource.get("id") == self._resource["id"]:
+                self._active_count = max(0, self._active_count - 1)
                 logging.info(
                     "Released Azure realtime resource: id=%s active=%s",
-                    resource_id,
-                    self._active_counts[resource_id],
+                    resource["id"],
+                    self._active_count,
                 )
 
 

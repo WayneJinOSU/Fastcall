@@ -5,7 +5,7 @@ from pipecat.frames.frames import Frame, TranscriptionFrame
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
-from collection_agents.bots.realtime.utils import _summarize_for_log
+from collection_agents.services.realtime_context import summarize_for_log as _summarize_for_log
 
 
 class RealtimeTranscriptContextPersister(FrameProcessor):

@@ -1,22 +1,13 @@
-import asyncio
 import logging
-import time
-from collections import deque
 
 _logger = logging.getLogger(__name__)
 
 from pipecat.frames.frames import (
-    BotStartedSpeakingFrame,
-    BotStoppedSpeakingFrame,
     CancelFrame,
     EndFrame,
     Frame,
-    InputAudioRawFrame,
     InterruptionFrame,
-    LLMAssistantPushAggregationFrame,
     LLMContextFrame,
-    LLMFullResponseEndFrame,
-    LLMFullResponseStartFrame,
     LLMMessagesAppendFrame,
     TextFrame,
     TranscriptionFrame,
@@ -26,7 +17,6 @@ from pipecat.frames.frames import (
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from collection_agents.processors.common.hangup import HangupState
-from pipecat.utils.string import TextPartForConcatenation, concatenate_aggregated_text
 
 class HangupGate(FrameProcessor):
     """拦截 hangup 触发后的 TranscriptionFrame，防止语音信箱持续发声驱动多余 LLM 调用。"""

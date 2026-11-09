@@ -1,6 +1,5 @@
 import logging
 import re
-from collections import deque
 
 from pipecat.frames.frames import (
     EndFrame,
@@ -32,13 +31,8 @@ class WordAwareSanitizer(FrameProcessor):
         self._realtime = mode == "realtime"
         self._buffer = ""
         self._max_word_count = 200
-        self._config = config_manager
-        self._websocket_client = websocket_client
-        self._transport = transport
-        self._exit_delay = exit_delay
         self._hangup_state = hangup_state
         self._is_hanging_up = False
-        self._is_ended = False
 
         self._endcall_regex = re.compile(
             r"(?is)("
@@ -90,7 +84,6 @@ class WordAwareSanitizer(FrameProcessor):
                 await self._sanitize_and_push(self._buffer, direction)
                 self._buffer = ""
             if isinstance(frame, EndFrame):
-                self._is_ended = True
                 logging.info("[WordAwareSanitizer] Pushing EndFrame: %s", frame)
             await self.push_frame(frame, direction)
             return

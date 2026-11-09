@@ -13,7 +13,10 @@ from typing import Optional
 from dotenv import load_dotenv
 from pipecat import __version__
 from pipecat.audio.filters.rnnoise_filter import RNNoiseFilter
-from pipecat.frames.frames import EndFrame, LLMRunFrame, TranscriptionFrame
+from pipecat.frames.frames import (
+    EndFrame,
+    LLMRunFrame,
+)
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -48,10 +51,8 @@ from collection_agents.services.call_config import (
     BotV3ConfigManager,
     build_first_question_content,
     coerce_positive_int,
-    create_system_prompt,
     normalize_language_code,
 )
-from collection_agents.services.audio_assets import load_output_sounds
 from collection_agents.bots.helpers import build_call_context, build_session_state
 from collection_agents.handlers.common.no_response import NoResponseController
 from collection_agents.handlers.realtime.voicemail import RealtimeVoicemailHandler
@@ -68,10 +69,8 @@ from collection_agents.services.realtime_prompts import (
 from collection_agents.bots.realtime.resources import (
     get_realtime_resource_manager as _get_realtime_resource_manager,
 )
-from collection_agents.bots.realtime.utils import (
-    _is_effective_realtime_transcript,
-    _summarize_for_log,
-)
+from collection_agents.bots.realtime.utils import _is_effective_realtime_transcript
+from collection_agents.services.realtime_context import summarize_for_log as _summarize_for_log
 from collection_agents.metrics.collector import CallMetricsCollector
 from collection_agents.metrics.collector import RealtimeMiniCallMetricsCollector
 from collection_agents.transport.websocket_beta import (
@@ -80,8 +79,6 @@ from collection_agents.transport.websocket_beta import (
 )
 from collection_agents.transport.websocket_safe_send import (
     harden_pipecat_websocket_transport,
-    safe_send_bytes,
-    safe_send_text,
     send_hangup_signal,
 )
 from collection_agents.processors.common.context import ContextMessageTimestampTracker
@@ -93,7 +90,6 @@ from collection_agents.processors.realtime.hangup import RealtimeHangupGate
 from collection_agents.processors.realtime.speaking_state import RealtimeBotSpeakingStateTracker
 from collection_agents.processors.realtime.transcription_monitor import RealtimeInputTranscriptionMonitor
 
-RealtimeBargeInTranscriptMonitor = RealtimeInputTranscriptionMonitor
 
 
 REALTIME_INPUT_SAMPLE_RATE = 24000
@@ -108,8 +104,6 @@ AZURE_REALTIME_VOICE_POOL = (
     "shimmer",
     "verse",
 )
-from collection_agents.infra.paths import PROJECT_ROOT
-
 
 def _preserve_realtime_transcription_usage():
     try:
@@ -199,7 +193,6 @@ print(f"pipecat version: {__version__}")
 
 load_dotenv(override=True)
 
-sounds = load_output_sounds(PROJECT_ROOT)
 
 
 def _build_rnnoise_filter(enabled: bool = False):
@@ -310,6 +303,7 @@ async def _setup_realtime_call(call_ctx, session_context, websocket_client, stre
         raise
 
     return {
+        "asr_config": asr_config,
         "tts_config": tts_config,
         "llm_config": llm_config,
         "realtime_resource": realtime_resource,
@@ -332,7 +326,6 @@ async def _finalize_realtime_call(call_ctx, svc, session_context, context, durat
     """
     call_ctx = call_ctx or {}
     svc = svc or {}
-    call_uuid = call_ctx.get("call_uuid", "")
     websocket_client = session_context.get("websocket_client")
     metrics_collector = svc.get("metrics_collector")
     realtime_resource = svc.get("realtime_resource")
@@ -418,6 +411,7 @@ async def run_bot_realtime_alpha(
             svc = await _setup_realtime_call(
                 call_ctx, session_context, websocket_client, stream_sid, realtime_rnnoise_enabled
             )
+            asr_config = svc["asr_config"]
             tts_config = svc["tts_config"]
             llm_config = svc["llm_config"]
             realtime_resource = svc["realtime_resource"]
@@ -644,8 +638,6 @@ async def run_bot_realtime_alpha(
                 audio_out_sample_rate=TELEPHONY_SAMPLE_RATE,
             )
 
-            language = tts_config.get("locale", "zh-CN")
-
             async def _router_hangup_cancel():
                 await _queue_end_frame("router_on_hangup")
 
@@ -659,38 +651,7 @@ async def run_bot_realtime_alpha(
                 logging.info(f"on_answer: {frame.payload}")
                 session_context["on_answer"] = True
                 session_context["no_response_count"] = 0
-                play_answer_prelude = False
 
-                if play_answer_prelude:
-                    audio_frame = sounds.get("incoming4.wav")
-                    if audio_frame:
-                        serialized_audio = await _serialize_frame(audio_frame)
-                        if isinstance(serialized_audio, str):
-                            sent = await safe_send_text(
-                                websocket_client,
-                                serialized_audio,
-                                description="realtime_alpha incoming audio prelude (text)",
-                                logger=logging.getLogger(__name__),
-                                on_disconnect=partial(
-                                    _queue_end_frame,
-                                    "incoming_audio_send_disconnected",
-                                ),
-                            )
-                            if not sent:
-                                return
-                        elif isinstance(serialized_audio, (bytes, bytearray)):
-                            sent = await safe_send_bytes(
-                                websocket_client,
-                                bytes(serialized_audio),
-                                description="realtime_alpha incoming audio prelude (bytes)",
-                                logger=logging.getLogger(__name__),
-                                on_disconnect=partial(
-                                    _queue_end_frame,
-                                    "incoming_audio_send_disconnected",
-                                ),
-                            )
-                            if not sent:
-                                return
 
                 if task:
                     await task.queue_frame(LLMRunFrame())

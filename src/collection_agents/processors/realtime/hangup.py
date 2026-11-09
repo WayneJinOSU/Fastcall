@@ -1,29 +1,22 @@
-import asyncio
-import logging
 import re
-from collections import deque
 
 from pipecat.frames.frames import (
-    BotStartedSpeakingFrame,
-    BotStoppedSpeakingFrame,
     CancelFrame,
     EndFrame,
     Frame,
     InputAudioRawFrame,
-    InterimTranscriptionFrame,
     InterruptionFrame,
     LLMRunFrame,
     LLMMessagesAppendFrame,
     TextFrame,
     TranscriptionFrame,
-    TTSStartedFrame,
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
     UserSpeakingFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
-from collection_agents.processors.common.hangup import GracefulHangupController, HangupState
+from collection_agents.processors.common.hangup import HangupState
 
 
 def _compile_any(patterns):

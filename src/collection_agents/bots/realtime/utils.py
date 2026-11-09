@@ -1,7 +1,3 @@
-from collection_agents.services.realtime_context import (
-    append_context_message_without_llm as _append_context_message_without_llm,
-    summarize_for_log as _summarize_for_log,
-)
 
 
 def _content_to_text(content) -> str:
