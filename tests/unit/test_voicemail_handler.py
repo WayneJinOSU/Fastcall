@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
@@ -12,6 +13,7 @@ from pipecat.processors.frame_processor import FrameDirection
 from collection_agents.bots.standard.voicemail import (
     FixedVoicemailPlayer,
     StandardVoicemailHandler,
+    VoicemailAudioRepository,
 )
 from collection_agents.processors.common import VoicemailDetectedFrame
 
@@ -113,6 +115,49 @@ class VoicemailHandlerTests(unittest.IsolatedAsyncioTestCase):
         await player.on_bot_stopped(emit, FrameDirection.DOWNSTREAM)
         self.assertEqual(completed, [True])
         await player.cleanup()
+
+    def test_audio_repository_returns_matching_cached_audio(self):
+        audio = OutputAudioRawFrame(
+            audio=b"\x00\x00" * 160,
+            sample_rate=8000,
+            num_channels=1,
+        )
+        asset = {
+            "bot_code": "robot-1",
+            "provider": "cartesia",
+            "voice_id": "voice-1",
+            "model": "sonic-2",
+            "locale": "en-US",
+            "sample_rate": 8000,
+            "audio_format": "wav",
+            "text_type": "voicemail_message",
+            "text": "Cached reminder",
+            "text_hash": "hash-1",
+            "file_path": "cache.wav",
+        }
+        playback = []
+        repository = VoicemailAudioRepository(
+            robot_code="robot-1",
+            tts_config={
+                "provider": "cartesia",
+                "voice_id": "voice-1",
+                "model": "sonic-2",
+                "locale": "en-US",
+            },
+            text="First sentence. Cached reminder",
+            cache_enabled=True,
+            on_playback=playback.append,
+        )
+        with patch(
+            "collection_agents.bots.standard.voicemail.find_audio_asset",
+            return_value=asset,
+        ), patch(
+            "collection_agents.bots.standard.voicemail.load_audio_frame",
+            return_value=audio,
+        ):
+            result = repository.find_cached_audio()
+        self.assertEqual(result["frame"], audio)
+        self.assertEqual(playback[0]["source"], "local_cache")
 
 
 if __name__ == "__main__":

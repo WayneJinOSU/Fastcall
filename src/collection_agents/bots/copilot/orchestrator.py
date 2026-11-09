@@ -13,11 +13,15 @@ import time
 import traceback
 import uuid
 from functools import partial
-from types import MethodType
 from typing import Any
 from loguru import logger as loguru_logger
 from dotenv import load_dotenv
+from collection_agents.bots.service_metrics import (
+    track_stt_reconnects,
+    track_tts_reconnects,
+)
 from collection_agents.bots.copilot.config import BotCopilotConfigManager
+from collection_agents.bots.copilot.protocol import CopilotProtocolClient
 from collection_agents.bots.copilot.processors import (
     AICopilotVADProcessor,
     ConditionalProcessor,
@@ -28,10 +32,7 @@ from collection_agents.bots.copilot.services import (
     create_stt_service,
     create_tts_service,
 )
-from collection_agents.transport.websocket_safe_send import (
-    harden_pipecat_websocket_transport,
-    safe_send_ws_message,
-)
+from collection_agents.transport.websocket_safe_send import harden_pipecat_websocket_transport
 
 # Third-party imports
 from openai.types.chat import ChatCompletionToolParam
@@ -188,44 +189,8 @@ async def run_copilot_bot_beta(websocket, event: dict[str, Any]):
         llm_service = create_llm_service(llm_config)
         attach_llm_retry_counter(llm_service, metrics_collector)
 
-        # Track TTS reconnects via on_connected event. The first connection is
-        # normal startup; subsequent connected events are reconnects.
-        if hasattr(tts_service, "event_handler"):
-            _tts_connected_once = False
-
-            @tts_service.event_handler("on_connected")
-            async def _on_tts_connected(service):
-                nonlocal _tts_connected_once
-                if _tts_connected_once:
-                    metrics_collector.increment_tts_reconnect()
-                else:
-                    _tts_connected_once = True
-
-        # Track ASR reconnects after Deepgram connection errors.
-        if hasattr(stt_service, "_connect") and hasattr(stt_service, "_on_error"):
-            _stt_reconnect_state = {
-                "saw_connection_error": False,
-            }
-            _original_stt_connect = stt_service._connect
-            _original_stt_on_error = stt_service._on_error
-
-            async def _tracked_stt_connect(self, *args, **kwargs):
-                await _original_stt_connect(*args, **kwargs)
-                if _stt_reconnect_state["saw_connection_error"]:
-                    metrics_collector.increment_asr_reconnect()
-                    logging.info(
-                        "ASR reconnect counted after Deepgram connection error. "
-                        f"asr_reconnect_count={metrics_collector.asr_reconnect_count}"
-                    )
-                    _stt_reconnect_state["saw_connection_error"] = False
-
-            async def _tracked_stt_on_error(self, *args, **kwargs):
-                _stt_reconnect_state["saw_connection_error"] = True
-                logging.warning("Deepgram connection error detected; next successful _connect will count as ASR reconnect")
-                await _original_stt_on_error(*args, **kwargs)
-
-            stt_service._connect = MethodType(_tracked_stt_connect, stt_service)
-            stt_service._on_error = MethodType(_tracked_stt_on_error, stt_service)
+        track_tts_reconnects(tts_service, metrics_collector)
+        track_stt_reconnects(stt_service, metrics_collector)
 
         system_prompt = {
             "role": "system",
@@ -366,82 +331,24 @@ async def run_copilot_bot_beta(websocket, event: dict[str, Any]):
             description="bot_copilot_beta Pipecat websocket transport send",
         )
 
+        protocol_client = CopilotProtocolClient(
+            transport=transport,
+            websocket=websocket,
+            call_uuid=call_uuid,
+            task_uuid=task_uuid,
+            business_id=business_id,
+            on_disconnect=partial(queue_end_frame, "protocol_send_disconnected"),
+        )
+        send_text_event = protocol_client.send_text
+        send_heartbeat_event = protocol_client.send_heartbeat
+        send_hangup_event = protocol_client.send_hangup
+
         async def router_hangup_cancel():
             await queue_end_frame("router_on_hangup")
 
-        async def send_protocol_event(
-            event_payload: dict[str, Any],
-            *,
-            description: str,
-        ) -> bool:
-            return await safe_send_ws_message(
-                lambda: transport.output().send_message(
-                    OutputTransportMessageUrgentFrame(message=event_payload)
-                ),
-                websocket=websocket,
-                description=description,
-                logger=logging.getLogger(__name__),
-                on_disconnect=partial(queue_end_frame, "protocol_send_disconnected"),
-            )
 
-        async def send_text_event(
-            text: str,
-            role: str = Role.ROBOT,
-            *,
-            source: str = "unknown",
-        ) -> bool:
-            """Send a protocol text event and log both the attempt and result."""
-            event_payload = create_text_event(
-                call_uuid=call_uuid,
-                task_uuid=task_uuid,
-                business_id=business_id,
-                text=text,
-                role=role,
-            )
-            logging.info(
-                "Sending copilot text event: "
-                "source=%s role=%s text=%r call_uuid=%s task_uuid=%s business_id=%s",
-                source,
-                role,
-                text,
-                call_uuid,
-                task_uuid,
-                business_id,
-            )
-            sent = await send_protocol_event(
-                event_payload,
-                description=f"copilot text event source={source} role={role}",
-            )
-            logging.info(
-                "Copilot text event send completed: "
-                "source=%s role=%s sent=%s text=%r call_uuid=%s",
-                source,
-                role,
-                sent,
-                text,
-                call_uuid,
-            )
-            return sent
 
-        async def send_heartbeat_event() -> bool:
-            return await send_protocol_event(
-                create_heartbeat_event(
-                    call_uuid=call_uuid,
-                    task_uuid=task_uuid,
-                    business_id=business_id,
-                ),
-                description="copilot heartbeat event",
-            )
 
-        async def send_hangup_event() -> bool:
-            return await send_protocol_event(
-                create_hangup_event(
-                    call_uuid=call_uuid,
-                    task_uuid=task_uuid,
-                    business_id=business_id,
-                ),
-                description="copilot hangup event",
-            )
 
         async def graceful_hangup_sequence(
             reason: str,

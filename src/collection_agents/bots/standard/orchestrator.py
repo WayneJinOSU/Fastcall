@@ -10,13 +10,18 @@ import json
 from functools import partial
 from dotenv import load_dotenv
 from collection_agents.bots.helpers import build_call_context, build_session_state
+from collection_agents.bots.no_response import NoResponseController
 from collection_agents.bots.observers import PipelineFlowWatchdog
+from collection_agents.bots.telephony import register_telephony_handlers
 from collection_agents.bots.standard.grammar import _is_confirmation_phrase
 from collection_agents.bots.standard.lifecycle import finalize_call as _finalize_call
 from collection_agents.bots.standard.services import (
     create_call_services as _create_call_services,
 )
-from collection_agents.bots.standard.voicemail import StandardVoicemailHandler
+from collection_agents.bots.standard.voicemail import (
+    StandardVoicemailHandler,
+    VoicemailAudioRepository,
+)
 from collection_agents.transport.websocket_beta import (
     CustomProtocolFrameSerializer,
     TelephonyEventRouter,
@@ -79,22 +84,10 @@ from pipecat.pipeline.task import PipelineParams, PipelineTask
 from collection_agents.metrics.collector import CallMetricsObserver
 from collection_agents.services.call_config import (
     BotV3ConfigManager,
-    coerce_positive_int,
     create_system_prompt,
     prepare_text_for_tts,
 )
-from collection_agents.services.audio_assets import (
-    DEFAULT_CARTESIA_VOICE_ID,
-    DEFAULT_LOCALE,
-    DEFAULT_MODEL,
-    SAMPLE_RATE as AUDIO_ASSET_SAMPLE_RATE,
-    TEXT_TYPE_VOICEMAIL,
-    find_audio_asset,
-    load_audio_frame,
-    load_output_sounds,
-    normalize_text as normalize_audio_asset_text,
-    split_voicemail_segments,
-)
+from collection_agents.services.audio_assets import load_output_sounds
 from collection_agents.transport.websocket_safe_send import send_hangup_signal
 from collection_agents.services.stt_local import ShadowDecodeTap
 
@@ -144,7 +137,6 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
     session_context = {}
     context = None
     tts_config = {}
-    call_uuid = ""
     task = None
     duration_monitor = None
     flow_watchdog = None
@@ -153,20 +145,16 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
     # Deepgram shadow (A/B comparison vs live Vosk). Created only when the
     # robot runs Vosk AND shadow config resolves; kept in the outer scope so
     # the finally block can stop it and persist the comparison row.
-    shadow_config = None
     shadow_decoder = None
     vosk_final_collector = None
 
     try:
         call_ctx = build_call_context(call_data)
         config_manager = call_ctx["config_manager"]
-        call_uuid = call_ctx["call_uuid"]
         variables = call_ctx["variables"]
-        voicemail_config = call_ctx["voicemail_config"]
         voicemail_action = call_ctx["voicemail_action"]
         voicemail_hangup_on_detect = call_ctx["voicemail_hangup_on_detect"]
         robot_code = call_ctx["robot_code"]
-        robot_name = call_ctx["robot_name"]
 
         async with aiohttp.ClientSession() as session:
             session_context = build_session_state(
@@ -192,7 +180,6 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
 
             # 服务创建收口在 _create_call_services（本文件上方），返回普通 dict 显式解包。
             svc = await _create_call_services(call_ctx, session_context, session, call_data)
-            asr_config = svc["asr_config"]
             tts_config = svc["tts_config"]
             llm_config = svc["llm_config"]
             stt_provider = svc["stt_provider"]
@@ -200,7 +187,6 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
             tts_service = svc["tts_service"]
             llm_service = svc["llm_service"]
             metrics_collector = svc["metrics_collector"]
-            shadow_config = svc["shadow_config"]
             shadow_decoder = svc["shadow_decoder"]
             vosk_final_collector = svc["vosk_final_collector"]
             voicemail_mode = svc["voicemail_mode"]
@@ -361,22 +347,6 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
                 description="bot_beta Pipecat websocket transport send",
             )
 
-            async def _fallback_no_response_hangup():
-                try:
-                    # Leave enough time for the configured fixed farewell to
-                    # finish playing before force-ending the call.
-                    await asyncio.sleep(20)
-                    if session_context.get("is_end"):
-                        logging.info("Skip no-response fallback hangup, already ended.")
-                        return
-                    await send_hangup_signal(websocket_client)
-                    await asyncio.sleep(0.5)
-                    await _queue_end_frame("no_response_hangup")
-                except asyncio.CancelledError:
-                    logging.info("No-response fallback hangup task cancelled.")
-                    raise
-                except Exception as exc:
-                    logging.error(f"No-response fallback hangup task error: {exc}")
 
             # Timeout monitor
             async def monitor_call_duration():
@@ -390,101 +360,42 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
                         break
 
             # Handle no response timeouts
-            @silence_detector.event_handler("on_silence_detected")
-            async def on_silence_detected(logger, silence_count):
-                if session_context["is_end"]:
-                    return
-                if session_context.get("voicemail_detected"):
-                    logging.info("Skip no-response follow-up, voicemail already detected.")
-                    return
-                if not session_context.get("on_answer"):
-                    return
-                if session_context.get("no_response_hangup_queued"):
-                    logging.info(
-                        "No-response hangup already queued, skip duplicate silence event."
-                    )
-                    return
-                if hangup_state.is_hanging_up:
-                    logging.info(
-                        "Hangup already in progress (opening silence timeout), skip silence detection."
-                    )
-                    return
 
-                local_no_response_config = config_manager.get_no_response_config()
-                max_count = coerce_positive_int(
-                    local_no_response_config.get("maxNoResponseCount", 3),
-                    default_value=3,
-                    field_name="maxNoResponseCount",
-                )
-                # Use session_context counter so that user responses (via _on_transcription)
-                # actually reset the round — the detector's cumulative silence_count never resets.
-                session_context["no_response_count"] += 1
-                no_response_round = session_context["no_response_count"]
+            async def _queue_no_response_text(text, current_round, max_count):
+                fixed_text = prepare_text_for_tts(text, tts_config, variables)
+                if not task or not fixed_text:
+                    return
                 logging.info(
-                    "No-response detected: "
-                    f"round={no_response_round}, max={max_count}, "
-                    f"configured={local_no_response_config.get('maxNoResponseCount')!r}"
+                    "Queue no-response TTS: round=%s max=%s text=%r",
+                    current_round,
+                    max_count,
+                    fixed_text,
                 )
+                preroll_frame = _build_silence_frame(WELCOME_AUDIO_PREROLL_MS)
+                if preroll_frame:
+                    await task.queue_frame(preroll_frame)
+                await task.queue_frame(LLMFullResponseStartFrame())
+                await task.queue_frame(LLMTextFrame(fixed_text))
+                await task.queue_frame(LLMFullResponseEndFrame())
 
-                if no_response_round >= max_count:
-                    hangup_config = local_no_response_config.get("noResponseHangUp") or {}
-                    if hangup_config.get("enabled", True):
-                        session_context["no_response_hangup_queued"] = True
-                        hangup_message = hangup_config.get(
-                            "hangupMessage",
-                        )
-                        fixed_hangup_text = prepare_text_for_tts(
-                            hangup_message,
-                            tts_config,
-                            variables,
-                        )
-                        logging.info(
-                            "Queue fixed no-response farewell TTS: "
-                            f"round={no_response_round}, max={max_count}, "
-                            f"text={fixed_hangup_text!r}"
-                        )
-                        if task and fixed_hangup_text:
-                            preroll_frame = _build_silence_frame(WELCOME_AUDIO_PREROLL_MS)
-                            if preroll_frame:
-                                await task.queue_frame(preroll_frame)
-                            await task.queue_frame(LLMFullResponseStartFrame())
-                            await task.queue_frame(LLMTextFrame(fixed_hangup_text))
-                            await task.queue_frame(LLMFullResponseEndFrame())
-                        if not session_context.get("no_response_hangup_task"):
-                            session_context["no_response_hangup_task"] = (
-                                asyncio.create_task(_fallback_no_response_hangup())
-                            )
-                        return
-                    else:
-                        # enabled=False: 达到 max 后停止追问，但不主动挂断
-                        logging.info(
-                            "No-response max reached, hangup disabled, stopping follow-ups: "
-                            f"round={no_response_round}, max={max_count}"
-                        )
-                        return
-
-                no_response_reply = (
-                    local_no_response_config.get("noResponseReply", "Hi, are you still here")
-                    or "Hi, are you still here"
-                )
-                fixed_no_response_text = prepare_text_for_tts(
-                    no_response_reply,
-                    tts_config,
-                    variables,
-                )
-                logging.info(
-                    "Queue fixed no-response TTS: "
-                    f"round={no_response_round}, max={max_count}, "
-                    f"text={fixed_no_response_text!r}"
-                )
-                if task and fixed_no_response_text:
-                    preroll_frame = _build_silence_frame(WELCOME_AUDIO_PREROLL_MS)
-                    if preroll_frame:
-                        await task.queue_frame(preroll_frame)
-                    await task.queue_frame(LLMFullResponseStartFrame())
-                    await task.queue_frame(LLMTextFrame(fixed_no_response_text))
-                    await task.queue_frame(LLMFullResponseEndFrame())
+            async def _on_no_response_reply(text, current_round, max_count):
+                await _queue_no_response_text(text, current_round, max_count)
                 session_context["last_bot_speak_time"] = time.time()
+
+            async def _on_no_response_hangup():
+                await send_hangup_signal(websocket_client)
+                await asyncio.sleep(0.5)
+                await _queue_end_frame("no_response_hangup")
+
+            no_response_controller = NoResponseController(
+                session_context=session_context,
+                config_manager=config_manager,
+                is_hanging_up=lambda: hangup_state.is_hanging_up,
+                on_reply=_on_no_response_reply,
+                on_farewell=_queue_no_response_text,
+                on_hangup=_on_no_response_hangup,
+            )
+            no_response_controller.register(silence_detector)
 
             # Pipeline
             pipeline_params = PipelineParams(
@@ -504,11 +415,7 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
 
             event_router = TelephonyEventRouter(cancel_task_cb=_router_hangup_cancel)
 
-            async def _on_start(frame):
-                logging.info(f"on_start: {frame.payload}")
 
-            async def _on_ring(frame):
-                logging.info(f"on_ring: {frame.payload}")
 
             async def _on_answer(frame):
                 if session_context["on_answer"]:
@@ -582,40 +489,17 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
                     # Best-effort: start() swallows its own errors.
                     await shadow_decoder.start()
 
-            async def _on_dtmf(frame):
-                logging.info(f"on_dtmf: {frame.payload}")
 
-            async def _on_stat(frame):
-                logging.debug(f"on_stat: {frame.payload}")
 
-            async def _on_talk(frame):
-                logging.debug(f"on_talk: {frame.payload}")
 
-            async def _on_hangup(frame):
-                logging.info(f"on_hangup: {frame.payload}")
-                await _queue_end_frame("event_on_hangup")
 
-            event_router.on("on_start", _on_start)
-            event_router.on("on_ring", _on_ring)
-            event_router.on("on_answer", _on_answer)
-            event_router.on("on_dtmf", _on_dtmf)
-            event_router.on("on_stat", _on_stat)
-            event_router.on("on_talk", _on_talk)
-            event_router.on("on_hangup", _on_hangup)
+            register_telephony_handlers(
+                event_router,
+                transport,
+                on_answer=_on_answer,
+                on_end=_queue_end_frame,
+            )
 
-            if hasattr(transport, "event_handler"):
-                @transport.event_handler("on_client_disconnected")
-                async def on_client_disconnected(transport_obj, client):
-                    logging.info(f"on_client_disconnected: {client}")
-                    pipecat_client = getattr(transport_obj, "_client", None)
-                    if pipecat_client:
-                        pipecat_client._closing = True
-                    await _queue_end_frame("client_disconnected")
-
-                @transport.event_handler("on_session_timeout")
-                async def on_session_timeout(transport_obj, client):
-                    logging.info(f"on_session_timeout: {client}")
-                    await _queue_end_frame("session_timeout")
 
             hangup_state = HangupState()
 
@@ -697,141 +581,16 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
                 except Exception as exc:
                     logging.warning(f"Forced Deepgram finalize failed: {exc}")
 
-            def _build_voicemail_remote_audio_config():
-                live_text, cached_text = split_voicemail_segments(fixed_voicemail_text)
-                return {
-                    "bot_code": robot_code,
-                    "provider": (tts_config.get("provider") or "cartesia").strip().lower(),
-                    "voice_id": (
-                        tts_config.get("voice_id")
-                        or DEFAULT_CARTESIA_VOICE_ID
-                    ),
-                    "model": tts_config.get("model") or DEFAULT_MODEL,
-                    "locale": tts_config.get("locale") or DEFAULT_LOCALE,
-                    "sample_rate": AUDIO_ASSET_SAMPLE_RATE,
-                    "audio_format": "wav",
-                    "text_type": TEXT_TYPE_VOICEMAIL,
-                    "live_text": live_text,
-                    "text": cached_text,
-                    "full_text": fixed_voicemail_text,
-                }
 
-            def _build_voicemail_local_audio_config(asset: dict | None):
-                if not asset:
-                    return None
-                return {
-                    "bot_code": asset.get("bot_code"),
-                    "provider": asset.get("provider"),
-                    "voice_id": asset.get("voice_id"),
-                    "model": asset.get("model"),
-                    "locale": asset.get("locale"),
-                    "sample_rate": asset.get("sample_rate"),
-                    "audio_format": asset.get("audio_format"),
-                    "text_type": asset.get("text_type"),
-                    "text_hash": asset.get("text_hash"),
-                    "text": asset.get("text"),
-                    "file_path": asset.get("file_path"),
-                    "status": asset.get("status"),
-                    "enabled": asset.get("enabled"),
-                    "fallback": asset.get("fallback"),
-                }
-
-            def _mark_voicemail_audio_playback(source: str, **kwargs):
-                playback = {
-                    "source": source,
-                    "remote": _build_voicemail_remote_audio_config(),
-                    **kwargs,
-                }
-                session_context["voicemail_audio_playback"] = playback
-                return playback
-
-            def _lookup_fixed_voicemail_audio():
-                if not fixed_voicemail_cache_enabled:
-                    _mark_voicemail_audio_playback(
-                        "live_tts",
-                        reason="cache_segment_missing",
-                    )
-                    return None
-
-                remote_config = _build_voicemail_remote_audio_config()
-                asset = find_audio_asset(robot_code)
-                if not asset:
-                    _mark_voicemail_audio_playback(
-                        "live_tts",
-                        reason="cache_miss",
-                    )
-                    logging.info(
-                        "audio_asset_miss bot_code=%s reason=cache_miss",
-                        robot_code,
-                    )
-                    return None
-
-                expected = {
-                    "provider": remote_config["provider"],
-                    "voice_id": remote_config["voice_id"],
-                    "model": remote_config["model"],
-                    "locale": remote_config["locale"],
-                    "sample_rate": remote_config["sample_rate"],
-                    "audio_format": remote_config["audio_format"],
-                    "text_type": remote_config["text_type"],
-                    "text": normalize_audio_asset_text(remote_config["text"]),
-                }
-                mismatches = []
-                for field, expected_value in expected.items():
-                    actual_value = (
-                        normalize_audio_asset_text(asset.get(field, ""))
-                        if field == "text"
-                        else asset.get(field)
-                    )
-                    if actual_value != expected_value:
-                        mismatches.append(
-                            f"{field}: expected={expected_value!r} actual={actual_value!r}"
-                        )
-
-                local_config = _build_voicemail_local_audio_config(asset)
-                if mismatches:
-                    _mark_voicemail_audio_playback(
-                        "live_tts",
-                        reason="cache_mismatch",
-                        mismatches=mismatches,
-                        local=local_config,
-                    )
-                    logging.info(
-                        "audio_asset_miss bot_code=%s reason=cache_mismatch mismatches=%s",
-                        robot_code,
-                        mismatches,
-                    )
-                    return None
-
-                try:
-                    frame = load_audio_frame(asset)
-                except Exception as exc:
-                    _mark_voicemail_audio_playback(
-                        "live_tts",
-                        reason="cache_load_failed",
-                        local=local_config,
-                    )
-                    logging.warning(
-                        "audio_asset_miss bot_code=%s reason=cache_load_failed error=%s",
-                        robot_code,
-                        exc,
-                    )
-                    return None
-
-                _mark_voicemail_audio_playback(
-                    "local_cache",
-                    local=local_config,
-                )
-                logging.info(
-                    "audio_asset_hit bot_code=%s text_hash=%s file_path=%s",
-                    robot_code,
-                    asset.get("text_hash"),
-                    asset.get("file_path"),
-                )
-                return {
-                    "asset": asset,
-                    "frame": frame,
-                }
+            voicemail_audio_repository = VoicemailAudioRepository(
+                robot_code=robot_code,
+                tts_config=tts_config,
+                text=fixed_voicemail_text,
+                cache_enabled=fixed_voicemail_cache_enabled,
+                on_playback=lambda playback: session_context.update(
+                    voicemail_audio_playback=playback
+                ),
+            )
 
             # STTPreRollMuteProcessor gates mic audio during bot speech to cut
             # Deepgram billing. Local Vosk has no per-audio cost, and gating
@@ -867,7 +626,7 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
                         if voicemail_mode == "fixed_message"
                         else None
                     ),
-                    fixed_audio_lookup=_lookup_fixed_voicemail_audio,
+                    fixed_audio_lookup=voicemail_audio_repository.find_cached_audio,
                     fixed_done_cb=_voicemail_fixed_message_done,
                 ),
                 transcription_logger,

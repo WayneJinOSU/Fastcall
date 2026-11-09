@@ -5,7 +5,6 @@ import datetime
 import hashlib
 import json
 import logging
-import os
 import time
 import traceback
 from functools import partial
@@ -54,6 +53,8 @@ from collection_agents.services.call_config import (
 )
 from collection_agents.services.audio_assets import load_output_sounds
 from collection_agents.bots.helpers import build_call_context, build_session_state
+from collection_agents.bots.no_response import NoResponseController
+from collection_agents.bots.telephony import register_telephony_handlers
 from collection_agents.bots.realtime.azure_service import (
     RealtimePromptSyncAzureLLMService,
 )
@@ -62,16 +63,15 @@ from collection_agents.bots.realtime.metrics import RealtimeCallMetricsObserver
 from collection_agents.bots.realtime.prompts import (
     build_exact_say_prompt as _build_realtime_exact_say_prompt,
     build_no_response_hangup_prompt as _build_realtime_no_response_hangup_prompt,
-    build_voice_assistant_prompt as _build_realtime_voice_assistant_prompt,
 )
 from collection_agents.bots.realtime.resources import (
     get_realtime_resource_manager as _get_realtime_resource_manager,
 )
 from collection_agents.bots.realtime.utils import (
-    _append_context_message_without_llm,
     _is_effective_realtime_transcript,
     _summarize_for_log,
 )
+from collection_agents.bots.realtime.voicemail import RealtimeVoicemailHandler
 from collection_agents.metrics.collector import CallMetricsCollector
 from collection_agents.metrics.collector import RealtimeMiniCallMetricsCollector
 from collection_agents.transport.websocket_beta import (
@@ -391,7 +391,6 @@ async def run_bot_realtime_alpha(
     session_context = {}
     context = None
     tts_config = {}
-    call_uuid = ""
     task = None
     duration_monitor = None
     llm_service = None
@@ -401,7 +400,6 @@ async def run_bot_realtime_alpha(
     try:
         call_ctx = build_call_context(call_data)
         config_manager = call_ctx["config_manager"]
-        call_uuid = call_ctx["call_uuid"]
         variables = call_ctx["variables"]
         voicemail_action = call_ctx["voicemail_action"]
         voicemail_instant_close = call_ctx["voicemail_hangup_on_detect"]
@@ -409,7 +407,6 @@ async def run_bot_realtime_alpha(
             variables.get("realtime_rnnoise_enabled", 0),
             default=False,
         )
-        robot_code = call_ctx["robot_code"]
 
         async with aiohttp.ClientSession():
             session_context = build_session_state(websocket_client, stream_sid, config_manager)
@@ -592,20 +589,6 @@ async def run_bot_realtime_alpha(
                 description="realtime_alpha Pipecat websocket transport send",
             )
 
-            async def _fallback_no_response_hangup():
-                try:
-                    await asyncio.sleep(20)
-                    if session_context.get("is_end"):
-                        logging.info("Skip no-response fallback hangup, already ended.")
-                        return
-                    await send_hangup_signal(websocket_client)
-                    await asyncio.sleep(0.5)
-                    await _queue_end_frame("no_response_hangup")
-                except asyncio.CancelledError:
-                    logging.info("No-response fallback hangup task cancelled.")
-                    raise
-                except Exception as exc:
-                    logging.error(f"No-response fallback hangup task error: {exc}")
 
             async def monitor_call_duration():
                 while True:
@@ -617,107 +600,48 @@ async def run_bot_realtime_alpha(
                         await _queue_end_frame("call_timeout")
                         break
 
-            @silence_detector.event_handler("on_silence_detected")
-            async def on_silence_detected(logger, silence_count):
-                if session_context["is_end"]:
-                    return
-                if session_context.get("voicemail_detected"):
-                    logging.info("Skip realtime no-response follow-up, voicemail already detected.")
-                    return
-                if hangup_state.is_hanging_up:
-                    logging.info("Skip realtime no-response follow-up, hangup in progress.")
-                    return
-                if not session_context.get("on_answer"):
-                    return
-                if session_context.get("no_response_hangup_queued"):
-                    logging.info(
-                        "No-response hangup already queued, skip duplicate silence."
-                    )
-                    return
 
-                local_no_response_config = config_manager.get_no_response_config()
-                max_count = coerce_positive_int(
-                    local_no_response_config.get("maxNoResponseCount", 3),
-                    default_value=3,
-                    field_name="maxNoResponseCount",
-                )
-                session_context["no_response_count"] += 1
-                no_response_round = session_context["no_response_count"]
-                logging.info(
-                    "Realtime no-response detected: round=%s max=%s configured=%r",
-                    no_response_round,
-                    max_count,
-                    local_no_response_config.get("maxNoResponseCount"),
-                )
-
-                if no_response_round >= max_count:
-                    hangup_config = local_no_response_config.get("noResponseHangUp") or {}
-                    if hangup_config.get("enabled", True):
-                        session_context["no_response_hangup_queued"] = True
-                        hangup_message = hangup_config.get(
-                            "hangupMessage",
-                            "hi ,are you still here ?",
-                        ) or "hi ,are you still here ?"
-                        locale = tts_config.get("locale", "es-MX")
-                        final_prompt = {
-                            "role": "system",
-                            "content": _build_realtime_no_response_hangup_prompt(
-                                locale,
-                                hangup_message,
-                            ),
-                        }
-                        logging.info(
-                            "Realtime no-response max reached: round=%s max=%s",
-                            no_response_round,
-                            max_count,
-                        )
-                        if llm_service:
-                            await llm_service.append_context_message_and_create_response(
-                                context,
-                                final_prompt,
-                            )
-                        else:
-                            context.add_message(final_prompt)
-                        if not session_context.get("no_response_hangup_task"):
-                            session_context["no_response_hangup_task"] = (
-                                asyncio.create_task(_fallback_no_response_hangup())
-                            )
-                        return
-
-                    logging.info(
-                        "No-response max reached, hangup disabled: round=%s max=%s",
-                        no_response_round,
-                        max_count,
-                    )
-                    return
-
-                no_response_reply = (
-                    local_no_response_config.get(
-                        "noResponseReply",
-                        "Hi, are you still here",
-                    )
-                    or "Hi, are you still here"
-                )
-                continue_prompt = {
-                    "role": "system",
-                    "content": _build_realtime_exact_say_prompt(
-                        tts_config.get("locale", "es-MX"),
-                        no_response_reply,
-                    ),
-                }
-                logging.info(
-                    "Realtime no-response follow-up queued: round=%s max=%s message=%r",
-                    no_response_round,
-                    max_count,
-                    no_response_reply,
-                )
+            async def _send_no_response_prompt(prompt):
                 if llm_service:
                     await llm_service.append_context_message_and_create_response(
                         context,
-                        continue_prompt,
+                        prompt,
                     )
                 else:
-                    context.add_message(continue_prompt)
+                    context.add_message(prompt)
+
+            async def _on_no_response_reply(message, current_round, max_count):
+                await _send_no_response_prompt({
+                    "role": "system",
+                    "content": _build_realtime_exact_say_prompt(
+                        tts_config.get("locale", "es-MX"),
+                        message,
+                    ),
+                })
+
+            async def _on_no_response_farewell(message, current_round, max_count):
+                await _send_no_response_prompt({
+                    "role": "system",
+                    "content": _build_realtime_no_response_hangup_prompt(
+                        tts_config.get("locale", "es-MX"),
+                        message or "hi, are you still here?",
+                    ),
+                })
+
+            async def _on_no_response_hangup():
+                await send_hangup_signal(websocket_client)
+                await asyncio.sleep(0.5)
+                await _queue_end_frame("no_response_hangup")
+
+            no_response_controller = NoResponseController(
+                session_context=session_context,
+                config_manager=config_manager,
+                is_hanging_up=lambda: hangup_state.is_hanging_up,
+                on_reply=_on_no_response_reply,
+                on_farewell=_on_no_response_farewell,
+                on_hangup=_on_no_response_hangup,
+            )
+            no_response_controller.register(silence_detector)
 
             pipeline_params = PipelineParams(
                 allow_interruptions=True,
@@ -735,11 +659,7 @@ async def run_bot_realtime_alpha(
 
             event_router = TelephonyEventRouter(cancel_task_cb=_router_hangup_cancel)
 
-            async def _on_start(frame):
-                logging.info(f"on_start: {frame.payload}")
 
-            async def _on_ring(frame):
-                logging.info(f"on_ring: {frame.payload}")
 
             async def _on_answer(frame):
                 if session_context["on_answer"]:
@@ -785,152 +705,35 @@ async def run_bot_realtime_alpha(
                 if task:
                     await task.queue_frame(LLMRunFrame())
 
-            async def _on_dtmf(frame):
-                logging.info(f"on_dtmf: {frame.payload}")
 
-            async def _on_stat(frame):
-                logging.debug(f"on_stat: {frame.payload}")
 
-            async def _on_talk(frame):
-                logging.debug(f"on_talk: {frame.payload}")
 
-            async def _on_hangup(frame):
-                logging.info(f"on_hangup: {frame.payload}")
-                await _queue_end_frame("event_on_hangup")
 
-            event_router.on("on_start", _on_start)
-            event_router.on("on_ring", _on_ring)
-            event_router.on("on_answer", _on_answer)
-            event_router.on("on_dtmf", _on_dtmf)
-            event_router.on("on_stat", _on_stat)
-            event_router.on("on_talk", _on_talk)
-            event_router.on("on_hangup", _on_hangup)
+            register_telephony_handlers(
+                event_router,
+                transport,
+                on_answer=_on_answer,
+                on_end=_queue_end_frame,
+            )
 
-            if hasattr(transport, "event_handler"):
 
-                @transport.event_handler("on_client_disconnected")
-                async def on_client_disconnected(transport_obj, client):
-                    logging.info(f"on_client_disconnected: {client}")
-                    pipecat_client = getattr(transport_obj, "_client", None)
-                    if pipecat_client:
-                        pipecat_client._closing = True
-                    await _queue_end_frame("client_disconnected")
-
-                @transport.event_handler("on_session_timeout")
-                async def on_session_timeout(transport_obj, client):
-                    logging.info(f"on_session_timeout: {client}")
-                    await _queue_end_frame("session_timeout")
 
             hangup_state = HangupState()
 
-            def _on_voicemail_detected():
-                session_context["voicemail_detected"] = True
-                session_context["no_response_count"] = 0
-                hangup_state.input_blocked = True
-                logging.info("Realtime voicemail detected; no-response follow-ups disabled.")
-                if llm_service and hasattr(llm_service, "set_audio_input_paused"):
-                    llm_service.set_audio_input_paused(True)
-                    logging.info("Realtime audio input paused after voicemail detection.")
 
-            def _record_voice_assistant_transcript(event: dict):
-                transcript = (
-                    (event or {}).get("transcript_text")
-                    or (event or {}).get("text")
-                    or ""
-                ).strip()
-                if not transcript:
-                    return
-                item_id = str((event or {}).get("item_id") or "").strip()
-                dedupe_key = item_id or transcript
-                seen_keys = session_context.setdefault(
-                    "voice_assistant_context_record_keys",
-                    set(),
-                )
-                if dedupe_key in seen_keys:
-                    return
-                seen_keys.add(dedupe_key)
-                _append_context_message_without_llm(
-                    context,
-                    {
-                        "role": "user",
-                        "content": transcript,
-                    },
-                )
-                session_context.setdefault("voice_assistant_transcripts", []).append(
-                    {
-                        "item_id": item_id,
-                        "text": transcript,
-                        "classification_detail": (event or {}).get(
-                            "classification_detail",
-                            "",
-                        ),
-                    }
-                )
-                logging.info(
-                    "Recorded realtime voice assistant transcript in local context "
-                    "without triggering normal LLM: item_id=%s text=%r",
-                    item_id,
-                    _summarize_for_log(transcript),
-                )
 
-            async def _on_voice_assistant_detected(event):
-                event = event or {}
-                if session_context.get("voicemail_detected"):
-                    logging.info(
-                        "Voice assistant detection ignored; voicemail flow already active."
-                    )
-                    return
-                _record_voice_assistant_transcript(event)
-                classification_detail = event.get("classification_detail") or "assistant"
-                is_voicemail = classification_detail == "voicemail"
-                _on_voicemail_detected()
-                logging.info(
-                    "Realtime voice assistant detected from barge-in ASR; "
-                    "queueing voicemail flow. item_id=%s detail=%s text=%r",
-                    event.get("item_id"),
-                    classification_detail,
-                    (event.get("text") or "")[:180],
-                )
-                if is_voicemail:
-                    logging.info(
-                        "Realtime voicemail detected; skip manual input_audio_buffer.commit and switch directly to forced voicemail response."
-                    )
-                if is_voicemail and voicemail_instant_close:
-                    await _voicemail_instant_close()
-                    return
-                prompt = {
-                    "role": "system",
-                    "content": _build_realtime_voice_assistant_prompt(
-                        tts_config.get("locale", "es-MX")
-                    ),
-                }
-                if llm_service:
-                    await llm_service.cancel_current_response_for_barge_in(event)
-                    await llm_service.append_context_message_and_create_response(
-                        context,
-                        prompt,
-                        priority=True,
-                        metadata={
-                            "reason": "voicemail" if is_voicemail else "voice_assistant",
-                            "item_id": event.get("item_id", ""),
-                            "classification_detail": classification_detail,
-                        },
-                    )
-                else:
-                    context.add_message(prompt)
 
-            async def _voicemail_instant_close():
-                if hangup_state.is_hanging_up:
-                    logging.info(
-                        "Voicemail instant close skipped, hangup already in progress."
-                    )
-                    return
-                hangup_state.is_hanging_up = True
-                logging.info(
-                    "Voicemail detected and instant close enabled; hanging up now."
-                )
-                await send_hangup_signal(websocket_client)
-                await _queue_end_frame("voicemail_instant_close")
+
+            realtime_voicemail_handler = RealtimeVoicemailHandler(
+                session_context=session_context,
+                context=context,
+                hangup_state=hangup_state,
+                llm_service=llm_service,
+                locale=tts_config.get("locale", "es-MX"),
+                instant_close=voicemail_instant_close,
+                on_hangup=partial(send_hangup_signal, websocket_client),
+                on_end=_queue_end_frame,
+            )
 
             # Realtime pipeline: keep only the currently tested processors active.
             # Add the commented diagnostics/gates back one by one after the
@@ -943,8 +746,8 @@ async def run_bot_realtime_alpha(
                     max_word_count=256,
                     language=language,
                     instant_close=voicemail_instant_close,
-                    instant_close_cb=_voicemail_instant_close,
-                    voice_assistant_cb=_on_voice_assistant_detected,
+                    instant_close_cb=realtime_voicemail_handler.instant_close,
+                    voice_assistant_cb=realtime_voicemail_handler.handle,
                     mode="realtime",
                 ),
                 transcript_context_persister,
@@ -953,7 +756,7 @@ async def run_bot_realtime_alpha(
                 RealtimeInputTranscriptionMonitor(
                     realtime_monitor_state,
                     delete_item_cb=_delete_realtime_conversation_item,
-                    voice_assistant_cb=_on_voice_assistant_detected,
+                    voice_assistant_cb=realtime_voicemail_handler.handle,
                     partial_barge_in_cb=_on_partial_barge_in,
                     confirmed_barge_in_cb=_on_confirmed_barge_in,
                 ),

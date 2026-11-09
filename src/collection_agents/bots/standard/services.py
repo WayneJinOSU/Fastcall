@@ -2,8 +2,11 @@ import asyncio
 import datetime
 import logging
 import time
-from types import MethodType
 
+from collection_agents.bots.service_metrics import (
+    track_stt_reconnects,
+    track_tts_reconnects,
+)
 from collection_agents.bots.standard.grammar import (
     CONFIRMATION_GRAMMAR,
     CONFIRMATION_GRAMMAR_RELEASE_SEC,
@@ -180,40 +183,8 @@ async def create_call_services(call_ctx, session_context, session, call_data):
         )
         attach_llm_retry_counter(llm_service, metrics_collector)
 
-        _tts_connected_once = False
-
-        @tts_service.event_handler("on_connected")
-        async def _on_tts_connected(service):
-            nonlocal _tts_connected_once
-            if _tts_connected_once:
-                metrics_collector.increment_tts_reconnect()
-            else:
-                _tts_connected_once = True
-
-        if hasattr(stt_service, "_connect") and hasattr(stt_service, "_on_error"):
-            _stt_reconnect_state = {
-                "saw_connection_error": False,
-            }
-            _original_stt_connect = stt_service._connect
-            _original_stt_on_error = stt_service._on_error
-
-            async def _tracked_stt_connect(self, *args, **kwargs):
-                await _original_stt_connect(*args, **kwargs)
-                if _stt_reconnect_state["saw_connection_error"]:
-                    metrics_collector.increment_asr_reconnect()
-                    logging.info(
-                        "ASR reconnect counted after Deepgram connection error. asr_reconnect_count=%d",
-                        metrics_collector.asr_reconnect_count,
-                    )
-                    _stt_reconnect_state["saw_connection_error"] = False
-
-            async def _tracked_stt_on_error(self, *args, **kwargs):
-                _stt_reconnect_state["saw_connection_error"] = True
-                logging.warning("Deepgram connection error detected; next successful _connect will count as ASR reconnect")
-                await _original_stt_on_error(*args, **kwargs)
-
-            stt_service._connect = MethodType(_tracked_stt_connect, stt_service)
-            stt_service._on_error = MethodType(_tracked_stt_on_error, stt_service)
+        track_tts_reconnects(tts_service, metrics_collector)
+        track_stt_reconnects(stt_service, metrics_collector)
 
         logging.info(
             f"🔧 TTS服务配置: provider={tts_config.get('provider')}, voice_id={tts_config.get('voice_id')}, model={tts_config.get('model')}, locale={tts_config.get('locale')}")
