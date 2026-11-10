@@ -30,7 +30,7 @@ class WebSocketConfigTests(unittest.TestCase):
         }
         run_bot = AsyncMock()
 
-        with patch("collection_agents.server.routes.run_bot_beta", run_bot):
+        with patch("collection_agents.server.routes.run_standard_bot", run_bot):
             with self.client.websocket_connect("/ws-v2") as websocket:
                 websocket.send_json(call_data)
 
@@ -56,7 +56,7 @@ class WebSocketConfigTests(unittest.TestCase):
         }
         run_bot = AsyncMock()
 
-        with patch("collection_agents.server.routes.run_copilot_bot_beta", run_bot):
+        with patch("collection_agents.server.routes.run_copilot_bot", run_bot):
             with self.client.websocket_connect("/ws-ai-copilot") as websocket:
                 websocket.send_json(event)
 

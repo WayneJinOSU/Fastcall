@@ -18,7 +18,7 @@ from collection_agents.events import (
     VoicemailDetectedFrame,
 )
 from collection_agents.processors.common.hangup import HangupState
-from collection_agents.processors.common.sanitizer import WordAwareSanitizer
+from collection_agents.processors.common.hangup_phrase_detector import HangupPhraseDetector
 from collection_agents.processors.common.voicemail_detector import VoicemailDetector
 
 
@@ -35,7 +35,7 @@ class RecordingVoicemailDetector(RecordingPushMixin, VoicemailDetector):
     pass
 
 
-class RecordingWordAwareSanitizer(RecordingPushMixin, WordAwareSanitizer):
+class RecordingHangupPhraseDetector(RecordingPushMixin, HangupPhraseDetector):
     pass
 
 
@@ -115,10 +115,10 @@ class VoicemailDetectorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(frame.event.source, "realtime")
 
 
-class WordAwareSanitizerTests(unittest.IsolatedAsyncioTestCase):
+class HangupPhraseDetectorTests(unittest.IsolatedAsyncioTestCase):
     async def test_standard_buffers_text_and_marks_hangup(self):
         state = HangupState()
-        sanitizer = RecordingWordAwareSanitizer(None, None, None, state)
+        sanitizer = RecordingHangupPhraseDetector(None, None, None, state)
 
         await sanitizer.process_frame(TextFrame("Thank you. Goodbye"), FrameDirection.DOWNSTREAM)
         self.assertFalse(state.is_hanging_up)
@@ -130,7 +130,7 @@ class WordAwareSanitizerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_realtime_ignores_duplicate_llm_text_view(self):
         state = HangupState()
-        sanitizer = RecordingWordAwareSanitizer(None, None, None, state, mode="realtime")
+        sanitizer = RecordingHangupPhraseDetector(None, None, None, state, mode="realtime")
 
         await sanitizer.process_frame(LLMTextFrame("Goodbye"), FrameDirection.DOWNSTREAM)
         await sanitizer.process_frame(LLMFullResponseEndFrame(), FrameDirection.DOWNSTREAM)
@@ -147,8 +147,8 @@ class WordAwareSanitizerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sanitizer._buffer, "")
 
     async def test_overflow_policies_remain_mode_specific(self):
-        standard = RecordingWordAwareSanitizer(None, None, None)
-        realtime = RecordingWordAwareSanitizer(None, None, None, mode="realtime")
+        standard = RecordingHangupPhraseDetector(None, None, None)
+        realtime = RecordingHangupPhraseDetector(None, None, None, mode="realtime")
         text = "word " * 199 + "Goodbye"
 
         await standard.process_frame(TextFrame(text), FrameDirection.DOWNSTREAM)

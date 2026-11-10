@@ -48,7 +48,7 @@ from pipecat.turns.user_mute import (
 )
 
 from collection_agents.services.call_config import (
-    BotV3ConfigManager,
+    CallConfigManager,
     build_first_question_content,
     coerce_positive_int,
     normalize_language_code,
@@ -58,9 +58,9 @@ from collection_agents.handlers.common.no_response import NoResponseController
 from collection_agents.handlers.realtime.voicemail import RealtimeVoicemailHandler
 from collection_agents.bots.telephony import register_telephony_handlers
 from collection_agents.bots.realtime.azure_service import (
-    RealtimePromptSyncAzureLLMService,
+    AzureRealtimeResponseCoordinator,
 )
-from collection_agents.bots.realtime.context import RealtimeTranscriptContextPersister
+from collection_agents.bots.realtime.transcript_observer import RealtimeTranscriptObserver
 from collection_agents.bots.realtime.metrics import RealtimeCallMetricsObserver
 from collection_agents.services.realtime_prompts import (
     build_exact_say_prompt as _build_realtime_exact_say_prompt,
@@ -72,9 +72,9 @@ from collection_agents.bots.realtime.resources import (
 from collection_agents.bots.realtime.utils import _is_effective_realtime_transcript
 from collection_agents.services.realtime_context import summarize_for_log as _summarize_for_log
 from collection_agents.metrics.collector import CallMetricsCollector
-from collection_agents.metrics.collector import RealtimeMiniCallMetricsCollector
-from collection_agents.transport.websocket_beta import (
-    CustomProtocolFrameSerializer,
+from collection_agents.metrics.collector import RealtimeMetricsCollector
+from collection_agents.transport.telephony_websocket import (
+    TelephonyFrameSerializer,
     TelephonyEventRouter,
 )
 from collection_agents.transport.websocket_safe_send import (
@@ -83,7 +83,7 @@ from collection_agents.transport.websocket_safe_send import (
 )
 from collection_agents.processors.common.context import ContextMessageTimestampTracker
 from collection_agents.processors.common.hangup import GracefulHangupController, HangupState
-from collection_agents.processors.common.sanitizer import WordAwareSanitizer
+from collection_agents.processors.common.hangup_phrase_detector import HangupPhraseDetector
 from collection_agents.processors.common.silence import SilenceDetector
 from collection_agents.processors.common.voicemail_detector import VoicemailDetector
 from collection_agents.processors.realtime.hangup import RealtimeHangupGate
@@ -210,7 +210,7 @@ def _build_rnnoise_filter(enabled: bool = False):
 async def _setup_realtime_call(call_ctx, session_context, websocket_client, stream_sid, realtime_rnnoise_enabled):
     """Realtime 通话设置：配置解析、Azure 资源获取、指标收集器、序列化器与传输层。
 
-    从 run_bot_realtime_alpha 抽出的设置段；返回普通 dict，主函数显式解包。
+    从 run_realtime_bot 抽出的设置段；返回普通 dict，主函数显式解包。
     失败时释放已获取的 realtime 资源，避免泄漏。
     """
     config_manager = call_ctx["config_manager"]
@@ -231,7 +231,7 @@ async def _setup_realtime_call(call_ctx, session_context, websocket_client, stre
         realtime_asr_model = realtime_resource["asr_model"]
         realtime_voice = _select_realtime_voice(call_uuid, stream_sid)
 
-        metrics_collector = RealtimeMiniCallMetricsCollector(
+        metrics_collector = RealtimeMetricsCollector(
             call_uuid=call_uuid,
             robot_code=robot_code,
             robot_version_id=robot_version_id,
@@ -271,7 +271,7 @@ async def _setup_realtime_call(call_ctx, session_context, websocket_client, stre
             "input_transcription_events": [],
         }
         session_context["realtime_monitor_state"] = realtime_monitor_state
-        serializer = CustomProtocolFrameSerializer(
+        serializer = TelephonyFrameSerializer(
             sample_rate=REALTIME_INPUT_SAMPLE_RATE,
             channels=1,
             input_sample_rate=TELEPHONY_SAMPLE_RATE,
@@ -322,7 +322,7 @@ async def _setup_realtime_call(call_ctx, session_context, websocket_client, stre
 async def _finalize_realtime_call(call_ctx, svc, session_context, context, duration_monitor, llm_service):
     """Realtime 通话收尾：停监控/服务、释放资源、会话与纪要落库、指标落库、挂机信令。
 
-    从 run_bot_realtime_alpha 的 finally 段抽出；svc / call_ctx 允许为 None。
+    从 run_realtime_bot 的 finally 段抽出；svc / call_ctx 允许为 None。
     """
     call_ctx = call_ctx or {}
     svc = svc or {}
@@ -353,7 +353,7 @@ async def _finalize_realtime_call(call_ctx, svc, session_context, context, durat
     if realtime_resource:
         await _get_realtime_resource_manager().release(realtime_resource)
 
-    logging.info("finally - realtime_alpha")
+    logging.info("finally - realtime")
     await send_hangup_signal(websocket_client)
 
     if metrics_collector:
@@ -364,7 +364,7 @@ async def _finalize_realtime_call(call_ctx, svc, session_context, context, durat
         metrics_collector.save_to_db()
 
 
-async def run_bot_realtime_alpha(
+async def run_realtime_bot(
     websocket_client,
     stream_sid,
     call_data,
@@ -426,7 +426,7 @@ async def run_bot_realtime_alpha(
             allow_interruptions = svc["allow_interruptions"]
 
             # Create system prompt from configuration. Keep this identical to
-            # bot_beta.py because realtime_alpha receives the same call_data.
+            # standard.py because realtime receives the same call_data.
             system_prompt_content = (
                 llm_config.get("prompt", "") or config_manager.get_prompt_config() or ""
             )
@@ -453,7 +453,7 @@ async def run_bot_realtime_alpha(
                 transcription_model=realtime_asr_model,
                 allow_interruptions=allow_interruptions,
             )
-            llm_service = RealtimePromptSyncAzureLLMService(
+            llm_service = AzureRealtimeResponseCoordinator(
                 api_key=realtime_resource["api_key"],
                 base_url=realtime_url,
                 model=realtime_model,
@@ -491,7 +491,7 @@ async def run_bot_realtime_alpha(
             timeout_sec = no_response_config.get("timeoutSec", 6)
             silence_detector = SilenceDetector(
                 timeout_sec=timeout_sec,
-                component="realtime_alpha",
+                component="realtime",
             )
             context_timestamp_tracker = ContextMessageTimestampTracker(context)
 
@@ -517,7 +517,7 @@ async def run_bot_realtime_alpha(
                         "final_transcription",
                     )
 
-            transcript_context_persister = RealtimeTranscriptContextPersister(
+            transcript_context_persister = RealtimeTranscriptObserver(
                 context,
                 on_transcription=_on_transcription,
             )
@@ -572,7 +572,7 @@ async def run_bot_realtime_alpha(
                     "pipecat_output_send_disconnected",
                 ),
                 logger=logging.getLogger(__name__),
-                description="realtime_alpha Pipecat websocket transport send",
+                description="realtime Pipecat websocket transport send",
             )
 
 
@@ -703,7 +703,7 @@ async def run_bot_realtime_alpha(
                     realtime_monitor_state,
                     on_bot_stopped_speaking_cb=llm_service._drain_pending_forced_responses,
                 ),
-                WordAwareSanitizer(
+                HangupPhraseDetector(
                     config_manager=config_manager,
                     transport=transport,
                     websocket_client=websocket_client,
@@ -743,11 +743,11 @@ async def run_bot_realtime_alpha(
             if duration_monitor:
                 duration_monitor.cancel()
             metrics_collector.finalize(datetime.datetime.now())
-            logging.info("runner.run(task) done - realtime_alpha")
+            logging.info("runner.run(task) done - realtime")
 
     except Exception as exc:
         logging.error(traceback.format_exc())
-        logging.error(f"Error in run_bot_realtime_alpha: {exc}")
+        logging.error(f"Error in run_realtime_bot: {exc}")
         raise
     finally:
         await _finalize_realtime_call(
@@ -760,7 +760,7 @@ if __name__ == "__main__":
 
     if config.config:
         call_data = json.loads(config.config)
-        config_manager = BotV3ConfigManager(call_data)
+        config_manager = CallConfigManager(call_data)
         print("ASR Config:", config_manager.get_asr_config())
         print("TTS Config:", config_manager.get_tts_config())
         print("LLM Config:", config_manager.get_llm_config())

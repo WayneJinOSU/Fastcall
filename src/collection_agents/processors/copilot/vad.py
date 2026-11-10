@@ -9,7 +9,7 @@ from pipecat.frames.frames import (
 from pipecat.processors.frame_processor import FrameProcessor
 
 
-class AICopilotVADProcessor(FrameProcessor):
+class CopilotVADProcessor(FrameProcessor):
     """Runs VAD after the copilot protocol router has materialized audio frames."""
 
     def __init__(self, vad_analyzer, **kwargs):

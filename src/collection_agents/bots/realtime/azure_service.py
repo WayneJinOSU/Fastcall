@@ -23,7 +23,7 @@ from collection_agents.services.realtime_context import summarize_for_log as _su
 from collection_agents.metrics.collector import CallMetricsCollector
 
 
-class RealtimePromptSyncAzureLLMService(AzureRealtimeLLMService):
+class AzureRealtimeResponseCoordinator(AzureRealtimeLLMService):
     """Azure Realtime wrapper that can force responses for appended system prompts."""
 
     def __init__(

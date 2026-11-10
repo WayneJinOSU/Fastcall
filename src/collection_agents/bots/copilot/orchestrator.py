@@ -18,11 +18,11 @@ from collection_agents.bots.service_metrics import (
     track_stt_reconnects,
     track_tts_reconnects,
 )
-from collection_agents.bots.copilot.config import BotCopilotConfigManager
+from collection_agents.bots.copilot.config import CopilotConfigManager
 from collection_agents.bots.copilot.protocol import CopilotProtocolClient
-from collection_agents.handlers.copilot.hangup import CopilotWordAwareHangupProcessor
-from collection_agents.processors.copilot.conditional import ConditionalProcessor
-from collection_agents.processors.copilot.vad import AICopilotVADProcessor
+from collection_agents.handlers.copilot.hangup import CopilotHangupHandler
+from collection_agents.processors.copilot.frame_gate import ConditionalFrameGate
+from collection_agents.processors.copilot.vad import CopilotVADProcessor
 from collection_agents.bots.copilot.services import (
     create_llm_service,
     create_stt_service,
@@ -56,8 +56,8 @@ from pipecat.transports.websocket.fastapi import (
 )
 
 # Local imports
-from collection_agents.transport.fastapi_websocket_ai_copilot_beta import (
-    AICopilotEventObserver,
+from collection_agents.transport.copilot_websocket import (
+    CopilotEventObserver,
     AICopilotEventRouter,
     AICopilotFrameSerializer,
     InnerEventRouter,
@@ -83,7 +83,7 @@ COPILOT_END_FRAME_DELAY_SEC = 4.0
 #         placeholder = f"{{{{{key}}}}}"
 #         result = result.replace(placeholder, str(value))
 #     return result
-async def run_copilot_bot_beta(websocket, event: dict[str, Any]):
+async def run_copilot_bot(websocket, event: dict[str, Any]):
     """
     Run AI Copilot bot with complete Pipeline
 
@@ -108,7 +108,7 @@ async def run_copilot_bot_beta(websocket, event: dict[str, Any]):
     )
 
     # Parse configuration
-    config_manager = BotCopilotConfigManager(session_create)
+    config_manager = CopilotConfigManager(session_create)
     config = session_create.get("config", {}) or {}
     variables = config.get("variables", {}) or {}
     if not isinstance(variables, dict):
@@ -251,7 +251,7 @@ async def run_copilot_bot_beta(websocket, event: dict[str, Any]):
                 vad_audio_passthrough=True,
             ),
         )
-        copilot_vad = AICopilotVADProcessor(
+        copilot_vad = CopilotVADProcessor(
             SileroVADAnalyzer(sample_rate=8000, params=copilot_vad_params),
             name="copilot_vad",
         )
@@ -274,7 +274,7 @@ async def run_copilot_bot_beta(websocket, event: dict[str, Any]):
         timeout_sec = max(configured_timeout_sec, NO_RESPONSE_TIMEOUT_SEC_FLOOR)
         silence_detector = SilenceDetector(
             timeout_sec=timeout_sec,
-            component="bot_copilot_beta",
+            component="copilot",
         )
 
         task = None
@@ -306,7 +306,7 @@ async def run_copilot_bot_beta(websocket, event: dict[str, Any]):
                 "pipecat_output_send_disconnected",
             ),
             logger=logging.getLogger(__name__),
-            description="bot_copilot_beta Pipecat websocket transport send",
+            description="copilot Pipecat websocket transport send",
         )
 
         protocol_client = CopilotProtocolClient(
@@ -348,11 +348,11 @@ async def run_copilot_bot_beta(websocket, event: dict[str, Any]):
             forward_customer_text=True,
         )
         inner_event_router = InnerEventRouter()
-        transcription_observer = AICopilotEventObserver(
+        transcription_observer = CopilotEventObserver(
             inner_event_router,
             emit_transcription=True,
         )
-        llm_text_observer = AICopilotEventObserver(
+        llm_text_observer = CopilotEventObserver(
             inner_event_router,
             emit_llm_text=True,
         )
@@ -596,16 +596,16 @@ async def run_copilot_bot_beta(websocket, event: dict[str, Any]):
 
 
         # Create conditional processors (gate keepers)
-        llm_gate = ConditionalProcessor(
+        llm_gate = ConditionalFrameGate(
             condition_func=should_skip_llm,
             name="llm_gate"
         )
 
-        tts_gate = ConditionalProcessor(
+        tts_gate = ConditionalFrameGate(
             condition_func=should_skip_tts,
             name="tts_gate"
         )
-        hangup_sanitizer = CopilotWordAwareHangupProcessor(
+        hangup_sanitizer = CopilotHangupHandler(
             on_hangup_requested=partial(
                 graceful_hangup_sequence,
                 "end_phrase_hangup",
@@ -761,7 +761,7 @@ if __name__ == "__main__":
         }
     }
 
-    config_manager = BotCopilotConfigManager(test_session_create)
+    config_manager = CopilotConfigManager(test_session_create)
     print("ASR Config:", config_manager.get_asr_config())
     print("TTS Config:", config_manager.get_tts_config())
     print("LLM Config:", config_manager.get_llm_config())

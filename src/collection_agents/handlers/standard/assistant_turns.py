@@ -16,7 +16,7 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from pipecat.utils.string import TextPartForConcatenation, concatenate_aggregated_text
 
-class ContextSafeAssistantTurnGate(FrameProcessor):
+class AssistantTurnHandler(FrameProcessor):
     """Only commits uninterrupted assistant turns to downstream context."""
 
     def __init__(self, interruption_state: dict | None = None, *args, **kwargs):
@@ -36,7 +36,7 @@ class ContextSafeAssistantTurnGate(FrameProcessor):
                 # This only happens when the old TTS was cut short by an interruption
                 # (otherwise BotStoppedSpeakingFrame would have already cleared it).
                 logging.info(
-                    "[ContextSafeAssistantTurnGate] New LLM turn started with stale pending commit — dropping: %r",
+                    "[AssistantTurnHandler] New LLM turn started with stale pending commit — dropping: %r",
                     self._pending_commit_text[:200],
                 )
                 self._pending_commit_text = None
@@ -44,7 +44,7 @@ class ContextSafeAssistantTurnGate(FrameProcessor):
             self._interruption_state["assistant_turn_interrupted"] = False
             self._buffered_text = []
             logging.info(
-                "[ContextSafeAssistantTurnGate] Assistant turn started direction=%s",
+                "[AssistantTurnHandler] Assistant turn started direction=%s",
                 direction,
             )
             await self.push_frame(frame, direction)
@@ -54,7 +54,7 @@ class ContextSafeAssistantTurnGate(FrameProcessor):
             # Per-chunk TextFrame logs are too noisy for production INFO logs.
             # Uncomment when debugging assistant context buffering.
             # logging.debug(
-            #     "[ContextSafeAssistantTurnGate] Saw TextFrame direction=%s in_turn=%s append_to_context=%s text=%r",
+            #     "[AssistantTurnHandler] Saw TextFrame direction=%s in_turn=%s append_to_context=%s text=%r",
             #     direction,
             #     self._in_assistant_turn,
             #     getattr(frame, "append_to_context", None),
@@ -71,7 +71,7 @@ class ContextSafeAssistantTurnGate(FrameProcessor):
                 # Per-chunk TextFrame logs are too noisy for production INFO logs.
                 # Uncomment when debugging assistant context buffering.
                 # logging.debug(
-                #     "[ContextSafeAssistantTurnGate] Buffered assistant text chunk and suppressed immediate context append: %r",
+                #     "[AssistantTurnHandler] Buffered assistant text chunk and suppressed immediate context append: %r",
                 #     frame.text[:120],
                 # )
             await self.push_frame(frame, direction)
@@ -80,7 +80,7 @@ class ContextSafeAssistantTurnGate(FrameProcessor):
         if isinstance(frame, LLMFullResponseEndFrame):
             interrupted = bool(self._interruption_state.get("assistant_turn_interrupted"))
             logging.info(
-                "[ContextSafeAssistantTurnGate] Assistant turn ending direction=%s interrupted=%s buffered_chunks=%d",
+                "[AssistantTurnHandler] Assistant turn ending direction=%s interrupted=%s buffered_chunks=%d",
                 direction,
                 interrupted,
                 len(self._buffered_text),
@@ -92,13 +92,13 @@ class ContextSafeAssistantTurnGate(FrameProcessor):
                     # to detect whether the user interrupted mid-speech.
                     self._pending_commit_text = aggregated
                     logging.info(
-                        "[ContextSafeAssistantTurnGate] Holding assistant turn pending TTS completion: %r",
+                        "[AssistantTurnHandler] Holding assistant turn pending TTS completion: %r",
                         aggregated[:200],
                     )
             elif self._in_assistant_turn and interrupted:
                 dropped = concatenate_aggregated_text(self._buffered_text).strip()
                 logging.info(
-                    "[ContextSafeAssistantTurnGate] Dropping interrupted assistant turn from context: %r",
+                    "[AssistantTurnHandler] Dropping interrupted assistant turn from context: %r",
                     dropped[:200],
                 )
             self._in_assistant_turn = False
@@ -112,7 +112,7 @@ class ContextSafeAssistantTurnGate(FrameProcessor):
                 interrupted = bool(self._interruption_state.get("assistant_turn_interrupted"))
                 if not interrupted:
                     logging.info(
-                        "[ContextSafeAssistantTurnGate] TTS completed normally, committing assistant turn: %r",
+                        "[AssistantTurnHandler] TTS completed normally, committing assistant turn: %r",
                         self._pending_commit_text[:200],
                     )
                     text_frame = TextFrame(self._pending_commit_text)
@@ -121,7 +121,7 @@ class ContextSafeAssistantTurnGate(FrameProcessor):
                     await self.push_frame(LLMAssistantPushAggregationFrame(), FrameDirection.DOWNSTREAM)
                 else:
                     logging.info(
-                        "[ContextSafeAssistantTurnGate] TTS was interrupted, dropping assistant turn: %r",
+                        "[AssistantTurnHandler] TTS was interrupted, dropping assistant turn: %r",
                         self._pending_commit_text[:200],
                     )
                 self._pending_commit_text = None
@@ -131,13 +131,13 @@ class ContextSafeAssistantTurnGate(FrameProcessor):
         if isinstance(frame, (EndFrame, CancelFrame)):
             if self._pending_commit_text:
                 logging.info(
-                    "[ContextSafeAssistantTurnGate] Dropping pending commit on %s",
+                    "[AssistantTurnHandler] Dropping pending commit on %s",
                     type(frame).__name__,
                 )
                 self._pending_commit_text = None
             if self._in_assistant_turn and self._buffered_text:
                 logging.info(
-                    "[ContextSafeAssistantTurnGate] Resetting assistant turn state on %s; interrupted=%s buffered_chunks=%d",
+                    "[AssistantTurnHandler] Resetting assistant turn state on %s; interrupted=%s buffered_chunks=%d",
                     type(frame).__name__,
                     bool(self._interruption_state.get("assistant_turn_interrupted")),
                     len(self._buffered_text),

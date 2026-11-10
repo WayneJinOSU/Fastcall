@@ -13,7 +13,7 @@ from pathlib import Path
 from pipecat.frames.frames import OutputAudioRawFrame
 
 from collection_agents.services.call_config import (
-    BotV3ConfigManager,
+    CallConfigManager,
     is_voicemail_hangup_action,
     prepare_text_for_tts,
 )
@@ -187,7 +187,7 @@ def load_audio_frame(asset: dict) -> OutputAudioRawFrame:
 
 
 def _build_voicemail_audio_request(call_data: dict) -> dict | None:
-    config_manager = BotV3ConfigManager(call_data)
+    config_manager = CallConfigManager(call_data)
     config = config_manager.config if isinstance(config_manager.config, dict) else {}
     bot_code = (config.get("code") or "").strip()
     if not bot_code:
@@ -201,7 +201,7 @@ def _build_voicemail_audio_request(call_data: dict) -> dict | None:
     tts_config = config_manager.get_tts_config()
     config_variables = config.get("variables")
     config_variables = config_variables if isinstance(config_variables, dict) else {}
-    # Keep the cache source text identical to bot_beta's live voicemail text.
+    # Keep the cache source text identical to standard's live voicemail text.
     # Otherwise a template such as {{app_type}} either leaks to Cartesia or makes
     # the generated asset fail the runtime text-match check.
     raw_text = prepare_text_for_tts(

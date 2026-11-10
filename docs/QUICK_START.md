@@ -124,14 +124,14 @@ wscat -c ws://localhost:8765/ws-v2
 
 | 模式 | 文件 | 特点 | 何时使用 |
 |------|------|------|---------|
-| **标准Bot** | `bot_beta.py` | 轮转式对话，完整上下文 | 一般场景、催收电话 |
-| **实时Bot** | `realtime_alpha.py` | 流式处理，边说边听，低延迟 | 高端应用、需要快速响应 |
-| **Copilot** | `bot_copilot_beta.py` | 事件驱动，支持工具调用 | AI助手、多Agent场景 |
+| **标准Bot** | `standard.py` | 轮转式对话，完整上下文 | 一般场景、催收电话 |
+| **实时Bot** | `realtime.py` | 流式处理，边说边听，低延迟 | 高端应用、需要快速响应 |
+| **Copilot** | `copilot.py` | 事件驱动，支持工具调用 | AI助手、多Agent场景 |
 
 ### 配置四大块
 
 ```python
-# config.py 中的 BotV3ConfigManager 管理四个配置：
+# config.py 中的 CallConfigManager 管理四个配置：
 
 1. asr_config = get_asr_config()
    - provider: "deepgram"
@@ -165,26 +165,26 @@ wscat -c ws://localhost:8765/ws-v2
 ### 1. 启动标准Bot
 
 ```python
-from bot_beta import run_bot_beta
+from standard import run_standard_bot
 
 # 在 main.py 的 WebSocket 端点中
-await run_bot_beta(websocket, callee, call_data)
+await run_standard_bot(websocket, callee, call_data)
 ```
 
 ### 2. 启动实时Bot
 
 ```python
-from realtime_alpha import run_bot_realtime_alpha
+from realtime import run_realtime_bot
 
-await run_bot_realtime_alpha(websocket, callee, call_data)
+await run_realtime_bot(websocket, callee, call_data)
 ```
 
 ### 3. 自定义配置加载
 
 ```python
-from bot_beta_modules.config import BotV3ConfigManager
+from standard_modules.config import CallConfigManager
 
-config_manager = BotV3ConfigManager(call_data)
+config_manager = CallConfigManager(call_data)
 asr_config = config_manager.get_asr_config()
 tts_config = config_manager.get_tts_config()
 llm_config = config_manager.get_llm_config()
@@ -194,7 +194,7 @@ flow_config = config_manager.get_flow_config()
 ### 4. 创建LLM服务
 
 ```python
-from bot_beta_modules.services import create_llm_service
+from standard_modules.services import create_llm_service
 
 llm_service = create_llm_service(llm_config, robot_code="xxx")
 ```
@@ -202,7 +202,7 @@ llm_service = create_llm_service(llm_config, robot_code="xxx")
 ### 5. 保存通话记录
 
 ```python
-from bot_beta_modules.notes import save_conversation
+from standard_modules.notes import save_conversation
 
 await save_conversation(
     context=llm_context,
@@ -445,7 +445,7 @@ config = {
 }
 
 # 3. 启动Bot
-await run_bot_beta(websocket, callee, {
+await run_standard_bot(websocket, callee, {
   "data": {"config": config}
 })
 ```
@@ -454,7 +454,7 @@ await run_bot_beta(websocket, callee, {
 
 ```python
 # 1. 使用实时Bot模式
-await run_bot_realtime_alpha(websocket, callee, call_data)
+await run_realtime_bot(websocket, callee, call_data)
 
 # 2. 配置低延迟
 config = {
@@ -471,13 +471,13 @@ config = {
 
 ```python
 # 自动检测语言
-from bot_beta_modules.config import normalize_language_code
+from standard_modules.config import normalize_language_code
 
 locale = "es-MX"
 lang_code = normalize_language_code(locale)  # "es"
 
 # 配置对应语言的首句
-from bot_beta_modules.config import build_first_question_content
+from standard_modules.config import build_first_question_content
 first_q = build_first_question_content(locale)  # "Hola"
 ```
 
@@ -516,7 +516,7 @@ class MyCustomProcessor(FrameProcessor):
 ### 通话小结分析引擎
 
 ```python
-# bot_beta_modules/notes.py
+# standard_modules/notes.py
 
 # 默认使用内置的本地后处理工作流（collection_note/），
 # 通过 OpenAI 兼容接口完成意图分析，无需外部工作流平台。
@@ -535,14 +535,14 @@ COLLECTION_NOTE_ENGINE=post_process
 
 ### 代码入口
 - `main.py` - 服务入口点
-- `bot_beta.py` - 标准Bot实现
-- `realtime_alpha.py` - 实时Bot实现
-- `bot_copilot_beta.py` - Copilot Bot实现
+- `standard.py` - 标准Bot实现
+- `realtime.py` - 实时Bot实现
+- `copilot.py` - Copilot Bot实现
 
 ### 关键模块
-- `bot_beta_modules/config.py` - 配置管理
-- `bot_beta_modules/services.py` - 服务创建
-- `bot_beta_modules/notes.py` - 通话记录
+- `standard_modules/config.py` - 配置管理
+- `standard_modules/services.py` - 服务创建
+- `standard_modules/notes.py` - 通话记录
 - `processors_*.py` - 处理器实现
 - `my_utils/` - 工具库
 

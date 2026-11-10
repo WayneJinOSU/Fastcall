@@ -16,9 +16,9 @@ import traceback
 from fastapi import FastAPI, WebSocket
 from starlette.responses import HTMLResponse
 
-from collection_agents.bots.copilot import run_copilot_bot_beta
-from collection_agents.bots.realtime import run_bot_realtime_alpha
-from collection_agents.bots.standard import run_bot_beta
+from collection_agents.bots.copilot import run_copilot_bot
+from collection_agents.bots.realtime import run_realtime_bot
+from collection_agents.bots.standard import run_standard_bot
 from collection_agents.infra.logging import set_request_trace_code
 from collection_agents.infra.paths import PROJECT_ROOT
 
@@ -73,9 +73,9 @@ def register_routes(app: FastAPI):
                         if callee or True:  # Allow testing even without callee
                             logging.info(f"server run with {bot_type}")
                             if bot_type == "realtime_bot":
-                                await run_bot_realtime_alpha(websocket, callee or 'test', call_data)
+                                await run_realtime_bot(websocket, callee or 'test', call_data)
                             else:
-                                await run_bot_beta(websocket, callee or 'test', call_data)
+                                await run_standard_bot(websocket, callee or 'test', call_data)
 
                             break
                 except json.JSONDecodeError:
@@ -126,7 +126,7 @@ def register_routes(app: FastAPI):
                 return
 
             # Run the copilot bot with event-driven protocol
-            await run_copilot_bot_beta(websocket, event)
+            await run_copilot_bot(websocket, event)
 
         except asyncio.CancelledError:
             # Handle task cancellation when WebSocket is forcibly closed

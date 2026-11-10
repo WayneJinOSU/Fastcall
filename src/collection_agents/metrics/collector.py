@@ -470,7 +470,7 @@ class CallMetricsObserver(BaseObserver):
 
 import os
 
-class RealtimeMiniCallMetricsCollector(CallMetricsCollector):
+class RealtimeMetricsCollector(CallMetricsCollector):
     """Call metrics collector for gpt-realtime-mini audio-to-audio billing."""
 
     _DISCOUNT = 0.77

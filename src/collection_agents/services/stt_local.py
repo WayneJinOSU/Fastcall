@@ -181,7 +181,7 @@ class VoskSTTService(STTService):
         SetLogLevel(-1)
 
         # Kick off model loading immediately when constructed inside an event loop
-        # (bot_beta creates this service in async context), so the recognizer is
+        # (standard creates this service in async context), so the recognizer is
         # ready as early as possible. start() re-triggers idempotently.
         try:
             asyncio.get_running_loop()
@@ -351,7 +351,7 @@ class VoskSTTService(STTService):
 
         Kaldi's internal endpointer only fires AcceptWaveform()==True after
         ~5s of trailing silence, which makes the final transcript arrive far
-        too late for turn management (STTGatedInterruptor gives up after 3s
+        too late for turn management (STTConfirmedInterruptionGate gives up after 3s
         and the bot goes silent). Flushing with FinalResult() on VAD stop
         delivers the final within ~0.3s; Reset() starts a clean next utterance.
         """

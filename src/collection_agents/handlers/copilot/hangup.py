@@ -10,7 +10,7 @@ from pipecat.frames.frames import (
 from pipecat.processors.frame_processor import FrameProcessor
 
 
-class CopilotWordAwareHangupProcessor(FrameProcessor):
+class CopilotHangupHandler(FrameProcessor):
     """Starts the hangup flow only after the model has produced an ending phrase."""
 
     def __init__(self, *, on_hangup_requested, on_hangup_started=None, **kwargs):

@@ -16,13 +16,13 @@
 │  ┌──────────┐  ┌──────────┐  ┌───────────────────────────┐     │
 │  │ /ws-v2   │  │/ws-ai-   │  │/callback/call_record      │     │
 │  │(标准Bot) │  │copilot   │  │(回调端点)                 │     │
-│  │bot_beta  │  │Copilot   │  │                           │     │
+│  │standard  │  │Copilot   │  │                           │     │
 │  │          │  │Bot       │  │                           │     │
 │  └──────┬───┘  └────┬─────┘  └───────────┬───────────────┘     │
 │         │          │                     │                      │
 │         ▼          ▼                     ▼                      │
 │  ┌──────────────────────────┐  ┌──────────────────────────┐   │
-│  │   BotV3ConfigManager     │  │   MysqlClient            │   │
+│  │   CallConfigManager     │  │   MysqlClient            │   │
 │  │  配置管理                 │  │   数据库                 │   │
 │  └──────┬───────────────────┘  └──────────────────────────┘   │
 │         │                                                        │
@@ -62,7 +62,7 @@
 │  │ ◆ SilenceDetector     │  │                          │       │
 │  │                       │  │ ◆ HangupGate             │       │
 │  │                       │  │ ◆ VoicemailDetector      │       │
-│  │                       │  │ ◆ WordAwareSanitizer     │       │
+│  │                       │  │ ◆ HangupPhraseDetector     │       │
 │  │                       │  │ ◆ GracefulHangup        │       │
 │  │                       │  │   Controller             │       │
 │  └───────────────────────┘  └──────────────────────────┘       │
@@ -117,7 +117,7 @@
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                 标准Bot        │ 实时Bot      │  Copilot Bot  │
-│                (bot_beta)     │(realtime)    │  (copilot)    │
+│                (standard)     │(realtime)    │  (copilot)    │
 ├──────────────────────────────────────────────────────────────┤
 │ 文件大小      │    39 KB      │   84 KB      │    49 KB      │
 ├──────────────────────────────────────────────────────────────┤
@@ -165,7 +165,7 @@
            │ JSON 消息
            ▼
     ┌──────────────────────────────┐
-    │ CustomProtocolFrameSerializer│
+    │ TelephonyFrameSerializer│
     │ (帧序列化)                     │
     └──────┬───────────────────────┘
            │ Frame 流
@@ -191,7 +191,7 @@
            ▼
     ┌──────────────────────────┐
     │ 中断检测                  │
-    │ ◆ STTGatedInterruptor   │
+    │ ◆ STTConfirmedInterruptionGate   │
     │ ◆ SilenceDetector       │
     └──────┬───────────────────┘
            │
@@ -302,7 +302,7 @@
            │
            ▼
     ┌──────────────────────────────────┐
-    │ run_copilot_bot_beta()           │
+    │ run_copilot_bot()           │
     │ (启动Copilot Bot)                │
     └──────┬───────────────────────────┘
            │
@@ -379,7 +379,7 @@
 
 ```
 ┌────────────────────────────────────┐
-│  BotV3ConfigManager                │
+│  CallConfigManager                │
 │  get_llm_config()                  │
 └────────────┬───────────────────────┘
              │
@@ -591,7 +591,7 @@
           ▼
 ┌────────────────────────────────────┐
 │ 调用 save_conversation()            │
-│ (bot_beta_modules/notes.py)        │
+│ (standard_modules/notes.py)        │
 └─────────┬──────────────────────────┘
           │
           ▼
@@ -745,7 +745,7 @@
           ▼
 ┌────────────────────────────────────┐
 │ 实时模式简化版                      │
-│ RealtimeMiniCallMetricsCollector    │
+│ RealtimeMetricsCollector    │
 │                                    │
 │ ◆ 只记录关键指标                   │
 │ ◆ 降低开销                         │
@@ -811,7 +811,7 @@ Client ◄────────────────► Server
      └─ reason: "hangup"|"no_response"|...
 
 序列化器:
-  CustomProtocolFrameSerializer
+  TelephonyFrameSerializer
          ↓
   TelephonyEventRouter
          ↓

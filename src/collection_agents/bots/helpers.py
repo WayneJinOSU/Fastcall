@@ -8,14 +8,14 @@
 import time
 
 from collection_agents.services.call_config import (
-    BotV3ConfigManager,
+    CallConfigManager,
     is_voicemail_hangup_action,
 )
 
 
 def build_call_context(call_data) -> dict:
     """Extract only the technical configuration needed to run a call."""
-    config_manager = BotV3ConfigManager(call_data)
+    config_manager = CallConfigManager(call_data)
     config = call_data.get("data", {}).get("config", {})
     voicemail_config = config_manager.get_voicemail_config()
 

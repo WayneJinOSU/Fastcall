@@ -19,8 +19,8 @@
 FastAPI 服务器
     ↓
 WebSocket 端点 (3种)
-    ├─ /ws-v2              (通用Bot - bot_beta)
-    ├─ /ws-ai-copilot      (AI助手 - bot_copilot_beta)  
+    ├─ /ws-v2              (通用Bot - standard)
+    ├─ /ws-ai-copilot      (AI助手 - copilot)
     └─ 回调端点 /callback/call_record
     
 Bot Pipeline 架构:
@@ -28,9 +28,9 @@ Bot Pipeline 架构:
     ├─ LLM (语言模型) → OpenRouter/Azure/OpenAI
     ├─ TTS (语音合成) → Cartesia/ElevenLabs
     └─ 3种 Bot 实现
-        ├─ 标准Bot (bot_beta.py) - 异步轮转式
-        ├─ 实时Bot (realtime_alpha.py) - 边说边听
-        └─ Copilot Bot (bot_copilot_beta.py) - 事件驱动
+        ├─ 标准Bot (standard.py) - 异步轮转式
+        ├─ 实时Bot (realtime.py) - 边说边听
+        └─ Copilot Bot (copilot.py) - 事件驱动
 ```
 
 ---
@@ -44,9 +44,9 @@ collection-agents/
 ├── sentry_config.py                  # Sentry 错误追踪配置
 │
 ├── 【核心Bot实现】
-├── bot_beta.py                       # 标准Bot (异步轮转)
-├── realtime_alpha.py                 # 实时Bot (流式交互)
-├── bot_copilot_beta.py               # Copilot Bot (事件驱动)
+├── standard.py                       # 标准Bot (异步轮转)
+├── realtime.py                 # 实时Bot (流式交互)
+├── copilot.py               # Copilot Bot (事件驱动)
 │
 ├── 【处理器模块】
 ├── processors_beta.py                # Beta模式自定义处理器
@@ -54,8 +54,8 @@ collection-agents/
 ├── processors_common.py              # 通用处理器 (SilenceDetector等)
 │
 ├── 【业务模块】
-├── bot_beta_modules/
-│   ├── config.py                     # 配置管理 (BotV3ConfigManager)
+├── standard_modules/
+│   ├── config.py                     # 配置管理 (CallConfigManager)
 │   ├── services.py                   # LLM/STT/TTS 服务创建
 │   ├── notes.py                      # 通话记录生成和分析 (collection_note)
 │   └── __init__.py
@@ -64,9 +64,9 @@ collection-agents/
 ├── my_utils/
 │   ├── mysql.py                      # MySQL 数据库连接
 │   ├── utc2tz.py                     # 时区转换工具
-│   ├── websocket_beta.py             # WebSocket 协议序列化
+│   ├── telephony_websocket.py             # WebSocket 协议序列化
 │   ├── websocket_safe_send.py        # WebSocket 安全发送
-│   ├── fastapi_websocket_ai_copilot_beta.py  # Copilot WebSocket协议
+│   ├── copilot_websocket.py  # Copilot WebSocket协议
 │   ├── text_normalization.py         # 文本规范化
 │   ├── words_process.py              # 数字转文字转换
 │   ├── datetime_with_tz.py           # 时间处理
@@ -178,7 +178,7 @@ sentry-sdk       # 错误追踪
   }
 }
 ```
-→ 执行 `run_bot_beta()`
+→ 执行 `run_standard_bot()`
 
 #### b) `/ws-ai-copilot` - AI助手模式 (事件驱动)
 ```python
@@ -188,7 +188,7 @@ sentry-sdk       # 错误追踪
   "session_create": {...}
 }
 ```
-→ 执行 `run_copilot_bot_beta()`
+→ 执行 `run_copilot_bot()`
 
 #### c) `/callback/call_record` - 回调端点
 - 接收任务完成回调
@@ -207,7 +207,7 @@ uvicorn main:app --host 0.0.0.0 --port 8765
 
 ## 🤖 三种Bot实现方式
 
-### Bot 1: 标准Bot (`bot_beta.py`) - 异步轮转模式
+### Bot 1: 标准Bot (`standard.py`) - 异步轮转模式
 
 **特点**:
 - 经典的"用户说→LLM思考→机器人回应"轮转模式
@@ -234,7 +234,7 @@ TTS 合成 (Cartesia)
 **关键处理器**:
 - `HangupGate` - 检测挂断信号
 - `ReplyProtectionInterruptionGate` - 中断保护
-- `STTGatedInterruptor` - STT门控中断
+- `STTConfirmedInterruptionGate` - STT门控中断
 - `SilenceDetector` - 无响应检测 (24+秒)
 - `VoicemailDetector` - 语音信箱检测
 
@@ -248,7 +248,7 @@ NO_RESPONSE_TIMEOUT = 24 sec    # 无响应超时
 
 ---
 
-### Bot 2: 实时Bot (`realtime_alpha.py`) - 流式交互模式
+### Bot 2: 实时Bot (`realtime.py`) - 流式交互模式
 
 **特点**:
 - 实时流式处理，边说边听
@@ -289,7 +289,7 @@ AZURE_LLM_1_API_VERSION = "2025-04-01-preview"
 
 ---
 
-### Bot 3: Copilot Bot (`bot_copilot_beta.py`) - 事件驱动模式
+### Bot 3: Copilot Bot (`copilot.py`) - 事件驱动模式
 
 **特点**:
 - 基于事件的协议 (类似OpenAI Realtime)
@@ -335,12 +335,12 @@ AZURE_LLM_1_API_VERSION = "2025-04-01-preview"
 
 ## ⚙️ 配置系统
 
-### BotV3ConfigManager 配置管理器 (config.py)
+### CallConfigManager 配置管理器 (config.py)
 
 从 `call_data` 中提取配置：
 
 ```python
-class BotV3ConfigManager:
+class CallConfigManager:
     
     # 1. ASR配置 (语音识别)
     get_asr_config() -> {
@@ -507,10 +507,10 @@ def create_stt_service(asr_config, robot_code, robot_name):
 3. **ReplyProtectionInterruptionGate**
    - 保护Bot回复期间的中断
 
-4. **STTGatedInterruptor**
+4. **STTConfirmedInterruptionGate**
    - 受STT状态控制的中断器
 
-5. **WordAwareSanitizer**
+5. **HangupPhraseDetector**
    - 文本规范化 (地名、数字等)
 
 6. **VoicemailDetector**
@@ -543,7 +543,7 @@ def create_stt_service(asr_config, robot_code, robot_name):
 - 通话时长
 - 响应时间 (TTFB)
 
-### RealtimeMiniCallMetricsCollector
+### RealtimeMetricsCollector
 
 实时模式的轻量级指标收集
 
@@ -551,16 +551,16 @@ def create_stt_service(asr_config, robot_code, robot_name):
 
 ## 🌐 WebSocket 协议
 
-### Beta 模式 (websocket_beta.py)
+### Beta 模式 (telephony_websocket.py)
 
 **自定义协议序列化**:
 ```python
-CustomProtocolFrameSerializer
+TelephonyFrameSerializer
     ↓
 TelephonyEventRouter (电话事件路由)
 ```
 
-### Copilot 模式 (fastapi_websocket_ai_copilot_beta.py)
+### Copilot 模式 (copilot_websocket.py)
 
 **事件驱动协议**:
 ```python
@@ -787,7 +787,7 @@ ALLOW_INTERRUPTIONS=1
     ↓
 2. 发送开始信号 (action: "start")
     ↓
-3. 服务器加载配置 (BotV3ConfigManager)
+3. 服务器加载配置 (CallConfigManager)
     ↓
 4. 初始化 STT/LLM/TTS 服务
     ↓
@@ -849,9 +849,9 @@ VoicemailDetector 监听
 ## 💡 核心特性
 
 ### 1. 多模式支持
-- ✅ 标准轮转模式 (bot_beta)
-- ✅ 流式实时模式 (realtime_alpha)
-- ✅ 事件驱动模式 (bot_copilot_beta)
+- ✅ 标准轮转模式 (standard)
+- ✅ 流式实时模式 (realtime)
+- ✅ 事件驱动模式 (copilot)
 
 ### 2. 多语言支持
 - ✅ 中文、英文、西班牙文、菲律宾语
@@ -919,11 +919,11 @@ wscat -c ws://localhost:8765/ws-v2
 
 | 文件 | 大小 | 说明 |
 |-----|-----|------|
-| bot_beta.py | 39 KB | 标准Bot实现 |
-| bot_copilot_beta.py | 49 KB | Copilot Bot |
-| realtime_alpha.py | 84 KB | 实时Bot (最复杂) |
+| standard.py | 39 KB | 标准Bot实现 |
+| copilot.py | 49 KB | Copilot Bot |
+| realtime.py | 84 KB | 实时Bot (最复杂) |
 | processors_beta.py | 36 KB | Beta处理器 |
-| bot_beta_modules/notes.py | 31 KB | 通话记录处理 |
+| standard_modules/notes.py | 31 KB | 通话记录处理 |
 | call_metrics/collector.py | 22 KB | 指标收集 |
 
 ---

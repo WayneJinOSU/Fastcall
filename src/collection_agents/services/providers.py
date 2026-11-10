@@ -50,7 +50,7 @@ def is_ali_qwen_agent(agent_name):
 
 
 def resolve_bot_llm_runtime(llm_config, agent_name, robot_code):
-    """Resolve bot_beta's effective LLM config and database platform value."""
+    """Resolve standard's effective LLM config and database platform value."""
     resolved = dict(llm_config or {})
 
     # Agent-name routing has the highest priority for private Qwen agents.

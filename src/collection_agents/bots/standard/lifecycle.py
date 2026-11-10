@@ -94,7 +94,7 @@ async def finalize_call(call_ctx, svc, session_context, context, duration_monito
         except Exception as e:
             logging.warning(f"[ShadowSTT] compare persist failed (ignored): {e}")
 
-    logging.info('finally - bot_beta')
+    logging.info('finally - standard')
     await send_hangup_signal(websocket_client)
 
     if metrics_collector:

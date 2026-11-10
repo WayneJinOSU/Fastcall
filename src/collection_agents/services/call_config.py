@@ -17,7 +17,7 @@ _FIRST_QUESTION_BY_LANGUAGE = {
 }
 
 
-class BotV3ConfigManager:
+class CallConfigManager:
     """Manages bot configuration from call_data."""
 
     def __init__(self, call_data):

@@ -100,11 +100,11 @@ wscat -c ws://localhost:8765/ws-v2
 ```
 collection-agents/
 ├── main.py                    # FastAPI 入口
-├── bot_beta.py                # 标准Bot (轮转式)
-├── realtime_alpha.py          # 实时Bot (流式)
-├── bot_copilot_beta.py        # Copilot Bot (事件驱动)
+├── standard.py                # 标准Bot (轮转式)
+├── realtime.py          # 实时Bot (流式)
+├── copilot.py        # Copilot Bot (事件驱动)
 │
-├── bot_beta_modules/          # 核心业务模块
+├── standard_modules/          # 核心业务模块
 │   ├── config.py              # 配置管理
 │   ├── services.py            # 服务创建
 │   └── notes.py               # 通话记录
@@ -132,7 +132,7 @@ collection-agents/
 
 ## 🤖 三种运行模式对比
 
-### 1. 标准Bot (`bot_beta.py`) - 轮转式交互
+### 1. 标准Bot (`standard.py`) - 轮转式交互
 
 - **工作模式**：用户说 → 识别 → LLM思考 → 回复
 - **适用场景**：催收电话、客服咨询等通用场景
@@ -143,7 +143,7 @@ collection-agents/
 WebSocket → STT → LLM → TTS → 音频输出
 ```
 
-### 2. 实时Bot (`realtime_alpha.py`) - 流式交互
+### 2. 实时Bot (`realtime.py`) - 流式交互
 
 - **工作模式**：PCM 音频流 → Realtime LLM → 实时音频输出
 - **适用场景**：高端应用、需要低延迟的场景
@@ -154,7 +154,7 @@ WebSocket → STT → LLM → TTS → 音频输出
 音频流 → RNNoise降噪 → Realtime LLM → 实时TTS
 ```
 
-### 3. Copilot Bot (`bot_copilot_beta.py`) - 事件驱动
+### 3. Copilot Bot (`copilot.py`) - 事件驱动
 
 - **工作模式**：事件驱动的协议 (类似 OpenAI Realtime)
 - **适用场景**：AI助手、多Agent协作
@@ -173,10 +173,10 @@ WebSocket → STT → LLM → TTS → 音频输出
 
 ### 1️⃣ 配置管理系统
 
-**BotV3ConfigManager** 管理四个配置区域：
+**CallConfigManager** 管理四个配置区域：
 
 ```python
-config = BotV3ConfigManager(call_data)
+config = CallConfigManager(call_data)
 
 # ASR 配置
 asr = config.get_asr_config()
@@ -375,7 +375,7 @@ curl http://localhost:8765/state/up
 
 ### Q3: 如何支持新语言？
 
-编辑 `bot_beta_modules/config.py` 中的 `_FIRST_QUESTION_BY_LANGUAGE`
+编辑 `standard_modules/config.py` 中的 `_FIRST_QUESTION_BY_LANGUAGE`
 
 ### Q4: 通话小结分析用的是什么引擎？
 

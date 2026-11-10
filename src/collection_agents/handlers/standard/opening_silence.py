@@ -14,7 +14,7 @@ from pipecat.frames.frames import (
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 
-class OpeningSilenceTimeoutProcessor(FrameProcessor):
+class OpeningSilenceHandler(FrameProcessor):
     """Hangs up only when BOTH conditions are met (AND logic):
       - No UserStartedSpeakingFrame within `opening_timeout` seconds of the first BotStartedSpeakingFrame
       - No UserStartedSpeakingFrame within `post_stop_timeout` seconds of the first BotStoppedSpeakingFrame
@@ -74,7 +74,7 @@ class OpeningSilenceTimeoutProcessor(FrameProcessor):
     async def _maybe_hangup(self, label: str):
         if self._opening_fired and self._post_stop_fired:
             logging.warning(
-                "[OpeningSilenceTimeoutProcessor] Both timers fired (opening=%.1fs, post_stop=%.1fs), triggering hangup",
+                "[OpeningSilenceHandler] Both timers fired (opening=%.1fs, post_stop=%.1fs), triggering hangup",
                 self._opening_timeout,
                 self._post_stop_timeout,
             )

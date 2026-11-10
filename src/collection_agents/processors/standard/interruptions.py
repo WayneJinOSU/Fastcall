@@ -79,7 +79,7 @@ class ReplyProtectionInterruptionGate(FrameProcessor):
 
         await self.push_frame(frame, direction)
 
-class STTGatedInterruptor(FrameProcessor):
+class STTConfirmedInterruptionGate(FrameProcessor):
     """只有 STT 确认有效转录文本后，才放行 UserStartedSpeakingFrame/UserStoppedSpeakingFrame。
 
     防止线路噪音被 VAD 误判为用户说话，从而不必要地打断 bot。
@@ -115,7 +115,7 @@ class STTGatedInterruptor(FrameProcessor):
             now = time.monotonic()
             if self._last_released_at and (now - self._last_released_at) < self._interruption_cooldown_sec:
                 logging.info(
-                    "[STTGatedInterruptor] Suppressing repeated interruption within cooldown: elapsed=%.3fs cooldown=%.3fs",
+                    "[STTConfirmedInterruptionGate] Suppressing repeated interruption within cooldown: elapsed=%.3fs cooldown=%.3fs",
                     now - self._last_released_at,
                     self._interruption_cooldown_sec,
                 )
@@ -139,7 +139,7 @@ class STTGatedInterruptor(FrameProcessor):
         if type(frame).__name__ == "InterimTranscriptionFrame":
             if self._waiting and len(frame.text.strip()) >= self._min_interim_chars:
                 logging.info(
-                    "[STTGatedInterruptor] Interim result confirms real speech (%d chars), releasing held frames",
+                    "[STTConfirmedInterruptionGate] Interim result confirms real speech (%d chars), releasing held frames",
                     len(frame.text.strip()),
                 )
                 self._cancel_timeout()
@@ -160,11 +160,11 @@ class STTGatedInterruptor(FrameProcessor):
                     await self._release_pending()
                 else:
                     # Empty final result (noise): discard held frames
-                    logging.debug("[STTGatedInterruptor] Empty transcription, discarding held speaking frames")
+                    logging.debug("[STTConfirmedInterruptionGate] Empty transcription, discarding held speaking frames")
                     self._discard_pending()
             elif self._suppress_current_turn:
                 self._suppress_current_turn = False
-                logging.info("[STTGatedInterruptor] Suppressing TranscriptionFrame for suppressed turn")
+                logging.info("[STTConfirmedInterruptionGate] Suppressing TranscriptionFrame for suppressed turn")
                 return
             await self.push_frame(frame, direction)
             return
@@ -209,7 +209,7 @@ class STTGatedInterruptor(FrameProcessor):
         try:
             await asyncio.sleep(self._timeout)
             if self._waiting:
-                logging.info("[STTGatedInterruptor] Timeout: no valid STT, discarding held frames")
+                logging.info("[STTConfirmedInterruptionGate] Timeout: no valid STT, discarding held frames")
                 self._discard_pending()
                 self._waiting = False
                 self._suppress_current_turn = True  # suppress any late-arriving TranscriptionFrame

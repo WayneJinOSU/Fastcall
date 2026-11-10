@@ -20,8 +20,8 @@ from collection_agents.bots.standard.services import (
     create_call_services as _create_call_services,
 )
 from collection_agents.services.voicemail_audio_repository import VoicemailAudioRepository
-from collection_agents.transport.websocket_beta import (
-    CustomProtocolFrameSerializer,
+from collection_agents.transport.telephony_websocket import (
+    TelephonyFrameSerializer,
     TelephonyEventRouter,
 )
 from collection_agents.transport.websocket_safe_send import harden_pipecat_websocket_transport
@@ -44,20 +44,20 @@ from pipecat.turns.user_mute import (
     AlwaysUserMuteStrategy,
     FunctionCallUserMuteStrategy,
 )
-from collection_agents.handlers.standard.assistant_turns import ContextSafeAssistantTurnGate
-from collection_agents.handlers.standard.opening_silence import OpeningSilenceTimeoutProcessor
+from collection_agents.handlers.standard.assistant_turns import AssistantTurnHandler
+from collection_agents.handlers.standard.opening_silence import OpeningSilenceHandler
 from collection_agents.processors.common.context import ContextMessageTimestampTracker
 from collection_agents.processors.common.hangup import GracefulHangupController, HangupState
-from collection_agents.processors.common.sanitizer import WordAwareSanitizer
+from collection_agents.processors.common.hangup_phrase_detector import HangupPhraseDetector
 from collection_agents.processors.common.silence import SilenceDetector
 from collection_agents.processors.common.voicemail_detector import VoicemailDetector
 from collection_agents.processors.standard.hangup import HangupGate
 from collection_agents.processors.standard.interruptions import (
     ReplyProtectionInterruptionGate,
-    STTGatedInterruptor,
+    STTConfirmedInterruptionGate,
 )
 from collection_agents.processors.standard.logging import FrameLogger, TranscriptionLogger
-from collection_agents.processors.standard.stt_preroll import STTPreRollMuteProcessor
+from collection_agents.processors.standard.stt_preroll_gate import STTPrerollGate
 
 from pipecat.frames.frames import (
     LLMFullResponseEndFrame,
@@ -73,7 +73,7 @@ from pipecat.pipeline.task import PipelineParams, PipelineTask
 
 from collection_agents.metrics.collector import CallMetricsObserver
 from collection_agents.services.call_config import (
-    BotV3ConfigManager,
+    CallConfigManager,
     create_system_prompt,
     prepare_text_for_tts,
 )
@@ -109,7 +109,7 @@ def _build_silence_frame(duration_ms: int, sample_rate: int = 8000, channels: in
     )
 
 
-async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180):
+async def run_standard_bot(websocket_client, stream_sid, call_data, call_timeout=180):
     """Run bot with v3 configuration system - fixes assistant message recording"""
     call_ctx = None
     svc = None
@@ -175,7 +175,7 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
             _rearm_grammar_release_timer = svc["rearm_grammar_release_timer"]
 
             allow_interruptions = _get_env_bool("ALLOW_INTERRUPTIONS", default=False)
-            serializer = CustomProtocolFrameSerializer(
+            serializer = TelephonyFrameSerializer(
                 sample_rate=8000,
                 channels=1,
                 input_sample_rate=8000,
@@ -296,7 +296,7 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
             context_timestamp_tracker = ContextMessageTimestampTracker(context)
             silence_detector = SilenceDetector(
                 timeout_sec=timeout_sec,
-                component="bot_beta",
+                component="standard",
             )
             interruption_state = {"assistant_turn_interrupted": False}
 
@@ -323,7 +323,7 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
                     "pipecat_output_send_disconnected",
                 ),
                 logger=logging.getLogger(__name__),
-                description="bot_beta Pipecat websocket transport send",
+                description="standard Pipecat websocket transport send",
             )
 
             # Timeout monitor
@@ -531,7 +531,7 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
                 ),
             )
 
-            # STTPreRollMuteProcessor gates mic audio during bot speech to cut
+            # STTPrerollGate gates mic audio during bot speech to cut
             # Deepgram billing. Local Vosk has no per-audio cost, and gating
             # starves it of the audio it needs for interim/final results (late
             # finals break interruption confirmation and leave the bot silent),
@@ -539,7 +539,7 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
             if stt_provider == "vosk":
                 pre_stt_processors = []
             else:
-                pre_stt_processors = [STTPreRollMuteProcessor()]
+                pre_stt_processors = [STTPrerollGate()]
 
             pipeline_processors = [
                 transport.input(),
@@ -569,14 +569,14 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
                     fixed_done_cb=_voicemail_fixed_message_done,
                 ),
                 transcription_logger,
-                STTGatedInterruptor(),
+                STTConfirmedInterruptionGate(),
                 silence_detector,
                 HangupGate(hangup_state),
                 user_context_aggregator,
                 HangupGate(hangup_state),
                 ReplyProtectionInterruptionGate(interruption_state=interruption_state),
                 llm_service,
-                WordAwareSanitizer(
+                HangupPhraseDetector(
                     config_manager=config_manager,
                     transport=transport,
                     websocket_client=websocket_client,
@@ -585,8 +585,8 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
                 ),
                 tts_service,
                 frame_logger,
-                ContextSafeAssistantTurnGate(interruption_state=interruption_state),
-                OpeningSilenceTimeoutProcessor(
+                AssistantTurnHandler(interruption_state=interruption_state),
+                OpeningSilenceHandler(
                     hangup_cb=_opening_silence_hangup_cb,
                     opening_timeout=15.0,
                     post_stop_timeout=10.0,
@@ -641,7 +641,7 @@ async def run_bot_beta(websocket_client, stream_sid, call_data, call_timeout=180
 
     except Exception as e:
         logging.error(traceback.format_exc())
-        logging.error(f"Error in run_bot_beta: {e}")
+        logging.error(f"Error in run_standard_bot: {e}")
         raise e
     finally:
         await _finalize_call(
@@ -657,7 +657,7 @@ if __name__ == "__main__":
     if config.config:
         call_data = json.loads(config.config)
         # Test the configuration parsing
-        config_manager = BotV3ConfigManager(call_data)
+        config_manager = CallConfigManager(call_data)
         print("ASR Config:", config_manager.get_asr_config())
         print("TTS Config:", config_manager.get_tts_config())
         print("LLM Config:", config_manager.get_llm_config())

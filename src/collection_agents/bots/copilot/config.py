@@ -6,7 +6,7 @@ LLM_MAX_RETRIES_DEFAULT = 3
 LLM_RETRY_ON_TIMEOUT_DEFAULT = True
 
 
-class BotCopilotConfigManager:
+class CopilotConfigManager:
     """Manages bot configuration from session_create data."""
 
     def __init__(self, session_create: dict[str, Any]):

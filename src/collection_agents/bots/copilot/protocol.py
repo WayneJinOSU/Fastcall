@@ -3,7 +3,7 @@ from typing import Any
 
 from pipecat.frames.frames import OutputTransportMessageUrgentFrame
 
-from collection_agents.transport.fastapi_websocket_ai_copilot_beta import (
+from collection_agents.transport.copilot_websocket import (
     Role,
     create_hangup_event,
     create_heartbeat_event,
