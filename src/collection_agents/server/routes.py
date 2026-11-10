@@ -50,38 +50,31 @@ def register_routes(app: FastAPI):
         logging.info("WebSocket connection accepted for v3")
 
         async for message in websocket.iter_text():
-            if isinstance(message, str):
-                try:
-                    call_data = json.loads(message)
+            try:
+                call_data = json.loads(message)
+                if call_data.get("action") != "start":
+                    continue
 
-                    if call_data.get("action") == "start":
-                        data = call_data.get("data", {})
+                data = call_data.get("data", {})
+                callee = str(data.get("callee", ""))[-10:]
+                config = data.get("config", {})
+                agent_name = config.get("name", "")
 
-                        callee = str(data.get("callee", ""))[-10:]
-                        business_id = data.get("businessID")
-                        agent_id = data.get("agentID", "")
+                logging.info(
+                    "call_uuid=%s callee=%s",
+                    data.get("callUUID", ""),
+                    callee,
+                )
 
-                        logging.info(f"call_uuid:{call_data.get('data', {}).get('callUUID', '')}, callee: {callee}, business_id: {business_id}, agent_id: {agent_id}")
-
-                        config = data.get("config", {})
-                        agent_name = config.get("name", "")
-
-                        bot_type = "general_bot"
-                        if "realtime" in agent_name:
-                            bot_type = "realtime_bot"
-
-                        if callee or True:  # Allow testing even without callee
-                            logging.info(f"server run with {bot_type}")
-                            if bot_type == "realtime_bot":
-                                await run_realtime_bot(websocket, callee or 'test', call_data)
-                            else:
-                                await run_standard_bot(websocket, callee or 'test', call_data)
-
-                            break
-                except json.JSONDecodeError:
-                    logging.info("Received non-JSON message, skipping...")
-            else:
-                logging.info("Received non-string message, skipping...")
+                if "realtime" in agent_name.casefold():
+                    logging.info("server run with realtime_bot")
+                    await run_realtime_bot(websocket, callee or "test", call_data)
+                else:
+                    logging.info("server run with standard_bot")
+                    await run_standard_bot(websocket, callee or "test", call_data)
+                break
+            except json.JSONDecodeError:
+                logging.info("Received non-JSON message, skipping...")
 
     @app.websocket("/ws-ai-copilot")
     async def websocket_copilot_endpoint(websocket: WebSocket):

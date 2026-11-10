@@ -41,6 +41,85 @@ class WebSocketConfigTests(unittest.TestCase):
             "Client prompt",
         )
 
+    def test_ws_v2_routes_without_business_fields(self):
+        call_data = {
+            "action": "start",
+            "data": {
+                "callee": "5215500000000",
+                "callUUID": "call-without-business",
+                "config": {"name": "standard-bot"},
+            },
+        }
+        run_standard_bot = AsyncMock()
+        run_realtime_bot = AsyncMock()
+
+        with patch(
+            "collection_agents.server.routes.run_standard_bot",
+            run_standard_bot,
+        ), patch(
+            "collection_agents.server.routes.run_realtime_bot",
+            run_realtime_bot,
+        ):
+            with self.client.websocket_connect("/ws-v2") as websocket:
+                websocket.send_json(call_data)
+
+        run_standard_bot.assert_awaited_once()
+        run_realtime_bot.assert_not_awaited()
+        self.assertEqual(
+            run_standard_bot.await_args.args[2],
+            call_data,
+        )
+
+    def test_ws_v2_routes_realtime_agent_case_insensitively(self):
+        for agent_name in ("realtime_English", "Realtime_English"):
+            with self.subTest(agent_name=agent_name):
+                call_data = {
+                    "action": "start",
+                    "data": {
+                        "callee": "5215500000000",
+                        "config": {"name": agent_name},
+                    },
+                }
+                run_standard_bot = AsyncMock()
+                run_realtime_bot = AsyncMock()
+
+                with patch(
+                    "collection_agents.server.routes.run_standard_bot",
+                    run_standard_bot,
+                ), patch(
+                    "collection_agents.server.routes.run_realtime_bot",
+                    run_realtime_bot,
+                ):
+                    with self.client.websocket_connect("/ws-v2") as websocket:
+                        websocket.send_json(call_data)
+
+                run_realtime_bot.assert_awaited_once()
+                run_standard_bot.assert_not_awaited()
+
+    def test_ws_v2_routes_standard_agent(self):
+        call_data = {
+            "action": "start",
+            "data": {
+                "callee": "5215500000000",
+                "config": {"name": "standard-English"},
+            },
+        }
+        run_standard_bot = AsyncMock()
+        run_realtime_bot = AsyncMock()
+
+        with patch(
+            "collection_agents.server.routes.run_standard_bot",
+            run_standard_bot,
+        ), patch(
+            "collection_agents.server.routes.run_realtime_bot",
+            run_realtime_bot,
+        ):
+            with self.client.websocket_connect("/ws-v2") as websocket:
+                websocket.send_json(call_data)
+
+        run_standard_bot.assert_awaited_once()
+        run_realtime_bot.assert_not_awaited()
+
     def test_copilot_passes_through_delivered_session_config(self):
         event = {
             "event_type": "action.create",
