@@ -15,6 +15,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from collection_agents.server.startup_warmup import (
+    provider_warmup_loop,
+    warm_provider_connections,
+)
+
 # Default Vosk model path used by create_stt_service (services/providers.py).
 # Override via VOSK_MODEL_PATH env if the deployment mounts the model elsewhere.
 DEFAULT_VOSK_MODEL_PATH = "/mnt/data/vosk-model-small-es-0.42"
@@ -23,6 +28,20 @@ DEFAULT_VOSK_MODEL_PATH = "/mnt/data/vosk-model-small-es-0.42"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Preheat the Vosk model at startup so the first call doesn't drop audio."""
+
+    await warm_provider_connections()
+    try:
+        warmup_interval_secs = float(
+            os.getenv("STARTUP_PROVIDER_WARMUP_INTERVAL_SECS", "900")
+        )
+    except ValueError:
+        logging.warning(
+            "Invalid STARTUP_PROVIDER_WARMUP_INTERVAL_SECS, using 900 seconds."
+        )
+        warmup_interval_secs = 900.0
+    provider_warmup_task = asyncio.create_task(
+        provider_warmup_loop(warmup_interval_secs)
+    )
 
     async def _preheat_vosk():
         model_path = os.getenv("VOSK_MODEL_PATH", DEFAULT_VOSK_MODEL_PATH)
@@ -43,5 +62,11 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        if not provider_warmup_task.done():
+            provider_warmup_task.cancel()
+            try:
+                await provider_warmup_task
+            except asyncio.CancelledError:
+                pass
         if not preheat_task.done():
             preheat_task.cancel()
