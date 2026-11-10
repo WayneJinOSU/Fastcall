@@ -4,6 +4,7 @@ import logging
 
 from pipecat.frames.frames import EndFrame
 
+from collection_agents.notes.call_notes import persist_call_artifacts
 from collection_agents.services.stt_local import save_asr_shadow_compare
 from collection_agents.transport.websocket_safe_send import send_hangup_signal
 
@@ -103,3 +104,11 @@ async def finalize_call(call_ctx, svc, session_context, context, duration_monito
     if metrics_collector:
         logging.info(f"call_metrics: {metrics_collector.to_dict()}")
         metrics_collector.save_to_db()
+
+    await persist_call_artifacts(
+        context=context,
+        call_data=call_ctx.get("call_data") or {},
+        call_uuid=call_uuid,
+        locale=(svc.get("tts_config") or {}).get("locale", ""),
+        metrics_collector=metrics_collector,
+    )

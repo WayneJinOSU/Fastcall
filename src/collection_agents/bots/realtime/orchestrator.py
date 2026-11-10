@@ -71,6 +71,7 @@ from collection_agents.bots.realtime.resources import (
 )
 from collection_agents.bots.realtime.utils import _is_effective_realtime_transcript
 from collection_agents.services.realtime_context import summarize_for_log as _summarize_for_log
+from collection_agents.notes.call_notes import persist_call_artifacts
 from collection_agents.metrics.collector import CallMetricsCollector
 from collection_agents.metrics.collector import RealtimeMetricsCollector
 from collection_agents.transport.telephony_websocket import (
@@ -362,6 +363,14 @@ async def _finalize_realtime_call(call_ctx, svc, session_context, context, durat
     if metrics_collector:
         logging.info(f"call_metrics: {metrics_collector.to_dict()}")
         metrics_collector.save_to_db()
+
+    await persist_call_artifacts(
+        context=context,
+        call_data=call_ctx.get("call_data") or {},
+        call_uuid=call_ctx.get("call_uuid", ""),
+        locale=(svc.get("tts_config") or {}).get("locale", ""),
+        metrics_collector=metrics_collector,
+    )
 
 
 async def run_realtime_bot(

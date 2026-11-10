@@ -2,7 +2,7 @@
 
 - 对话提取在 collection_agents.notes.transcripts
 - 分析工作流（LangGraph / 本地引擎）在 collection_agents.notes.workflow
-- 通话上下文落 context_log 表；纪要结果写入通话指标（process_record 表）
+- 通话上下文落 call_transcript 表；分析结果落 call_analysis 表
 """
 
 import asyncio
@@ -13,13 +13,12 @@ import os
 
 from collection_agents.notes import OpenRouterOpenAIClient, analyze_collection_dialogs
 from collection_agents.notes.transcripts import (
-    _build_context_log_params,
     build_context_messages_with_timestamps,
     extract_dialogs,
     strip_harness_prompt_system_messages,
 )
 from collection_agents.infra.env import mode
-from collection_agents.storage.db import MysqlClient
+from collection_agents.storage.call_data import save_call_analysis, save_call_transcript
 
 
 def _extract_note_request_data(call_data):
@@ -46,7 +45,13 @@ def _extract_note_request_meta(call_data):
     tenant_id_default = "100035" if is_copilot else ""
     call_uuid = ""
     if is_copilot:
-        call_uuid = str(call_data.get("call_uuid", "")).strip()
+        session_create = call_data.get("session_create", {}) or {}
+        call_uuid = str(
+            call_data.get("call_uuid")
+            or session_create.get("callUUID")
+            or session_create.get("call_uuid")
+            or ""
+        ).strip()
     else:
         call_uuid = str(config_data.get("callUUID", "")).strip()
 
@@ -71,6 +76,24 @@ def _resolve_collection_note_engine() -> str:
         engine,
     )
     return "post_process"
+
+
+def _save_analysis_result(call_uuid, analysis_type, result, success):
+    if not call_uuid:
+        logging.warning("Skipping call_analysis save because call_uuid is empty")
+        return
+    try:
+        save_call_analysis(
+            call_uuid=call_uuid,
+            analysis_type=analysis_type,
+            result=result,
+            status="success" if success else "failed",
+            schema_version="1",
+            analyzer_version="local-v1",
+            error_message=None if success else "analysis failed; fallback payload returned",
+        )
+    except Exception as exc:
+        logging.exception("Failed to save call_analysis: %s", exc)
 
 
 async def _apply_local_collection_analysis(dialogs, language, final_payload, country="mexico", engine=None):
@@ -114,7 +137,7 @@ async def _build_collection_note(
 ):
     """本地生成催收纪要（原 _send_intelligent_note，开源版去掉 HTTP 外发）。
 
-    纪要结果由调用方写入通话指标（process_record 表），不再回调外部服务。
+    纪要结果写入独立的 call_analysis 表，不再混入通话指标。
     """
     request_meta = _extract_note_request_meta(call_data)
 
@@ -131,6 +154,7 @@ async def _build_collection_note(
     engine = _resolve_collection_note_engine()
     logging.info(f"{note_type} engine selected: {engine}")
 
+    local_success = True
     if note_type == "collection_notes":
         local_success = await _apply_local_collection_analysis(
             dialogs=dialogs,
@@ -141,6 +165,13 @@ async def _build_collection_note(
         )
         if not local_success:
             logging.warning("Local collection workflow failed; using default collection note payload.")
+
+        _save_analysis_result(
+            call_uuid=request_meta["call_uuid"],
+            analysis_type=note_type,
+            result=final_payload,
+            success=local_success,
+        )
 
     return final_payload
 
@@ -214,21 +245,15 @@ async def save_conversation(
     logging.info(f"conversation_context: {json.dumps(context_messages_with_ts, indent=4, ensure_ascii=False)}")
 
     if mode != "local":
-        params = _build_context_log_params(
-            context_messages_with_ts,
-            call_uuid=call_uuid,
-            conversation_meta=conversation_meta,
-        )
-        insert_sql = """
-            INSERT INTO context_log
-            (user_name, business_id, remaining_amount, context, app_type, country, ctime1, uuid)
-            VALUES
-            (:user_name, :business_id, :remaining_amount, :context, :app_type, :country, :ctime1, :uuid)
-        """
         try:
-            MysqlClient.execute(insert_sql, params)
+            transcript_meta = conversation_meta if isinstance(conversation_meta, dict) else {}
+            save_call_transcript(
+                call_uuid=call_uuid or "",
+                messages=context_messages_with_ts,
+                language=transcript_meta.get("language") or transcript_meta.get("locale") or "",
+            )
         except Exception as exc:
-            logging.exception("Failed to save conversation context_log: %s", exc)
+            logging.exception("Failed to save call_transcript: %s", exc)
         return
 
     try:
@@ -236,6 +261,44 @@ async def save_conversation(
             json.dump(context_messages_with_ts, file, indent=2, ensure_ascii=False)
     except Exception as exc:
         logging.error(f"Error in save_conversation: {exc}")
+
+
+async def persist_call_artifacts(
+    *,
+    context,
+    call_data,
+    call_uuid,
+    locale,
+    conversation_meta=None,
+    metrics_collector=None,
+):
+    """Persist transcript and post-call analysis independently after hangup."""
+    if context is None:
+        logging.warning("Skipping post-call persistence because context is unavailable")
+        return
+
+    meta = dict(conversation_meta or {})
+    meta.setdefault("language", locale or "")
+
+    try:
+        await save_conversation(
+            context=context,
+            call_uuid=call_uuid,
+            conversation_meta=meta,
+            call_data=call_data,
+            metrics_collector=metrics_collector,
+        )
+    except Exception as exc:
+        logging.exception("Post-call transcript persistence failed: %s", exc)
+
+    try:
+        await intelligent_notes_distribution(
+            context=context,
+            call_data=call_data,
+            locale=locale or "",
+        )
+    except Exception as exc:
+        logging.exception("Post-call analysis failed: %s", exc)
 
 
 async def _test_openrouter_langgraph_real_api_collection_analysis():

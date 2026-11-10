@@ -3,7 +3,6 @@
 供纪要分发（call_notes）使用。
 """
 
-import json
 import logging
 import time
 
@@ -78,50 +77,6 @@ def strip_harness_prompt_system_messages(messages, metrics_collector=None):
         for message in messages
         if not (isinstance(message, dict) and message.get("role") == "system")
     ]
-
-
-def _first_non_empty(*values, default=""):
-    for value in values:
-        if value is None:
-            continue
-        if isinstance(value, str):
-            value = value.strip()
-            if value:
-                return value
-            continue
-        return value
-    return default
-
-
-def _build_context_log_params(
-    context_messages,
-    call_uuid=None,
-    conversation_meta=None,
-):
-    conversation_meta = conversation_meta if isinstance(conversation_meta, dict) else {}
-
-    return {
-        "user_name": _first_non_empty(
-            conversation_meta.get("user_name"),
-        ),
-        "business_id": _first_non_empty(
-            conversation_meta.get("business_id"),
-            conversation_meta.get("businessID"),
-        ),
-        "remaining_amount": _first_non_empty(
-            conversation_meta.get("remaining_amount"),
-            default=0,
-        ),
-        "context": json.dumps(context_messages, ensure_ascii=False),
-        "app_type": _first_non_empty(
-            conversation_meta.get("app_type"),
-        ),
-        "country": _first_non_empty(
-            conversation_meta.get("country"),
-        ),
-        "ctime1": int(time.time() * 1000),
-        "uuid": call_uuid,
-    }
 
 
 def extract_dialogs(context, user_speaker="user", skip_prompt_prefix=False):

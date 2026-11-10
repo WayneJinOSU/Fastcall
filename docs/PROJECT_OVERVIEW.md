@@ -580,36 +580,37 @@ InnerEventRouter
 
 ---
 
-## 🗄️ 数据库 (my_utils/mysql.py)
+## 🗄️ 数据库 (`storage/db.py`)
 
-### MysqlClient
+### DBClient
 
 ```python
-class MysqlClient:
-    @staticmethod
-    def execute(sql: str):
-        """执行SQL查询或更新"""
-        # 连接URL从环境变量读取
-        # SQLALCHEMY_DATABASE_URL
-    
-    @staticmethod
-    def query(sql: str):
-        """查询数据"""
+class DBClient:
+    @classmethod
+    def execute(cls, sql, *params):
+        """执行 SQL 查询或更新"""
+
+    @classmethod
+    def get_one(cls, sql, *params):
+        """查询一行"""
+
+    @classmethod
+    def get_many(cls, sql, *params):
+        """查询多行"""
 ```
 
-### 表结构
+`MysqlClient` 保留为兼容别名。默认使用 SQLite，也可以通过 `DATABASE_URL` 配置 MySQL。
 
-**callback_log** - 回调日志表
-```sql
-CREATE TABLE callback_log (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    callee VARCHAR(20),          # 被叫号码
-    business_id VARCHAR(50),     # 业务ID
-    data JSON,                   # 完整回调数据
-    ctime1 BIGINT,              # 时间戳 (毫秒)
-    uuid VARCHAR(50) UNIQUE     # 唯一标识
-);
-```
+### 核心表
+
+| 表 | 用途 |
+|---|---|
+| `call_record` | 通话技术指标、模型、Token、耗时和成本 |
+| `call_transcript` | 完整对话消息 |
+| `call_analysis` | 智能催记、摘要等分析结果，业务字段保存在 `result_json` |
+
+三张表通过 `call_uuid` 关联。MySQL 迁移脚本位于
+`deploy/migrations/20261110_call_record_analysis.sql`。
 
 ---
 

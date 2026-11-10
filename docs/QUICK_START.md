@@ -80,7 +80,7 @@ Harness 发送一次 `POST` 请求：回调地址通过环境变量配置——`
 }
 ```
 
-成功状态码为 2xx；5xx、网络异常和超时会按配置重试，4xx 不重试。请求失败只记录日志，不会阻断本地 `process_record` / `context_log` 保存。
+成功状态码为 2xx；5xx、网络异常和超时会按配置重试，4xx 不重试。请求失败只记录日志，不会阻断本地 `call_record` / `call_transcript` / `call_analysis` 保存。
 
 ### 4. 测试连接
 
@@ -206,9 +206,9 @@ from standard_modules.notes import save_conversation
 
 await save_conversation(
     context=llm_context,
-    call_data=call_data,
-    call_metrics=metrics,
-    route=route  # 通话路由/质量标签
+    call_uuid=call_uuid,
+    conversation_meta={"language": "es"},
+    metrics_collector=metrics,
 )
 ```
 
@@ -564,7 +564,7 @@ COLLECTION_NOTE_ENGINE=post_process
 | 更改LLM | 编辑 `config.get_llm_config()` |
 | 更改语言 | 编辑 `config.get_asr_config()` 的 locale |
 | 添加自定义处理器 | 继承 `FrameProcessor` 在 `processors_*.py` |
-| 查看通话记录 | 调用 `save_conversation()` |
+| 查看通话对话 | 调用 `save_conversation()` 或读取 `call_transcript` |
 | 收集指标 | 使用 `CallMetricsCollector` |
 | 调试问题 | 启用 `APP_DEBUG_*=1` |
 | 部署到生产 | 使用 `deploy/Dockerfile` 和 `deploy.yaml` |

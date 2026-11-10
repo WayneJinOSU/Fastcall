@@ -670,7 +670,7 @@
 │ 保存到数据库                        │
 │                                    │
 │ MysqlClient.execute(               │
-│   INSERT INTO conversation_logs   │
+│   INSERT INTO call_transcript     │
 │   ...                              │
 │ )                                  │
 │                                    │

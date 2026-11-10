@@ -295,9 +295,12 @@ class CallMetricsCollector:
         }
 
     def save_to_db(self):
-        """Insert technical metrics into process_record after finalization."""
+        """Insert technical metrics into call_record after finalization."""
         try:
             d = self.to_dict()
+            d["created_at"] = datetime.datetime.now(
+                datetime.timezone.utc
+            ).replace(tzinfo=None)
             json_fields = [
                 "technical_config", "asr_param_config", "asr_ttfb_list",
                 "llm_ttfb_list", "tts_param_config", "tts_ttfb_list",
@@ -307,7 +310,7 @@ class CallMetricsCollector:
                     d[field] = json.dumps(d[field], ensure_ascii=False)
 
             sql = text("""
-                INSERT INTO process_record (
+                INSERT INTO call_record (
                     call_uuid, bot_mode, robot_code, robot_version_id,
                     task_duration_sec, task_start_time, task_end_time,
                     is_voicemail, technical_config,
@@ -320,7 +323,7 @@ class CallMetricsCollector:
                     llm_completion_tokens, llm_cache_read_tokens,
                     tts_model_name, tts_param_config, tts_ttfb_list,
                     tts_total_output_duration, tts_total_chars,
-                    tts_reconnect_count, tts_connection_requests
+                    tts_reconnect_count, tts_connection_requests, created_at
                 ) VALUES (
                     :call_uuid, :bot_mode, :robot_code, :robot_version_id,
                     :task_duration_sec, :task_start_time, :task_end_time,
@@ -334,11 +337,11 @@ class CallMetricsCollector:
                     :llm_completion_tokens, :llm_cache_read_tokens,
                     :tts_model_name, :tts_param_config, :tts_ttfb_list,
                     :tts_total_output_duration, :tts_total_chars,
-                    :tts_reconnect_count, :tts_connection_requests
+                    :tts_reconnect_count, :tts_connection_requests, :created_at
                 )
             """)
             MysqlClient.execute(sql, d)
-            logging.info(f"process_record inserted for call_uuid={self.call_uuid}")
+            logging.info(f"call_record inserted for call_uuid={self.call_uuid}")
         except Exception as e:
             logging.error(f"save_to_db failed for call_uuid={self.call_uuid}: {e}")
 

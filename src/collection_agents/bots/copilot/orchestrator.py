@@ -67,6 +67,7 @@ from collection_agents.services.call_config import build_first_question_content,
 from collection_agents.services.providers import attach_llm_retry_counter
 from collection_agents.processors.common.silence import SilenceDetector
 from collection_agents.metrics.collector import CallMetricsCollector, CallMetricsObserver
+from collection_agents.notes.call_notes import persist_call_artifacts
 
 load_dotenv(override=True)
 
@@ -728,6 +729,14 @@ async def run_copilot_bot(websocket, event: dict[str, Any]):
         if metrics_collector is not None:
             logging.info(f"copilot call_metrics: {metrics_collector.to_dict()}")
             metrics_collector.save_to_db()
+
+        await persist_call_artifacts(
+            context=context,
+            call_data=event,
+            call_uuid=call_uuid,
+            locale=tts_config.get("locale", ""),
+            metrics_collector=metrics_collector,
+        )
 
         logging.info("Copilot bot session ended")
 
