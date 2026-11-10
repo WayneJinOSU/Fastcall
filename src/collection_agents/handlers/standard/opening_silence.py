@@ -9,7 +9,10 @@ from pipecat.frames.frames import (
     CancelFrame,
     EndFrame,
     Frame,
+    InterimTranscriptionFrame,
+    TranscriptionFrame,
     UserStartedSpeakingFrame,
+    VADUserStartedSpeakingFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -34,6 +37,8 @@ class OpeningSilenceHandler(FrameProcessor):
         self._opening_fired = False
         self._post_stop_fired = False
         self._hangup_direction = None
+        self._permanently_disarmed = False
+        self._hangup_triggered = False
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
@@ -43,7 +48,11 @@ class OpeningSilenceHandler(FrameProcessor):
             await self.push_frame(frame, direction)
             return
 
-        if isinstance(frame, BotStartedSpeakingFrame) and not self._armed:
+        if (
+            isinstance(frame, BotStartedSpeakingFrame)
+            and not self._armed
+            and not self._permanently_disarmed
+        ):
             self._armed = True
             self._hangup_direction = direction
             self._opening_task = asyncio.ensure_future(self._opening_timeout_loop())
@@ -51,7 +60,16 @@ class OpeningSilenceHandler(FrameProcessor):
         elif self._armed and isinstance(frame, BotStoppedSpeakingFrame) and self._post_stop_task is None:
             self._post_stop_task = asyncio.ensure_future(self._post_stop_timeout_loop())
 
-        elif self._armed and isinstance(frame, UserStartedSpeakingFrame):
+        elif isinstance(
+            frame,
+            (
+                VADUserStartedSpeakingFrame,
+                UserStartedSpeakingFrame,
+                TranscriptionFrame,
+                InterimTranscriptionFrame,
+            ),
+        ):
+            self._permanently_disarmed = True
             self._disarm()
 
         await self.push_frame(frame, direction)
@@ -72,7 +90,13 @@ class OpeningSilenceHandler(FrameProcessor):
         self._disarm()
 
     async def _maybe_hangup(self, label: str):
-        if self._opening_fired and self._post_stop_fired:
+        if (
+            self._armed
+            and not self._hangup_triggered
+            and self._opening_fired
+            and self._post_stop_fired
+        ):
+            self._hangup_triggered = True
             logging.warning(
                 "[OpeningSilenceHandler] Both timers fired (opening=%.1fs, post_stop=%.1fs), triggering hangup",
                 self._opening_timeout,

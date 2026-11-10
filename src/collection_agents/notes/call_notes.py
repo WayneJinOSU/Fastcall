@@ -106,7 +106,6 @@ async def _apply_local_collection_analysis(dialogs, language, final_payload, cou
             language,
             len(dialogs) if isinstance(dialogs, list) else -1,
         )
-        logging.info(f"phone call reminder llm_client: {llm_client}")
         logging.info(
             "phone call reminder llm_client type: %s",
             type(llm_client).__name__ if llm_client else None,
