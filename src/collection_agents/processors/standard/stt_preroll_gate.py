@@ -10,6 +10,9 @@ from pipecat.frames.frames import (
     Frame,
     InputAudioRawFrame,
     UserStartedSpeakingFrame,
+    UserStoppedSpeakingFrame,
+    VADUserStartedSpeakingFrame,
+    VADUserStoppedSpeakingFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -17,10 +20,9 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 class STTPrerollGate(FrameProcessor):
     """Mutes Deepgram during bot speech to reduce ASR billing cost.
 
-    Maintains a rolling audio buffer so that when a user interrupts mid-speech,
-    the buffered pre-VAD audio is replayed to Deepgram before live audio resumes.
-    This preserves STTConfirmedInterruptionGate's ability to confirm short words (e.g. "hello",
-    "si") via InterimTranscriptionFrame without requiring continuous Deepgram streaming.
+    Maintains a rolling audio buffer so that when VAD detects speech, the buffered
+    pre-VAD audio is replayed to Deepgram before live audio resumes. VAD stop
+    re-mutes STT if the bot is still speaking.
 
     Audio gating is done entirely at this processor layer (no STTMuteFrame), allowing
     a keepalive task to inject brief silence frames every _KEEPALIVE_INTERVAL seconds
@@ -42,6 +44,7 @@ class STTPrerollGate(FrameProcessor):
         super().__init__(**kwargs)
         self._sample_rate = sample_rate
         self._muted = False
+        self._bot_speaking = False
         # Buffer stores (frame, duration_secs) tuples.
         # We trim by total duration instead of frame count so large telephony frames
         # (e.g. 1s per packet) don't inflate replay volume beyond _PREROLL_MS.
@@ -78,6 +81,7 @@ class STTPrerollGate(FrameProcessor):
             return
 
         if isinstance(frame, BotStartedSpeakingFrame):
+            self._bot_speaking = True
             if not self._muted:
                 self._muted = True
                 self._mute_start = asyncio.get_event_loop().time()
@@ -87,6 +91,7 @@ class STTPrerollGate(FrameProcessor):
             return
 
         if isinstance(frame, BotStoppedSpeakingFrame):
+            self._bot_speaking = False
             if self._muted:
                 elapsed = asyncio.get_event_loop().time() - getattr(self, "_mute_start", 0)
                 self._muted_secs += elapsed
@@ -105,10 +110,9 @@ class STTPrerollGate(FrameProcessor):
             await self.push_frame(frame, direction)
             return
 
-        if isinstance(frame, UserStartedSpeakingFrame):
+        if isinstance(frame, (UserStartedSpeakingFrame, VADUserStartedSpeakingFrame)):
             if self._muted:
-                # User interrupted while bot was speaking: replay pre-roll buffer
-                # so Deepgram receives the full word including its beginning.
+                # Replay pre-roll so Deepgram receives the full word including its beginning.
                 elapsed = asyncio.get_event_loop().time() - getattr(self, "_mute_start", 0)
                 self._muted_secs += elapsed
                 self._muted = False
@@ -117,9 +121,18 @@ class STTPrerollGate(FrameProcessor):
                 for buffered_frame in self._drain_buffer():
                     await self.push_frame(buffered_frame, FrameDirection.DOWNSTREAM)
                 _logger.debug(
-                    "[STTPreRollMute] unmuted on interruption, replayed %.3fs pre-roll, saved %.2fs",
+                    "[STTPreRollMute] unmuted on user speech, replayed %.3fs pre-roll, saved %.2fs",
                     preroll_dur, elapsed,
                 )
+            await self.push_frame(frame, direction)
+            return
+
+        if isinstance(frame, (UserStoppedSpeakingFrame, VADUserStoppedSpeakingFrame)):
+            if self._bot_speaking and not self._muted:
+                self._muted = True
+                self._mute_start = asyncio.get_event_loop().time()
+                self._keepalive_task = asyncio.ensure_future(self._keepalive_loop())
+                _logger.debug("[STTPreRollMute] re-muted after user speech")
             await self.push_frame(frame, direction)
             return
 

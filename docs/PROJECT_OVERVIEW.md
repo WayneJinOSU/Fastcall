@@ -231,10 +231,10 @@ TTS 合成 (Cartesia)
 检测用户中断/无响应/挂断
 ```
 
-**关键处理器**:
+**关键处理器与轮次策略**:
 - `HangupGate` - 检测挂断信号
-- `ReplyProtectionInterruptionGate` - 中断保护
-- `STTConfirmedInterruptionGate` - STT门控中断
+- `MinWordsUserTurnStartStrategy` - 收到至少一个词的转录后才触发打断
+- `SpeechTimeoutUserTurnStopStrategy` - 根据 VAD 和转录状态结束用户轮次
 - `SilenceDetector` - 无响应检测 (24+秒)
 - `VoicemailDetector` - 语音信箱检测
 
@@ -495,7 +495,7 @@ def create_stt_service(asr_config, robot_code, robot_name):
    - 检测间隔 (默认0.5秒)
    - 事件回调: `on_silence_detected`
 
-### Beta处理器 (processors_beta.py)
+### Standard 处理器与轮次策略
 
 1. **TranscriptionLogger**
    - 记录STT结果
@@ -504,14 +504,14 @@ def create_stt_service(asr_config, robot_code, robot_name):
    - 监听挂断信号
    - 支持优雅关闭
 
-3. **ReplyProtectionInterruptionGate**
-   - 保护Bot回复期间的中断
+3. **MinWordsUserTurnStartStrategy**
+   - 收到至少一个词的 interim/final 转录后开始用户轮次并触发打断
 
-4. **STTConfirmedInterruptionGate**
-   - 受STT状态控制的中断器
+4. **SpeechTimeoutUserTurnStopStrategy**
+   - 根据 VAD 停止信号和转录状态结束用户轮次
 
 5. **HangupPhraseDetector**
-   - 文本规范化 (地名、数字等)
+   - 检测助手结束语并触发优雅挂断
 
 6. **VoicemailDetector**
    - 检测语音信箱

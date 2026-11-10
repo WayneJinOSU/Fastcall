@@ -44,7 +44,9 @@ from pipecat.turns.user_mute import (
     AlwaysUserMuteStrategy,
     FunctionCallUserMuteStrategy,
 )
-from collection_agents.handlers.standard.assistant_turns import AssistantTurnHandler
+from pipecat.turns.user_start import MinWordsUserTurnStartStrategy
+from pipecat.turns.user_stop import SpeechTimeoutUserTurnStopStrategy
+from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from collection_agents.handlers.standard.opening_silence import OpeningSilenceHandler
 from collection_agents.processors.common.context import ContextMessageTimestampTracker
 from collection_agents.processors.common.hangup import GracefulHangupController, HangupState
@@ -52,12 +54,7 @@ from collection_agents.processors.common.hangup_phrase_detector import HangupPhr
 from collection_agents.processors.common.silence import SilenceDetector
 from collection_agents.processors.common.voicemail_detector import VoicemailDetector
 from collection_agents.processors.standard.hangup import HangupGate
-from collection_agents.processors.standard.interruptions import (
-    ReplyProtectionInterruptionGate,
-    STTConfirmedInterruptionGate,
-)
 from collection_agents.processors.standard.logging import FrameLogger, TranscriptionLogger
-from collection_agents.processors.standard.stt_preroll_gate import STTPrerollGate
 
 from pipecat.frames.frames import (
     LLMFullResponseEndFrame,
@@ -95,6 +92,26 @@ def _get_env_bool(name: str, default: bool = False) -> bool:
     if normalized in {"0", "false", "no", "off"}:
         return False
     return default
+
+
+def _build_user_aggregator_params(allow_interruptions: bool):
+    return LLMUserAggregatorParams(
+        user_turn_strategies=UserTurnStrategies(
+            start=[
+                MinWordsUserTurnStartStrategy(
+                    min_words=1,
+                    use_interim=True,
+                )
+            ],
+            stop=[SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=0.6)],
+        ),
+        user_mute_strategies=(
+            [FunctionCallUserMuteStrategy()]
+            if allow_interruptions
+            else [AlwaysUserMuteStrategy(), FunctionCallUserMuteStrategy()]
+        ),
+        user_turn_stop_timeout=2.0 if allow_interruptions else 5.0,
+    )
 
 
 def _build_silence_frame(duration_ms: int, sample_rate: int = 8000, channels: int = 1):
@@ -174,7 +191,7 @@ async def run_standard_bot(websocket_client, stream_sid, call_data, call_timeout
             _release_confirmation_grammar = svc["release_confirmation_grammar"]
             _rearm_grammar_release_timer = svc["rearm_grammar_release_timer"]
 
-            allow_interruptions = _get_env_bool("ALLOW_INTERRUPTIONS", default=False)
+            allow_interruptions = _get_env_bool("ALLOW_INTERRUPTIONS", default=True)
             serializer = TelephonyFrameSerializer(
                 sample_rate=8000,
                 channels=1,
@@ -245,17 +262,8 @@ async def run_standard_bot(websocket_client, stream_sid, call_data, call_timeout
 
             message_history = [system_prompt]
 
-            # Official pipecat v0.0.104+ context + mute strategies.
             context = LLMContext(message_history)
-            user_aggregator_params = LLMUserAggregatorParams(
-                user_mute_strategies=[
-                    FunctionCallUserMuteStrategy(),
-                ] if allow_interruptions else [
-                    AlwaysUserMuteStrategy(),
-                    FunctionCallUserMuteStrategy(),
-                ],
-                user_turn_stop_timeout=2.0 if allow_interruptions else 5.0,
-            )
+            user_aggregator_params = _build_user_aggregator_params(allow_interruptions)
             context_aggregator_pair = LLMContextAggregatorPair(
                 context,
                 user_params=user_aggregator_params,
@@ -298,7 +306,6 @@ async def run_standard_bot(websocket_client, stream_sid, call_data, call_timeout
                 timeout_sec=timeout_sec,
                 component="standard",
             )
-            interruption_state = {"assistant_turn_interrupted": False}
 
             async def _serialize_frame(frame):
                 payload = serializer.serialize(frame)
@@ -531,23 +538,12 @@ async def run_standard_bot(websocket_client, stream_sid, call_data, call_timeout
                 ),
             )
 
-            # STTPrerollGate gates mic audio during bot speech to cut
-            # Deepgram billing. Local Vosk has no per-audio cost, and gating
-            # starves it of the audio it needs for interim/final results (late
-            # finals break interruption confirmation and leave the bot silent),
-            # so bypass the mute for local STT providers.
-            if stt_provider == "vosk":
-                pre_stt_processors = []
-            else:
-                pre_stt_processors = [STTPrerollGate()]
-
             pipeline_processors = [
                 transport.input(),
                 event_router,
                 # Shadow tap: mirrors mic audio into the Deepgram shadow decoder
                 # (observational only; forwards every frame unchanged).
                 *([ShadowDecodeTap(shadow_decoder)] if shadow_decoder else []),
-                *pre_stt_processors,
                 stt_service,
                 # Collects Vosk final transcripts for the end-of-call A/B row.
                 *([vosk_final_collector] if vosk_final_collector else []),
@@ -569,12 +565,10 @@ async def run_standard_bot(websocket_client, stream_sid, call_data, call_timeout
                     fixed_done_cb=_voicemail_fixed_message_done,
                 ),
                 transcription_logger,
-                STTConfirmedInterruptionGate(),
                 silence_detector,
                 HangupGate(hangup_state),
                 user_context_aggregator,
                 HangupGate(hangup_state),
-                ReplyProtectionInterruptionGate(interruption_state=interruption_state),
                 llm_service,
                 HangupPhraseDetector(
                     config_manager=config_manager,
@@ -585,7 +579,6 @@ async def run_standard_bot(websocket_client, stream_sid, call_data, call_timeout
                 ),
                 tts_service,
                 frame_logger,
-                AssistantTurnHandler(interruption_state=interruption_state),
                 OpeningSilenceHandler(
                     hangup_cb=_opening_silence_hangup_cb,
                     opening_timeout=15.0,

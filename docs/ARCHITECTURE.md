@@ -190,8 +190,8 @@
            │
            ▼
     ┌──────────────────────────┐
-    │ 中断检测                  │
-    │ ◆ STTConfirmedInterruptionGate   │
+    │ 用户轮次与无响应            │
+    │ ◆ MinWordsUserTurnStartStrategy │
     │ ◆ SilenceDetector       │
     └──────┬───────────────────┘
            │

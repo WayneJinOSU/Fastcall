@@ -350,9 +350,8 @@ class VoskSTTService(STTService):
         """Flush the recognizer as soon as the VAD says the user stopped.
 
         Kaldi's internal endpointer only fires AcceptWaveform()==True after
-        ~5s of trailing silence, which makes the final transcript arrive far
-        too late for turn management (STTConfirmedInterruptionGate gives up after 3s
-        and the bot goes silent). Flushing with FinalResult() on VAD stop
+        ~5s of trailing silence, which makes the final transcript arrive too
+        late for turn management. Flushing with FinalResult() on VAD stop
         delivers the final within ~0.3s; Reset() starts a clean next utterance.
         """
         await super()._handle_vad_user_stopped_speaking(frame)
