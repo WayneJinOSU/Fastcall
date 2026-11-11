@@ -31,3 +31,8 @@ vosk-model-*/
 *.log
 .pytest_cache/
 .coverage
+coverage/
+
+# ===== 前端构建 =====
+node_modules/
+**/dist/

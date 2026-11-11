@@ -1,0 +1,98 @@
+{
+  "catalog_version": "2026-11-10.1",
+  "runtime_profiles": [
+    {
+      "provider": "deepseek",
+      "model": "deepseek-flash",
+      "runtime_engine": "standard",
+      "runtime_adapter": "deepseek_chat",
+      "remote_runtime_supported": true,
+      "enabled": true,
+      "deprecated": false
+    },
+    {
+      "provider": "azure",
+      "model": "gpt-5.4-mini",
+      "runtime_engine": "standard",
+      "runtime_adapter": "azure_chat",
+      "remote_runtime_supported": true,
+      "enabled": true,
+      "deprecated": false
+    },
+    {
+      "provider": "azure",
+      "model": "gpt-realtime-mini",
+      "runtime_engine": "realtime",
+      "runtime_adapter": "azure_realtime",
+      "remote_runtime_supported": false,
+      "enabled": true,
+      "deprecated": false
+    },
+    {
+      "provider": "openrouter",
+      "model": "openai/gpt-4o",
+      "runtime_engine": "standard",
+      "runtime_adapter": "openai_compatible_chat",
+      "remote_runtime_supported": true,
+      "enabled": true,
+      "deprecated": false
+    }
+  ],
+  "asr": {
+    "deepgram": {
+      "enabled": true,
+      "deprecated": false,
+      "models": {
+        "nova-2": {
+          "enabled": true,
+          "deprecated": false,
+          "languages": ["en-US", "en-GB", "es-ES", "es-MX", "zh-CN", "tl-PH"]
+        }
+      },
+      "sample_rates": [8000],
+      "encodings": ["pcm_s16le"]
+    }
+  },
+  "tts": {
+    "cartesia": {
+      "enabled": true,
+      "deprecated": false,
+      "models": {
+        "sonic-2": {
+          "enabled": true,
+          "deprecated": false
+        }
+      },
+      "voices": [
+        {
+          "voice_id": "71a7ad14-091c-4e8e-a314-022ece01c121",
+          "name": "标准音色",
+          "models": ["sonic-2"],
+          "languages": ["en-US", "en-GB", "es-ES", "es-MX", "zh-CN", "tl-PH"],
+          "enabled": true,
+          "deprecated": false
+        }
+      ],
+      "sample_rates": [8000],
+      "encodings": ["pcm_s16le"]
+    }
+  },
+  "realtime": {
+    "voices": [
+      {
+        "voice_id": "alloy",
+        "name": "Alloy",
+        "languages": ["en-US", "en-GB", "es-ES", "es-MX", "zh-CN", "tl-PH"],
+        "enabled": true,
+        "deprecated": false
+      }
+    ],
+    "transcription_models": ["gpt-4o-mini-transcribe"],
+    "input_audio_formats": ["pcm16"],
+    "output_audio_formats": ["pcm16"]
+  },
+  "required_blocks": {
+    "standard": ["prompt", "variables", "asr", "llm", "tts", "flow", "call_policy"],
+    "realtime": ["prompt", "variables", "llm", "realtime", "flow", "call_policy"]
+  }
+}

@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: robot-config-service
+  namespace: ${PROJECT}
+spec:
+  replicas: ${REPLICAS}
+  selector:
+    matchLabels:
+      app: robot-config-service
+  template:
+    metadata:
+      labels:
+        app: robot-config-service
+    spec:
+      containers:
+        - name: robot-config-service
+          image: ${IMAGE}
+          ports:
+            - containerPort: 8766
+          env:
+            - name: APP_ENV
+              value: ${APP_ENV}
+          envFrom:
+            - secretRef:
+                name: robot-config-service-secret
+          readinessProbe:
+            httpGet:
+              path: /state/ready
+              port: 8766
+          livenessProbe:
+            httpGet:
+              path: /state/up
+              port: 8766
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: robot-config-service
+  namespace: ${PROJECT}
+spec:
+  selector:
+    app: robot-config-service
+  ports:
+    - port: 80
+      targetPort: 8766

@@ -1,0 +1,15 @@
+:root {
+  --page: #f6f7f9;
+  --surface: #fff;
+  --text: #1d2433;
+  --secondary: #667085;
+  --tertiary: #98a2b3;
+  --border: #e4e7ec;
+  --blue: #155eef;
+  --blue-soft: #eff4ff;
+  --green: #067647;
+  --green-soft: #ecfdf3;
+  --amber: #b54708;
+  --red: #b42318;
+  font-family: "Avenir Next", "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
