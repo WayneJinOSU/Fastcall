@@ -1,6 +1,8 @@
-# 注：rnnoise 附加组件（pyrnnoise）暂无 Python 3.12 / macOS arm64 预编译包，
-# 已从默认依赖移除。仅 realtime 降噪需要它，在支持的平台上可手动追加 ",rnnoise"。
+# Realtime RNNoise 降噪。pipecat 的 rnnoise extra 要求尚未发布的 pyrnnoise~=0.4.1；
+# pyrnnoise 0.3.8 需搭配仍提供 AudioGraph API 的 audiolab 0.3.6。
 pipecat-ai[daily,cartesia,openai,silero,elevenlabs,deepgram,azure,websocket]==0.0.104
+pyrnnoise==0.3.8
+audiolab==0.3.6
 vosk==0.3.44
 av==17.0.1
 fastapi
