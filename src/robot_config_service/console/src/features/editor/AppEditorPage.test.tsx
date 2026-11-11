@@ -19,7 +19,18 @@ const app = { app_id: 'app1', app_code: 'retail-cn', name: '零售客服', enabl
 const historical = { robot_app_version_id: 'v1', version_no: 1, created_at: '2026-11-09T10:00:00Z', created_by: 'editor', app_config: { ...config, prompt: { system_template: 'Historical prompt' } } };
 const catalog = { runtime_profiles: [], asr: {}, tts: { cartesia: { voices: [] } }, realtime: {} };
 
-describe('AppEditorPage history', () => {
+describe('AppEditorPage', () => {
+  it('returns from Flow variable management to the shared Prompt variables section', async () => {
+    vi.mocked(getApp).mockResolvedValue(app as any);
+    vi.mocked(getCapabilities).mockResolvedValue(catalog as any);
+    render(<MemoryRouter initialEntries={['/apps/app1/edit']}><Routes><Route path="/apps/:appId/edit" element={<AppEditorPage />} /></Routes></MemoryRouter>);
+    await screen.findByLabelText('系统 Prompt');
+    fireEvent.click(screen.getByRole('button', { name: /^Flow/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '管理变量 →' }));
+    expect(screen.getByLabelText('系统 Prompt')).toBeInTheDocument();
+    expect(screen.getByText('仅保存定义，不保存真实通话值')).toBeInTheDocument();
+  });
+
   it('shows history read-only in the same editor and restores unsaved draft', async () => {
     vi.mocked(getApp).mockResolvedValue(app as any);
     vi.mocked(getCapabilities).mockResolvedValue(catalog as any);

@@ -51,6 +51,7 @@ from collection_agents.services.call_config import (
     CallConfigManager,
     build_first_question_content,
     coerce_positive_int,
+    create_system_prompt,
     normalize_language_code,
 )
 from collection_agents.bots.helpers import build_call_context, build_session_state
@@ -439,7 +440,7 @@ async def run_realtime_bot(
             system_prompt_content = (
                 llm_config.get("prompt", "") or config_manager.get_prompt_config() or ""
             )
-            # system_prompt_content = create_system_prompt(system_prompt_content, tts_config)
+            system_prompt_content = create_system_prompt(system_prompt_content, tts_config, variables)
             system_prompt = {
                 "role": "system",
                 "content": system_prompt_content,

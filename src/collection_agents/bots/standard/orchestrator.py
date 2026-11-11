@@ -245,7 +245,7 @@ async def run_standard_bot(websocket_client, stream_sid, call_data, call_timeout
             system_prompt_content = (
                 llm_config.get("prompt", "") or config_manager.get_prompt_config() or ""
             )
-            system_prompt_content = create_system_prompt(system_prompt_content, tts_config)
+            system_prompt_content = create_system_prompt(system_prompt_content, tts_config, variables)
             system_prompt = {
                 "role": "system",
                 "content": system_prompt_content

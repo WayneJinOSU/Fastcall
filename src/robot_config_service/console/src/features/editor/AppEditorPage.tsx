@@ -206,7 +206,7 @@ export default function AppEditorPage() {
         {section === 'basic' && <section className="editor-card form-card"><div className="editor-card-head"><span className="editor-card-title">基本信息</span></div><div className="form-grid two"><label>app_code<input readOnly value={config.app.code} /></label><label>name<input readOnly={readOnly} value={config.app.name} onChange={event => changeConfig({ ...config, app: { ...config.app, name: event.target.value } })} /></label></div></section>}
         {section === 'prompt' && <><PromptSection config={config} onChange={changeConfig} readOnly={readOnly} /><VariablesSection config={config} onChange={changeConfig} readOnly={readOnly} /></>}
         {section === 'runtime' && <RuntimeSection config={config} catalog={catalog} onChange={changeConfig} readOnly={readOnly} />}
-        {section === 'flow' && <FlowEditor config={config} onChange={changeConfig} readOnly={readOnly} />}
+        {section === 'flow' && <FlowEditor config={config} onChange={changeConfig} onManageVariables={() => setSection('prompt')} readOnly={readOnly} />}
         {section === 'policy' && <CallPolicySection config={config} onChange={changeConfig} readOnly={readOnly} />}
       </div>
     </section>

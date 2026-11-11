@@ -298,5 +298,5 @@ def build_no_response_hangup_prompt(locale: str, hangup_message: str) -> str:
     )
 
 
-def create_system_prompt(prompt_template, tts_config):
-    return prompt_template
+def create_system_prompt(prompt_template, tts_config, variables=None):
+    return render_template_variables(prompt_template, variables)
