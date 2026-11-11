@@ -14,6 +14,7 @@ class Settings:
     console_admin_actor_id: str = ""
     console_admin_password_hash: str = ""
     console_session_secret: str = ""
+    collection_agent_ws_url: str = "ws://127.0.0.1:8765/ws-v2"
 
     @classmethod
     def from_env(cls):
@@ -28,6 +29,9 @@ class Settings:
             console_admin_actor_id=os.getenv("ROBOT_CONFIG_CONSOLE_ADMIN_ACTOR_ID", "").strip(),
             console_admin_password_hash=os.getenv("ROBOT_CONFIG_CONSOLE_ADMIN_PASSWORD_HASH", "").strip(),
             console_session_secret=os.getenv("ROBOT_CONFIG_CONSOLE_SESSION_SECRET", "").strip(),
+            collection_agent_ws_url=(
+                os.getenv("COLLECTION_AGENT_WS_URL", "ws://127.0.0.1:8765/ws-v2").strip()
+            ),
         )
 
     def validate(self):

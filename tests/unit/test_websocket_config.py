@@ -120,6 +120,36 @@ class WebSocketConfigTests(unittest.TestCase):
         run_standard_bot.assert_awaited_once()
         run_realtime_bot.assert_not_awaited()
 
+    def test_ws_v2_routes_robot_app_realtime_block_without_protocol_extension(self):
+        call_data = {
+            "action": "start",
+            "data": {
+                "callee": "console-test",
+                "config": {
+                    "schema_version": "robot-app/v1",
+                    "name": "Voice Test",
+                    "realtime": {},
+                },
+            },
+        }
+        run_standard_bot = AsyncMock()
+        run_realtime_bot = AsyncMock()
+
+        with patch(
+            "collection_agents.server.routes.run_standard_bot",
+            run_standard_bot,
+        ), patch(
+            "collection_agents.server.routes.run_realtime_bot",
+            run_realtime_bot,
+        ):
+            with self.client.websocket_connect("/ws-v2") as websocket:
+                websocket.send_json(call_data)
+
+        run_realtime_bot.assert_awaited_once()
+        run_standard_bot.assert_not_awaited()
+        self.assertNotIn("runtime_engine", run_realtime_bot.await_args.args[2]["data"])
+        self.assertNotIn("test", run_realtime_bot.await_args.args[2]["data"])
+
     def test_copilot_passes_through_delivered_session_config(self):
         event = {
             "event_type": "action.create",

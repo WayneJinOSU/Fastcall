@@ -8,6 +8,7 @@ from robot_config_service.api.console.static import register_console_static, ver
 from robot_config_service.api.dependencies import default_uow_factory
 from robot_config_service.api.errors import register_error_handlers
 from robot_config_service.api.routes import register_routes
+from robot_config_service.application.voice_test import VoiceTestSessionStore
 from robot_config_service.capabilities.loader import load_catalog
 from robot_config_service.infrastructure.database import Database
 from robot_config_service.settings import Settings
@@ -37,6 +38,7 @@ def create_app(settings=None, database=None, uow_factory=None, validate_startup=
     app.state.database = database
     app.state.catalog = load_catalog()
     app.state.ready = False
+    app.state.voice_test_sessions = VoiceTestSessionStore()
     app.state.uow_factory = uow_factory or partial(default_uow_factory, app)
     register_error_handlers(app)
     register_routes(app)

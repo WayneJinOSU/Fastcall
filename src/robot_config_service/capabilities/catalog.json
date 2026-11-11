@@ -1,5 +1,5 @@
 {
-  "catalog_version": "2026-11-10.1",
+  "catalog_version": "2026-11-11.1",
   "runtime_profiles": [
     {
       "provider": "deepseek",
@@ -46,11 +46,22 @@
         "nova-2": {
           "enabled": true,
           "deprecated": false,
-          "languages": ["en-US", "en-GB", "es-ES", "es-MX", "zh-CN", "tl-PH"]
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "zh-CN",
+            "tl-PH"
+          ]
         }
       },
-      "sample_rates": [8000],
-      "encodings": ["pcm_s16le"]
+      "sample_rates": [
+        8000
+      ],
+      "encodings": [
+        "pcm_s16le"
+      ]
     }
   },
   "tts": {
@@ -61,20 +72,643 @@
         "sonic-2": {
           "enabled": true,
           "deprecated": false
+        },
+        "sonic-3.6": {
+          "enabled": true,
+          "deprecated": false
         }
       },
       "voices": [
         {
           "voice_id": "71a7ad14-091c-4e8e-a314-022ece01c121",
-          "name": "标准音色",
-          "models": ["sonic-2"],
-          "languages": ["en-US", "en-GB", "es-ES", "es-MX", "zh-CN", "tl-PH"],
+          "name": "Charlotte - Heiress",
+          "models": [
+            "sonic-2"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false,
+          "country": "GB",
+          "gender": "feminine",
+          "description": "Elegant, young adult female for narrations"
+        },
+        {
+          "voice_id": "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
+          "name": "Skylar - Friendly Guide",
+          "country": "US",
+          "gender": "feminine",
+          "description": "Approachable American female ideal for customer care and support.",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "en-US",
+            "hi-IN",
+            "es-MX",
+            "de-DE",
+            "he-IL",
+            "it-IT",
+            "pt-BR",
+            "ta-IN"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "47c38ca4-5f35-497b-b1a3-415245fb35e1",
+          "name": "Daniel - Modern Assistant",
+          "country": "US",
+          "gender": "masculine",
+          "description": "Clear, crisp male voice for digital assistants and system interactions",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "en-US",
+            "hi-IN",
+            "es-ES",
+            "es-MX",
+            "ar-SA",
+            "de-DE",
+            "fr-CA",
+            "fr-FR",
+            "he-IL",
+            "it-IT",
+            "ja-JP",
+            "kn-IN",
+            "ko-KR",
+            "mr-IN",
+            "or-IN",
+            "pt-BR",
+            "ta-IN",
+            "te-IN",
+            "th-TH",
+            "tl-PH",
+            "ur-PK",
+            "zh-CN",
+            "zh-TW"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",
+          "name": "Jacqueline - Reassuring Agent",
+          "country": "US",
+          "gender": "feminine",
+          "description": "Confident, young adult female for empathic customer support",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "en-US",
+            "en-NZ",
+            "hi-IN",
+            "es-ES",
+            "es-MX",
+            "ar-SA",
+            "bg-BG",
+            "de-DE",
+            "fr-CA",
+            "fr-FR",
+            "he-IL",
+            "it-IT",
+            "kn-IN",
+            "ko-KR",
+            "ml-IN",
+            "mr-IN",
+            "no-NO",
+            "or-IN",
+            "pt-BR",
+            "ta-IN",
+            "te-IN",
+            "th-TH",
+            "tl-PH",
+            "ur-PK",
+            "zh-CN",
+            "zh-TW"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "a5136bf9-224c-4d76-b823-52bd5efcffcc",
+          "name": "Jameson - Easygoing Support",
+          "country": "US",
+          "gender": "masculine",
+          "description": "Friendly, laid-back male voice for customer support and onboarding",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "en-US",
+            "hi-IN",
+            "es-ES",
+            "es-MX",
+            "ar-SA",
+            "de-DE",
+            "fr-CA",
+            "fr-FR",
+            "he-IL",
+            "it-IT",
+            "ja-JP",
+            "kn-IN",
+            "ko-KR",
+            "mr-IN",
+            "or-IN",
+            "pt-BR",
+            "ta-IN",
+            "te-IN",
+            "th-TH",
+            "tl-PH",
+            "ur-PK",
+            "zh-CN"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "e5e5c8d7-3924-4ff6-981a-cb667034be29",
+          "name": "Regina - Friendly Specialist",
+          "country": "MX",
+          "gender": "feminine",
+          "description": "Regina delivers measured, professional support with calm authority and crisp Mexican Spanish articulation.",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "es-MX"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "b4b8e2af-6139-466e-a93a-30c20d2e1fc5",
+          "name": "Fernanda - Friendly Guide",
+          "country": "MX",
+          "gender": "feminine",
+          "description": "Approachable, Mexican female ideal for customer care and support.",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "es-MX"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "9b67072c-d46c-465d-87dc-f7a1c6db2bf3",
+          "name": "Ramon - Calm Coordinator",
+          "country": "MX",
+          "gender": "masculine",
+          "description": "With a measured pace and clear articulation, Ramon brings a professional calm coordinator voice to corporate and service contexts.",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "es-MX"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "9261664a-c3d0-4200-9038-5466bcf3a09c",
+          "name": "Luz - Casual Speaker",
+          "country": "PH",
+          "gender": "feminine",
+          "description": "Natural and conversational adult female voice for everyday dialogue, friendly interactions, and support",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "c4cbcb7d-d9fa-4eac-b547-46831718ef58",
+          "name": "Angelo - Calm Narrator",
+          "country": "PH",
+          "gender": "masculine",
+          "description": "Gentle young adult male voice with a calm and approachable tone for casual conversations, support, and narrations",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "c0f3dfa2-9801-4c2b-8d57-1b1115e1855a",
+          "name": "Divina - Care Guide",
+          "country": "PH",
+          "gender": "feminine",
+          "description": "Crisp, polite articulation paired with an attentive cadence makes this voice ideal for customer care and order verifications.",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "b8cd71e3-bc14-4538-a530-d6314731c036",
+          "name": "Xia - Calm Companion",
+          "country": "VN",
+          "gender": "feminine",
+          "description": "Soft-spoken adult female voice for calm conversations and customer support",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "vi-VN",
+            "en-GB",
+            "hi-IN",
+            "ar-SA",
+            "bg-BG",
+            "de-DE",
+            "fr-CA",
+            "fr-FR",
+            "it-IT",
+            "kn-IN",
+            "ko-KR",
+            "ml-IN",
+            "mr-IN",
+            "pt-BR",
+            "ta-IN",
+            "te-IN",
+            "tl-PH",
+            "ur-PK",
+            "zh-CN",
+            "zh-TW"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "311de63c-7fb4-4a21-b920-a006550b3c98",
+          "name": "Hai - Booking Desk",
+          "country": "VN",
+          "gender": "masculine",
+          "description": "A polite, well-paced delivery ideal for customer service desk interactions, detailed order verifications, and professional inquiry handling.",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "vi-VN"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "f1bdc97e-76d1-4bfe-95ba-f3a0bc7e6a7e",
+          "name": "Trang - Calm Support",
+          "country": "VN",
+          "gender": "feminine",
+          "description": "A calm and methodical speaker delivering structured clarifications, ideal for customer service resolution, intake forms, and formal support interactions.",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "vi-VN"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "b3610b4c-0fd6-4912-89d1-ace6cb6054dd",
+          "name": "Shailika - Clear Explainer",
+          "country": "IN",
+          "gender": "feminine",
+          "description": "Clear, approachable Hindi female voice for customer support, guided assistance, and conversational assistant flows.",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "hi-IN"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "c7be5dde-c1e6-4ebe-9096-ddc4b4edb1cc",
+          "name": "Shreeraj - Professional Server",
+          "country": "IN",
+          "gender": "masculine",
+          "description": "Neutral, conversational Hindi male voice for customer support, guided assistance, and conversational assistant flows.",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "hi-IN"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "7ea5e9c2-b719-4dc3-b870-5ba5f14d31d8",
+          "name": "Janvi - Steady Agent",
+          "country": "IN",
+          "gender": "feminine",
+          "description": "Calm and neutral female voice with a slow, steady delivery, ideal for customer support scenarios",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "en-IN"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "19f28c21-ae34-499f-b64a-f7b09cd9b516",
+          "name": "Karthik - Customer Assistant",
+          "country": "IN",
+          "gender": "masculine",
+          "description": "A clear, helpful voice with a calm demeanor, ideal for customer support and informational announcements.",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "ta-IN"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "01fc5e31-71e9-40dc-a220-06dbd4b4ed7e",
+          "name": "Zara - Customer Guide",
+          "country": "IN",
+          "gender": "feminine",
+          "description": "A clear and empathetic voice, perfect for guiding users through processes and providing helpful, reassuring assistance.",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "ur-IN"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "62ae83ad-4f6a-430b-af41-a9bede9286ca",
+          "name": "Gemma - Decisive Agent",
+          "country": "GB",
+          "gender": "feminine",
+          "description": "Confident, emotive British female for professional assistance",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "en-GB",
+            "hi-IN",
+            "es-MX",
+            "de-DE",
+            "it-IT",
+            "pt-BR"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "ef191366-f52f-447a-a398-ed8c0f2943a1",
+          "name": "Archie - Approachable Mate",
+          "country": "GB",
+          "gender": "masculine",
+          "description": "Warm, conversational British male for casual and engaging dialogue.",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "en-GB",
+            "en-US",
+            "hi-IN",
+            "es-ES",
+            "ar-SA",
+            "bg-BG",
+            "de-DE",
+            "fr-CA",
+            "fr-FR",
+            "he-IL",
+            "it-IT",
+            "ja-JP",
+            "kn-IN",
+            "ko-KR",
+            "mr-IN",
+            "no-NO",
+            "or-IN",
+            "pt-BR",
+            "ta-IN",
+            "te-IN",
+            "th-TH",
+            "tl-PH",
+            "ur-PK",
+            "zh-CN",
+            "zh-TW"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "7a5d4663-88ae-47b7-808e-8f9b9ee4127b",
+          "name": "Hua - Sunny Support",
+          "country": "CN",
+          "gender": "feminine",
+          "description": "Upbeat, happy young adult woman for engaging conversations and conversational support",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "zh-CN"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "16212f18-4955-4be9-a6cd-2196ce2c11d1",
+          "name": "Hao - Friendly Guy",
+          "country": "CN",
+          "gender": "masculine",
+          "description": "Warm and friendly adult male voice for approachable conversations, customer support, and casual dialogue",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "zh-CN"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "de38f545-c574-44e8-9b54-a7d6fec1c6b1",
+          "name": "Marta - Friendly Guide",
+          "country": "ES",
+          "gender": "feminine",
+          "description": "Approachable Spanish female ideal for customer care and support.",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "es-ES"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "ca526927-b7c8-4a64-95d7-235d30b7771f",
+          "name": "Álvaro - Steady Explainer",
+          "country": "ES",
+          "gender": "masculine",
+          "description": "Natural delivery without dropping the professionalism, a clear, even voice for product explainers and follow-up calls.",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "es-ES"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "a5b0fceb-cc32-4eef-8929-421f55d32e16",
+          "name": "Lorena - Operational Guide",
+          "country": "BR",
+          "gender": "feminine",
+          "description": "Offers calm and articulate assistance, well-suited for navigating customer service interactions and explaining procedures.",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "pt-BR"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "074a0ce4-c88c-492f-8310-969d59f00e33",
+          "name": "Gabriel - Account Handler",
+          "country": "BR",
+          "gender": "masculine",
+          "description": "A calm and articulate voice, well-suited for managing details and providing clear, administrative support.",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "pt-BR"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "6c64b57a-bc65-48e4-bff4-12dbe85606cd",
+          "name": "Eloise - Dialogue Anchor",
+          "country": "FR",
+          "gender": "feminine",
+          "description": "Clear and well-paced adult female voice with a warm tone for customer service and professional communication",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "fr-FR"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "5def377d-908b-4540-8bd7-3c968fcae351",
+          "name": "Benoît - Methodical Moderator",
+          "country": "FR",
+          "gender": "masculine",
+          "description": "Clear, methodical French male for professional customer assistance.",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "fr-FR"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "b629d743-2b5a-4ffd-b5bb-9de9b969a690",
+          "name": "Sibylle",
+          "country": "DE",
+          "gender": "feminine",
+          "description": "Clear and confident voice, ideal for announcements and customer support",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "de-DE"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "afa425cf-5489-4a09-8a3f-d3cb1f82150d",
+          "name": "Nico - Friendly Agent",
+          "country": "DE",
+          "gender": "masculine",
+          "description": "Casual male for phone calls and conversational agents",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "de-DE"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "63d6f469-8c2c-489d-b53f-d36f0bbdcd4b",
+          "name": "Ayako",
+          "country": "JP",
+          "gender": "feminine",
+          "description": "Friendly and calm adult female for providing instructions and conversational support",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "ja-JP"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "a935f15c-4b24-41dd-ba82-b90035720d16",
+          "name": "Kaito - Polite Advisor",
+          "country": "JP",
+          "gender": "masculine",
+          "description": "A calm and clear voice perfect for navigating complex information with reassuring accuracy and professional courtesy.",
+          "models": [
+            "sonic-3.6"
+          ],
+          "languages": [
+            "ja-JP"
+          ],
           "enabled": true,
           "deprecated": false
         }
       ],
-      "sample_rates": [8000],
-      "encodings": ["pcm_s16le"]
+      "sample_rates": [
+        8000
+      ],
+      "encodings": [
+        "pcm_s16le"
+      ]
     }
   },
   "realtime": {
@@ -82,17 +716,45 @@
       {
         "voice_id": "alloy",
         "name": "Alloy",
-        "languages": ["en-US", "en-GB", "es-ES", "es-MX", "zh-CN", "tl-PH"],
+        "languages": [
+          "en-US",
+          "en-GB",
+          "es-ES",
+          "es-MX",
+          "zh-CN",
+          "tl-PH"
+        ],
         "enabled": true,
         "deprecated": false
       }
     ],
-    "transcription_models": ["gpt-4o-mini-transcribe"],
-    "input_audio_formats": ["pcm16"],
-    "output_audio_formats": ["pcm16"]
+    "transcription_models": [
+      "gpt-4o-mini-transcribe"
+    ],
+    "input_audio_formats": [
+      "pcm16"
+    ],
+    "output_audio_formats": [
+      "pcm16"
+    ]
   },
   "required_blocks": {
-    "standard": ["prompt", "variables", "asr", "llm", "tts", "flow", "call_policy"],
-    "realtime": ["prompt", "variables", "llm", "realtime", "flow", "call_policy"]
+    "standard": [
+      "prompt",
+      "variables",
+      "asr",
+      "llm",
+      "tts",
+      "flow",
+      "call_policy"
+    ],
+    "realtime": [
+      "prompt",
+      "variables",
+      "llm",
+      "realtime",
+      "flow",
+      "call_policy"
+    ]
   }
 }

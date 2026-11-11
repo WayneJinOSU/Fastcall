@@ -40,3 +40,16 @@ export function rollbackVersion(appId: string, versionId: string) {
     method: 'POST', body: JSON.stringify({ robot_app_version_id: versionId }),
   });
 }
+
+export function createVoiceTestSession(appId: string, draftRevision: number, variables: Record<string, string>) {
+  return api<{
+    session_id: string;
+    ws_url: string;
+    runtime_engine: string;
+    config_hash: string;
+    call_uuid: string;
+    variables: Record<string, string | number | boolean>;
+  }>(`/robot-apps/${appId}/voice-test/sessions`, {
+    method: 'POST', body: JSON.stringify({ draft_revision: draftRevision, variables }),
+  });
+}

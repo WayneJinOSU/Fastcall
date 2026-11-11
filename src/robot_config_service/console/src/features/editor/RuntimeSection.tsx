@@ -1,8 +1,21 @@
 import { AppConfig, CapabilityCatalog } from '../../api/types';
 
+const COUNTRY_NAMES: Record<string, string> = {
+  US: '美国', MX: '墨西哥', PK: '巴基斯坦', PH: '菲律宾', VN: '越南', IN: '印度',
+  GB: '英国', CN: '中国', ES: '西班牙', BR: '巴西', FR: '法国', DE: '德国', JP: '日本',
+};
+
+function voiceLabel(voice: any) {
+  const country = COUNTRY_NAMES[voice.country] || voice.country || '';
+  return `${voice.name || voice.voice_id}${country ? ` · ${country}` : ''}`;
+}
+
 export default function RuntimeSection({ config, catalog, onChange, readOnly }: { config: AppConfig; catalog: CapabilityCatalog; onChange: (value: AppConfig) => void; readOnly: boolean }) {
   const profile = catalog.runtime_profiles.find(item => item.provider === config.llm.provider && item.model === config.llm.model);
   const isRealtime = profile?.runtime_engine === 'realtime';
+  const ttsModel = String(config.tts?.model || 'sonic-2');
+  const ttsVoices = catalog.tts.cartesia.voices.filter((voice: any) => voice.enabled && voice.models?.includes(ttsModel));
+  const selectedTtsVoice = catalog.tts.cartesia.voices.find((voice: any) => voice.voice_id === config.tts?.voice_id);
 
   function changeModel(modelKey: string) {
     const selected = catalog.runtime_profiles.find(item => `${item.provider}:${item.model}` === modelKey);
@@ -33,6 +46,20 @@ export default function RuntimeSection({ config, catalog, onChange, readOnly }: 
     onChange({ ...config, [block]: { ...config[block], [field]: value } });
   }
 
+  function changeTtsModel(model: string) {
+    const compatibleVoices = catalog.tts.cartesia.voices.filter((voice: any) => voice.enabled && voice.models?.includes(model));
+    const currentVoice = compatibleVoices.find((voice: any) => voice.voice_id === config.tts?.voice_id);
+    const nextVoice = currentVoice || compatibleVoices[0];
+    const language = nextVoice?.languages.includes(config.tts?.language) ? config.tts?.language : nextVoice?.languages[0] || '';
+    onChange({ ...config, tts: { ...config.tts, model, voice_id: nextVoice?.voice_id || '', language } });
+  }
+
+  function changeTtsVoice(voiceId: string) {
+    const nextVoice = catalog.tts.cartesia.voices.find((voice: any) => voice.voice_id === voiceId);
+    const language = nextVoice?.languages.includes(config.tts?.language) ? config.tts?.language : nextVoice?.languages[0] || '';
+    onChange({ ...config, tts: { ...config.tts, voice_id: voiceId, language } });
+  }
+
   return <>
     <section className="editor-card form-card">
       <div className="editor-card-head"><div><span className="editor-card-title">Chat 模型</span><span className="editor-card-subtitle">Runtime 由服务端精确派生</span></div></div>
@@ -52,15 +79,15 @@ export default function RuntimeSection({ config, catalog, onChange, readOnly }: 
         <label>语言<select disabled={readOnly} value={String(config.asr.language)} onChange={event => updateBlock('asr', 'language', event.target.value)}>{catalog.asr.deepgram.models[String(config.asr.model)]?.languages.map((language: string) => <option key={language}>{language}</option>)}</select></label>
       </div></section>
       <section className="editor-card form-card"><div className="editor-card-head"><div><span className="editor-card-title">Cartesia TTS</span><span className="editor-card-subtitle">选择播放音色、语言与语速</span></div></div><div className="form-grid two">
-        <label>模型<select disabled={readOnly} value={String(config.tts.model)} onChange={event => updateBlock('tts', 'model', event.target.value)}>{Object.keys(catalog.tts.cartesia.models).map(model => <option key={model}>{model}</option>)}</select></label>
-        <label>音色<select disabled={readOnly} value={String(config.tts.voice_id)} onChange={event => updateBlock('tts', 'voice_id', event.target.value)}>{catalog.tts.cartesia.voices.filter((voice: any) => voice.enabled).map((voice: any) => <option key={voice.voice_id} value={voice.voice_id}>{voice.name || voice.voice_id}</option>)}</select></label>
-        <label>语言<select disabled={readOnly} value={String(config.tts.language)} onChange={event => updateBlock('tts', 'language', event.target.value)}>{catalog.tts.cartesia.voices.find((voice: any) => voice.voice_id === config.tts?.voice_id)?.languages.map((language: string) => <option key={language}>{language}</option>)}</select></label>
+        <label>模型<select aria-label="TTS 模型" disabled={readOnly} value={ttsModel} onChange={event => changeTtsModel(event.target.value)}>{Object.keys(catalog.tts.cartesia.models).map(model => <option key={model}>{model}</option>)}</select></label>
+        <label>音色<select aria-label="TTS 音色" disabled={readOnly} value={String(config.tts.voice_id)} onChange={event => changeTtsVoice(event.target.value)}>{ttsVoices.map((voice: any) => <option key={voice.voice_id} value={voice.voice_id}>{voiceLabel(voice)}</option>)}</select></label>
+        <label>语言<select disabled={readOnly} value={String(config.tts.language)} onChange={event => updateBlock('tts', 'language', event.target.value)}>{selectedTtsVoice?.languages.map((language: string) => <option key={language}>{language}</option>)}</select></label>
         <NumberField label="语速" step="0.1" value={Number(config.tts.speed)} readOnly={readOnly} onChange={value => updateBlock('tts', 'speed', value)} />
       </div></section>
     </>}
     {isRealtime && config.realtime && <section className="editor-card form-card"><div className="editor-card-head"><span className="editor-card-title">Realtime</span></div><div className="form-grid two">
       <label>转录模型<select disabled={readOnly} value={String(config.realtime.transcription_model)} onChange={event => updateBlock('realtime', 'transcription_model', event.target.value)}>{catalog.realtime.transcription_models.map((model: string) => <option key={model}>{model}</option>)}</select></label>
-      <label>音色<select disabled={readOnly} value={String(config.realtime.voice_id)} onChange={event => updateBlock('realtime', 'voice_id', event.target.value)}>{catalog.realtime.voices.map((voice: any) => <option key={voice.voice_id} value={voice.voice_id}>{voice.name || voice.voice_id}</option>)}</select></label>
+      <label>音色<select disabled={readOnly} value={String(config.realtime.voice_id)} onChange={event => updateBlock('realtime', 'voice_id', event.target.value)}>{catalog.realtime.voices.map((voice: any) => <option key={voice.voice_id} value={voice.voice_id}>{voiceLabel(voice)}</option>)}</select></label>
       <label>语言<select disabled={readOnly} value={String(config.realtime.language)} onChange={event => updateBlock('realtime', 'language', event.target.value)}>{catalog.realtime.voices.find((voice: any) => voice.voice_id === config.realtime?.voice_id)?.languages.map((language: string) => <option key={language}>{language}</option>)}</select></label>
       <label className="checkbox-field"><input type="checkbox" disabled={readOnly} checked={Boolean(config.realtime.noise_reduction)} onChange={event => updateBlock('realtime', 'noise_reduction', event.target.checked)} />noise_reduction</label>
       <label>turn_detection.type<input readOnly={readOnly} value={String(typeof config.realtime.turn_detection === 'object' && config.realtime.turn_detection ? config.realtime.turn_detection.type || 'server_vad' : 'server_vad')} onChange={event => onChange({ ...config, realtime: { ...config.realtime, turn_detection: { type: event.target.value } } })} /></label>

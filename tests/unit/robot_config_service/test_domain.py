@@ -94,6 +94,22 @@ class DomainValidationTests(unittest.TestCase):
         self.assertTrue(any("Undefined variable" in message for message in messages))
         self.assertTrue(any("Suspected API key" in message for message in messages))
 
+    def test_cartesia_catalog_has_named_regional_voices(self):
+        cartesia = load_catalog().data["tts"]["cartesia"]
+        voices = cartesia["voices"]
+        self.assertGreaterEqual(len(voices), 30)
+        self.assertEqual(len({voice["voice_id"] for voice in voices}), len(voices))
+        for voice in voices:
+            self.assertTrue(voice["name"].strip())
+            self.assertTrue(voice["country"].strip())
+            self.assertTrue(voice["models"])
+            self.assertTrue(voice["languages"])
+            for model in voice["models"]:
+                self.assertIn(model, cartesia["models"])
+        locales = {locale for voice in voices for locale in voice["languages"]}
+        self.assertTrue({"es-MX", "en-US", "ur-PK", "tl-PH", "vi-VN", "hi-IN", "en-IN"} <= locales)
+        self.assertIn("sonic-3.6", cartesia["models"])
+
     def test_hash_canonicalization_and_runtime_sensitivity(self):
         config = valid_config()
         runtime = resolve_runtime("deepseek", "deepseek-flash", load_catalog())

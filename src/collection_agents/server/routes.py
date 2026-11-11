@@ -59,6 +59,10 @@ def register_routes(app: FastAPI):
                 callee = str(data.get("callee", ""))[-10:]
                 config = data.get("config", {})
                 agent_name = config.get("name", "")
+                realtime_config = (
+                    config.get("schema_version") == "robot-app/v1"
+                    and isinstance(config.get("realtime"), dict)
+                )
 
                 logging.info(
                     "call_uuid=%s callee=%s",
@@ -66,7 +70,7 @@ def register_routes(app: FastAPI):
                     callee,
                 )
 
-                if "realtime" in agent_name.casefold():
+                if realtime_config or "realtime" in agent_name.casefold():
                     logging.info("server run with realtime_bot")
                     await run_realtime_bot(websocket, callee or "test", call_data)
                 else:

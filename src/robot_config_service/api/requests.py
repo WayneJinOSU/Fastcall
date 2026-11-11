@@ -34,3 +34,8 @@ class RollbackRequest(RequestModel):
 
 class ResolveRequest(RequestModel):
     robot_code: str = Field(min_length=1, max_length=128)
+
+
+class VoiceTestSessionRequest(RequestModel):
+    draft_revision: int = Field(ge=1)
+    variables: dict = Field(default_factory=dict)

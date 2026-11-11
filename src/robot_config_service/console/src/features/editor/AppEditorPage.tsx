@@ -8,9 +8,10 @@ import HistoryDrawer from './HistoryDrawer';
 import PromptSection from './PromptSection';
 import RuntimeSection from './RuntimeSection';
 import VariablesSection from './VariablesSection';
+import VoiceTestSection from './VoiceTestSection';
 import { getApp, getCapabilities, getVersion, listVersions, publishDraft, rollbackVersion, saveDraft, validateDraft } from './api';
 
-type Section = 'basic' | 'prompt' | 'runtime' | 'flow' | 'policy';
+type Section = 'basic' | 'prompt' | 'runtime' | 'flow' | 'policy' | 'voice';
 
 const sections: Array<{ id: Section; name: string; description: string }> = [
   { id: 'basic', name: '基本信息', description: 'app_code / name' },
@@ -18,6 +19,7 @@ const sections: Array<{ id: Section; name: string; description: string }> = [
   { id: 'runtime', name: 'Runtime', description: '模型、语音与语言' },
   { id: 'flow', name: 'Flow', description: '语音对话结构' },
   { id: 'policy', name: '通话策略', description: '打断与时长限制' },
+  { id: 'voice', name: '语音测试', description: '实时交互与对话检查' },
 ];
 
 function initialConfig(app: RobotApp, catalog: CapabilityCatalog): AppConfig {
@@ -208,6 +210,7 @@ export default function AppEditorPage() {
         {section === 'runtime' && <RuntimeSection config={config} catalog={catalog} onChange={changeConfig} readOnly={readOnly} />}
         {section === 'flow' && <FlowEditor config={config} onChange={changeConfig} onManageVariables={() => setSection('prompt')} readOnly={readOnly} />}
         {section === 'policy' && <CallPolicySection config={config} onChange={changeConfig} readOnly={readOnly} />}
+        {section === 'voice' && (historical ? <section className="editor-card"><div className="inline-empty">语音测试仅支持当前草稿，请先返回当前草稿。</div></section> : <VoiceTestSection appId={appId} config={config} draftRevision={app.draft_revision} dirty={dirty} />)}
       </div>
     </section>
     {historyOpen && <HistoryDrawer versions={versions} currentVersionId={app.current_release?.robot_app_version_id} onSelect={value => void selectVersion(value)} onClose={() => setHistoryOpen(false)} />}
