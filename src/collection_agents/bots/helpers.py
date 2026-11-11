@@ -16,21 +16,26 @@ from collection_agents.services.call_config import (
 def build_call_context(call_data) -> dict:
     """Extract only the technical configuration needed to run a call."""
     config_manager = CallConfigManager(call_data)
-    config = call_data.get("data", {}).get("config", {})
+    data = call_data.get("data", {})
+    config = data.get("config", {})
+    direct_config = config.get("schema_version") == "robot-app/v1"
+    app = config.get("app", {}) if direct_config else {}
     voicemail_config = config_manager.get_voicemail_config()
 
     return {
         "call_data": call_data,
         "config_manager": config_manager,
-        "call_uuid": call_data.get("data", {}).get("callUUID", ""),
-        "variables": config.get("variables", {}),
+        "call_uuid": data.get("callUUID", ""),
+        "variables": data.get("variables", {}) if direct_config else config.get("variables", {}),
         "voicemail_config": voicemail_config,
         "voicemail_action": (voicemail_config.get("action") or "").strip(),
         "voicemail_hangup_on_detect": is_voicemail_hangup_action(voicemail_config),
-        "robot_code": config.get("code"),
-        "robot_name": config.get("name"),
+        "robot_code": app.get("code") if direct_config else config.get("code"),
+        "robot_name": app.get("name") if direct_config else config.get("name"),
         "robot_version_id": (
-            config.get("robotVersionId") or config.get("robot_version_id")
+            data.get("robotVersionId")
+            or config.get("robotVersionId")
+            or config.get("robot_version_id")
         ),
     }
 

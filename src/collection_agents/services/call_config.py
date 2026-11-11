@@ -38,11 +38,13 @@ class CallConfigManager:
         provider = str(asr.get("provider", "deepgram") or "deepgram").strip().lower()
         config = {
             "provider": provider,
-            "locale": asr.get("locale", "zh-CN"),
+            "locale": asr.get("language", asr.get("locale", "zh-CN")),
             "name": asr.get("name", "中文"),
         }
         if provider == "cartesia":
             config["model"] = asr.get("model", "ink-whisper") or "ink-whisper"
+        elif "model" in asr:
+            config["model"] = asr["model"]
         return config
 
     def get_tts_config(self):
@@ -52,18 +54,32 @@ class CallConfigManager:
         ttsConfig = ttsConfig if isinstance(ttsConfig, dict) else {}
         return {
             "provider": tts.get("provider", "cartesia"),
-            "voice_id": tts.get("name", ""),
+            "voice_id": tts.get("voice_id", tts.get("name", "")),
             "model": tts.get("model", "sonic-3.6"),
-            "locale": tts.get("locale", "zh-CN"),
-            "volume": ttsConfig.get("volume", 1.0),
-            "speed": ttsConfig.get("rate", 0.9),
+            "locale": tts.get("language", tts.get("locale", "zh-CN")),
+            "volume": tts.get("volume", ttsConfig.get("volume", 1.0)),
+            "speed": tts.get("speed", ttsConfig.get("rate", 0.9)),
         }
 
     def get_llm_config(self):
-        model_config = self.config.get("modelConfig", {})
-        model_config = model_config if isinstance(model_config, dict) else {}
-        model_config_inner = model_config.get("config", {})
-        provider = model_config.get("provider", "openrouter")
+        direct_llm = self.config.get("llm", {})
+        if self.config.get("schema_version") == "robot-app/v1" and isinstance(direct_llm, dict):
+            provider = direct_llm.get("provider", "")
+            model_config = {
+                "provider": provider,
+                "name": direct_llm.get("model", ""),
+            }
+            model_config_inner = {
+                "temperature": direct_llm.get("temperature"),
+                "topP": direct_llm.get("top_p"),
+                "maxTokens": direct_llm.get("max_tokens"),
+                "llmTimeoutSecs": direct_llm.get("timeout_ms") / 1000,
+            }
+        else:
+            model_config = self.config.get("modelConfig", {})
+            model_config = model_config if isinstance(model_config, dict) else {}
+            model_config_inner = model_config.get("config", {})
+            provider = model_config.get("provider", "openrouter")
 
         if provider == "openrouter":
             default_base_url = "https://openrouter.ai/api/v1"
@@ -71,6 +87,9 @@ class CallConfigManager:
         elif provider == "azure":
             default_base_url = ""
             default_api_key = ""
+        elif provider == "deepseek":
+            default_base_url = ""
+            default_api_key = os.getenv("DEEPSEEK_API_KEY")
         else:
             default_base_url = os.getenv("OPENAI_API_URL", "https://api.openai.com/v1")
             default_api_key = os.getenv("OPENAI_API_KEY")
@@ -91,6 +110,7 @@ class CallConfigManager:
         prompt_content = (
             prompt_config.get("content")
             or model_prompt_config.get("content")
+            or self.get_prompt_config()
             or ""
         )
 
@@ -111,11 +131,17 @@ class CallConfigManager:
         }
 
     def get_prompt_config(self):
+        if self.config.get("schema_version") == "robot-app/v1":
+            prompt = self.config.get("prompt", {})
+            return prompt.get("system_template", "") if isinstance(prompt, dict) else ""
         prompt_config = self.config.get("promptConfig", {})
         prompt_config = prompt_config if isinstance(prompt_config, dict) else {}
         return prompt_config.get("content", "")
 
     def get_flow_config(self):
+        if self.config.get("schema_version") == "robot-app/v1":
+            flow = self.config.get("flow", {})
+            return flow if isinstance(flow, dict) else {}
         flow_config = self.config.get("flowConfig", {})
         return flow_config if isinstance(flow_config, dict) else {}
 
