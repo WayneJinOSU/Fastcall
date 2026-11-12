@@ -8,6 +8,23 @@ from collection_agents.text.words_process import convert_numbers_in_text
 LLM_TIMEOUT_SECS_DEFAULT = 6.0
 LLM_RETRY_ON_TIMEOUT_DEFAULT = True
 
+TTS_PROVIDER_DEFAULT_MODELS = {
+    "cartesia": "sonic-3.6",
+    "elevenlabs": "eleven_flash_v2_5",
+}
+
+
+def normalize_tts_provider(provider) -> str:
+    return str(provider or "cartesia").strip().lower()
+
+
+def get_tts_default_model(provider) -> str:
+    normalized = normalize_tts_provider(provider)
+    return TTS_PROVIDER_DEFAULT_MODELS.get(
+        normalized,
+        TTS_PROVIDER_DEFAULT_MODELS["cartesia"],
+    )
+
 
 _FIRST_QUESTION_BY_LANGUAGE = {
     "zh": "你好",
@@ -52,13 +69,17 @@ class CallConfigManager:
         ttsConfig = self.config.get("ttsConfig", {})
         tts = tts if isinstance(tts, dict) else {}
         ttsConfig = ttsConfig if isinstance(ttsConfig, dict) else {}
+        provider = normalize_tts_provider(tts.get("provider"))
+        provider_config = tts.get("provider_config", {})
+        provider_config = provider_config if isinstance(provider_config, dict) else {}
         return {
-            "provider": tts.get("provider", "cartesia"),
+            "provider": provider,
             "voice_id": tts.get("voice_id", tts.get("name", "")),
-            "model": tts.get("model", "sonic-3.6"),
+            "model": tts.get("model") or get_tts_default_model(provider),
             "locale": tts.get("language", tts.get("locale", "zh-CN")),
             "volume": tts.get("volume", ttsConfig.get("volume", 1.0)),
             "speed": tts.get("speed", ttsConfig.get("rate", 0.9)),
+            "provider_config": dict(provider_config),
         }
 
     def get_llm_config(self):

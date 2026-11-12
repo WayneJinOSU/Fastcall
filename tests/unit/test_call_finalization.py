@@ -14,6 +14,31 @@ class CallFinalizationTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(meta["call_uuid"], "copilot-call-1")
 
+    def test_robot_app_uses_runtime_values_instead_of_variable_definitions(self):
+        call_data = {
+            "data": {
+                "callUUID": "robot-app-call-1",
+                "variables": {
+                    "tenant_id": "tenant-1",
+                    "work_order_id": "work-order-1",
+                    "contact_time": "2030-01-01T10:00:00",
+                    "user_name": "Test User",
+                },
+                "config": {
+                    "schema_version": "robot-app/v1",
+                    "variables": [
+                        {"key": "user_name", "type": "string", "required": True},
+                    ],
+                },
+            }
+        }
+        meta = _extract_note_request_meta(call_data)
+        self.assertEqual(meta["call_uuid"], "robot-app-call-1")
+        self.assertEqual(meta["tenant_id"], "tenant-1")
+        self.assertEqual(meta["work_order_id"], "work-order-1")
+        self.assertEqual(meta["contact_time"], "2030-01-01T10:00:00")
+        self.assertEqual(meta["variables"]["user_name"], "Test User")
+
     async def test_transcript_and_analysis_are_both_persisted(self):
         context = object()
         call_data = {"data": {"callUUID": "call-1"}}

@@ -12,11 +12,8 @@ from pipecat.services.cartesia.tts import CartesiaTTSService, GenerationConfig
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.elevenlabs.stt import CommitStrategy, ElevenLabsRealtimeSTTService as _ElevenLabsRealtimeSTTService
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
-from pipecat.services.elevenlabs import tts as _elevenlabs_tts_module
 from pipecat.transcriptions.language import Language
 from collection_agents.services.stt_local import VoskSTTService
-
-_elevenlabs_tts_module.ELEVENLABS_MULTILINGUAL_MODELS.add("eleven_v3_conversational")
 
 
 class ElevenLabsRealtimeSTTService(_ElevenLabsRealtimeSTTService):
@@ -34,6 +31,8 @@ from collection_agents.services.call_config import (
     LLM_RETRY_ON_TIMEOUT_DEFAULT,
     LLM_TIMEOUT_SECS_DEFAULT,
     coerce_positive_int,
+    get_tts_default_model,
+    normalize_tts_provider,
 )
 
 
@@ -247,54 +246,74 @@ def _elevenlabs_stt_language(locale):
     return _ELEVENLABS_LOCALE_MAP.get(language, language)
 
 
-def create_tts_service(tts_config, session):
-    # provider = "elevenlabs"
-    provider = tts_config.get("provider", "cartesia")
+def _create_cartesia_tts_service(tts_config):
+    provider = normalize_tts_provider(tts_config.get("provider"))
     voice_id = tts_config.get("voice_id", "")
-    model = tts_config.get("model", "sonic-3.6")
     locale = tts_config.get("locale", "zh-CN")
+    generation_config_kwargs = {}
+    volume = tts_config.get("volume")
+    speed = tts_config.get("speed")
+    if volume is not None:
+        # backend [0, 100] → cartesia [0.5, 2.0]
+        generation_config_kwargs["volume"] = round(0.5 + float(volume) / 100.0 * 1.5, 4)
+    if speed is not None:
+        # backend [0.5, 2] → cartesia [0.6, 1.5]
+        generation_config_kwargs["speed"] = round(0.6 + (float(speed) - 0.5) / 1.5 * 0.9, 4)
+    generation_config = (
+        GenerationConfig(**generation_config_kwargs)
+        if generation_config_kwargs
+        else None
+    )
+    parameters = CartesiaTTSService.InputParams(
+        language=_cartesia_language(locale),
+        generation_config=generation_config,
+    )
+    return CartesiaTTSService(
+        model=tts_config.get("model") or get_tts_default_model(provider),
+        api_key=os.getenv("CARTESIA_API_KEY"),
+        voice_id=voice_id or "71a7ad14-091c-4e8e-a314-022ece01c121",
+        sample_rate=8000,
+        params=parameters,
+    )
 
-    if provider == "cartesia":
-        generation_config_kwargs = {}
-        volume = tts_config.get("volume")
-        speed = tts_config.get("speed")
-        if volume is not None:
-            # backend [0, 100] → cartesia [0.5, 2.0]
-            generation_config_kwargs["volume"] = round(0.5 + float(volume) / 100.0 * 1.5, 4)
-        if speed is not None:
-            # backend [0.5, 2] → cartesia [0.6, 1.5]
-            generation_config_kwargs["speed"] = round(0.6 + (float(speed) - 0.5) / 1.5 * 0.9, 4)
-        generation_config = (
-            GenerationConfig(**generation_config_kwargs)
-            if generation_config_kwargs
-            else None
-        )
-        parameters = CartesiaTTSService.InputParams(
-            language=_cartesia_language(locale),
-            generation_config=generation_config,
-        )
-        return CartesiaTTSService(
-            model=model,
-            api_key=os.getenv("CARTESIA_API_KEY"),
-            voice_id=voice_id or "71a7ad14-091c-4e8e-a314-022ece01c121",
-            sample_rate=8000,
-            params=parameters,
-        )
 
-    if provider == "elevenlabs":
-        api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
-        if not api_key:
-            raise ValueError("ELEVENLABS_API_KEY is required for ElevenLabs TTS")
-        language = _elevenlabs_tts_language(locale)
-        return ElevenLabsTTSService(
-            api_key=api_key,
-            voice_id=tts_config.get("voice_id") or os.getenv("ELEVENLABS_VOICE_ID", ""),
-            model=tts_config.get("model") or "eleven_v3_conversational",
-            sample_rate=8000,
-            params=ElevenLabsTTSService.InputParams(language=language),
-        )
+def _create_elevenlabs_tts_service(tts_config):
+    provider = normalize_tts_provider(tts_config.get("provider"))
+    api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("ELEVENLABS_API_KEY is required for ElevenLabs TTS")
+    voice_id = str(
+        tts_config.get("voice_id") or os.getenv("ELEVENLABS_VOICE_ID", "")
+    ).strip()
+    if not voice_id:
+        raise ValueError("ElevenLabs TTS requires tts.voice_id or ELEVENLABS_VOICE_ID")
+    speed = tts_config.get("speed")
+    if speed is not None:
+        speed = float(speed)
+        if not 0.7 <= speed <= 1.2:
+            raise ValueError("ElevenLabs TTS speed must be between 0.7 and 1.2")
+    language = _elevenlabs_tts_language(tts_config.get("locale", "zh-CN"))
+    return ElevenLabsTTSService(
+        api_key=api_key,
+        voice_id=voice_id,
+        model=tts_config.get("model") or get_tts_default_model(provider),
+        sample_rate=8000,
+        params=ElevenLabsTTSService.InputParams(language=language, speed=speed),
+    )
 
-    raise ValueError(f"Unsupported TTS provider: {provider}")
+
+TTS_SERVICE_BUILDERS = {
+    "cartesia": _create_cartesia_tts_service,
+    "elevenlabs": _create_elevenlabs_tts_service,
+}
+
+
+def create_tts_service(tts_config, session=None):
+    provider = normalize_tts_provider(tts_config.get("provider"))
+    builder = TTS_SERVICE_BUILDERS.get(provider)
+    if builder is None:
+        raise ValueError(f"Unsupported TTS provider: {provider}")
+    return builder(tts_config)
 
 
 def _elevenlabs_tts_language(locale) -> Language:

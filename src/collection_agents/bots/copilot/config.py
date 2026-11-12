@@ -1,6 +1,11 @@
 import os
 from typing import Any
 
+from collection_agents.services.call_config import (
+    get_tts_default_model,
+    normalize_tts_provider,
+)
+
 LLM_TIMEOUT_SECS_DEFAULT = 6.0
 LLM_MAX_RETRIES_DEFAULT = 3
 LLM_RETRY_ON_TIMEOUT_DEFAULT = True
@@ -27,13 +32,17 @@ class CopilotConfigManager:
         ttsConfig = self.config.get("ttsConfig", {})
         tts = tts if isinstance(tts, dict) else {}
         ttsConfig = ttsConfig if isinstance(ttsConfig, dict) else {}
+        provider = normalize_tts_provider(tts.get("provider"))
+        provider_config = tts.get("provider_config", {})
+        provider_config = provider_config if isinstance(provider_config, dict) else {}
         return {
-            "provider": tts.get("provider", "cartesia"),
-            "voice_id": tts.get("name", ""),
-            "model": tts.get("model", "sonic-3.6"),
-            "locale": tts.get("locale", "zh-CN"),
-            "volume": ttsConfig.get("volume", 1.0),
-            "speed": ttsConfig.get("rate", 0.9),
+            "provider": provider,
+            "voice_id": tts.get("voice_id", tts.get("name", "")),
+            "model": tts.get("model") or get_tts_default_model(provider),
+            "locale": tts.get("language", tts.get("locale", "zh-CN")),
+            "volume": tts.get("volume", ttsConfig.get("volume", 1.0)),
+            "speed": tts.get("speed", ttsConfig.get("rate", 0.9)),
+            "provider_config": dict(provider_config),
         }
 
     def get_llm_config(self):

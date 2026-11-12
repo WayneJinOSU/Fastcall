@@ -27,12 +27,16 @@ def _extract_note_request_data(call_data):
 
     if isinstance(call_data.get("data"), dict):
         config_data = call_data.get("data", {}) or {}
-        variables = config_data.get("config", {}).get("variables", {}) or {}
+        variables = config_data.get("variables", {})
+        variables = variables if isinstance(variables, dict) else {}
         return config_data, variables
 
     if isinstance(call_data.get("session_create"), dict):
         session_create = call_data.get("session_create", {}) or {}
-        variables = session_create.get("config", {}).get("variables", {}) or {}
+        config = session_create.get("config", {})
+        config = config if isinstance(config, dict) else {}
+        variables = config.get("variables", {}) or {}
+        variables = variables if isinstance(variables, dict) else {}
         return session_create, variables
 
     return {}, {}

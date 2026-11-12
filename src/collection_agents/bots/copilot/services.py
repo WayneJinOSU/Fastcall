@@ -3,7 +3,6 @@ import os
 
 from deepgram import LiveOptions
 from pipecat.services.azure.llm import AzureLLMService
-from pipecat.services.cartesia.tts import CartesiaTTSService, GenerationConfig
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.openai.llm import OpenAILLMService
 
@@ -11,7 +10,11 @@ from collection_agents.bots.copilot.config import (
     LLM_RETRY_ON_TIMEOUT_DEFAULT,
     LLM_TIMEOUT_SECS_DEFAULT,
 )
-from collection_agents.services.providers import select_azure_llm_target
+from collection_agents.services.providers import (
+    TTS_SERVICE_BUILDERS,
+    create_tts_service as create_provider_tts_service,
+    select_azure_llm_target,
+)
 
 
 def create_stt_service(asr_config):
@@ -43,53 +46,22 @@ def create_stt_service(asr_config):
 
 
 def create_tts_service(tts_config):
-    provider = tts_config.get("provider", "cartesia")
-    voice_id = tts_config.get("voice_id", "")
-    model = tts_config.get("model", "sonic-3.6")
-    locale = tts_config.get("locale", "zh-CN")
+    config = dict(tts_config)
+    provider = str(config.get("provider", "cartesia") or "cartesia").strip().lower()
+    if provider not in TTS_SERVICE_BUILDERS:
+        logging.warning(f"Unknown TTS provider: {provider}, using cartesia")
+        provider = "cartesia"
+        config["provider"] = provider
 
     if provider == "cartesia":
-        language = locale.split("-")[0]
-        generation_config_kwargs = {}
-        volume = tts_config.get("volume")
-        speed = tts_config.get("speed")
-        if volume is not None:
-            generation_config_kwargs["volume"] = round(0.5 + float(volume) / 100.0 * 1.5, 4)
-        if speed is not None:
-            generation_config_kwargs["speed"] = round(0.6 + (float(speed) - 0.5) / 1.5 * 0.9, 4)
-        generation_config = (
-            GenerationConfig(**generation_config_kwargs)
-            if generation_config_kwargs
-            else None
+        model = str(config.get("model") or "sonic-3.6")
+        config["model"] = model if model.startswith("sonic") else "sonic-multilingual"
+        config["voice_id"] = (
+            config.get("voice_id") or "e50405f9-347e-4a1d-b5b6-943bbdb30cd5"
         )
-        params = CartesiaTTSService.InputParams(
-            language=language,
-            generation_config=generation_config,
-        )
-        default_voice = "e50405f9-347e-4a1d-b5b6-943bbdb30cd5"
-        model_name = (
-            model if model.startswith("sonic")
-            else "sonic-multilingual"
-        )
-        return CartesiaTTSService(
-            api_key=os.getenv("CARTESIA_API_KEY"),
-            voice_id=voice_id or default_voice,
-            model=model_name,
-            params=params,
-            sample_rate=8000,
-        )
-    else:
-        logging.warning(
-            f"Unknown TTS provider: {provider}, using cartesia"
-        )
-        return create_tts_service({
-            "provider": "cartesia",
-            "voice_id": voice_id,
-            "model": model,
-            "locale": locale,
-            "volume": tts_config.get("volume"),
-            "speed": tts_config.get("speed"),
-        })
+
+    config["provider"] = provider
+    return create_provider_tts_service(config)
 
 
 def create_llm_service(llm_config):
