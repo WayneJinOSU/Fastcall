@@ -1,9 +1,7 @@
 import logging
 import os
 
-from deepgram import LiveOptions
 from pipecat.services.azure.llm import AzureLLMService
-from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.openai.llm import OpenAILLMService
 
 from collection_agents.bots.copilot.config import (
@@ -11,38 +9,31 @@ from collection_agents.bots.copilot.config import (
     LLM_TIMEOUT_SECS_DEFAULT,
 )
 from collection_agents.services.providers import (
+    STT_SERVICE_BUILDERS,
     TTS_SERVICE_BUILDERS,
+    create_stt_service as create_provider_stt_service,
     create_tts_service as create_provider_tts_service,
     select_azure_llm_target,
 )
 
 
 def create_stt_service(asr_config):
-    provider = asr_config.get("provider", "deepgram")
-    locale = asr_config.get("locale", "zh-CN")
-    model = asr_config.get("model", "nova-2")
+    config = dict(asr_config)
+    provider = str(config.get("provider", "deepgram") or "deepgram").strip().lower()
+    if provider not in STT_SERVICE_BUILDERS:
+        logging.warning(f"Unknown STT provider: {provider}, using deepgram")
+        provider = "deepgram"
+        config["provider"] = provider
 
     if provider == "deepgram":
-        return DeepgramSTTService(
-            api_key=os.environ.get("DEEPGRAM_API_KEY"),
-            live_options=LiveOptions(
-                encoding="linear16",
-                language=locale,
-                model=model,
-                sample_rate=8000,
-                channels=1,
-                interim_results=True,
-                smart_format=True,
-            )
-        )
-    else:
-        logging.warning(
-            f"Unknown STT provider: {provider}, using deepgram"
-        )
-        return create_stt_service({
-            "provider": "deepgram",
-            "locale": locale
-        })
+        provider_config = dict(config.get("provider_config") or {})
+        params = dict(provider_config.get("params") or {})
+        params.setdefault("smart_format", True)
+        provider_config["params"] = params
+        config["provider_config"] = provider_config
+
+    config["provider"] = provider
+    return create_provider_stt_service(config)
 
 
 def create_tts_service(tts_config):

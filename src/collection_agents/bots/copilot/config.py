@@ -2,7 +2,9 @@ import os
 from typing import Any
 
 from collection_agents.services.call_config import (
-    get_tts_default_model,
+    get_asr_fallback_model,
+    get_tts_fallback_model,
+    normalize_asr_provider,
     normalize_tts_provider,
 )
 
@@ -19,13 +21,21 @@ class CopilotConfigManager:
 
     def get_asr_config(self):
         asr = self.config.get("asr", {})
-        return {
+        asr = asr if isinstance(asr, dict) else {}
+        provider = normalize_asr_provider(asr.get("provider"))
+        provider_config = asr.get("provider_config", {})
+        provider_config = provider_config if isinstance(provider_config, dict) else {}
+        config = {
             "code": asr.get("code", ""),
-            "provider": asr.get("provider", "deepgram"),
-            "locale": asr.get("locale", "zh-CN"),
+            "provider": provider,
+            "locale": asr.get("language", asr.get("locale", "zh-CN")),
             "name": asr.get("name", "中文"),
-            "model": asr.get("model", "nova-2"),
+            "model": asr.get("model") or get_asr_fallback_model(provider),
+            "provider_config": dict(provider_config),
         }
+        if "model_path" in asr:
+            config["model_path"] = asr["model_path"]
+        return config
 
     def get_tts_config(self):
         tts = self.config.get("tts", {})
@@ -38,7 +48,7 @@ class CopilotConfigManager:
         return {
             "provider": provider,
             "voice_id": tts.get("voice_id", tts.get("name", "")),
-            "model": tts.get("model") or get_tts_default_model(provider),
+            "model": tts.get("model") or get_tts_fallback_model(provider),
             "locale": tts.get("language", tts.get("locale", "zh-CN")),
             "volume": tts.get("volume", ttsConfig.get("volume", 1.0)),
             "speed": tts.get("speed", ttsConfig.get("rate", 0.9)),

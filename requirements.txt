@@ -1,6 +1,6 @@
 # Realtime RNNoise 降噪。pipecat 的 rnnoise extra 要求尚未发布的 pyrnnoise~=0.4.1；
 # pyrnnoise 0.3.8 需搭配仍提供 AudioGraph API 的 audiolab 0.3.6。
-pipecat-ai[daily,cartesia,openai,silero,elevenlabs,deepgram,azure,websocket]==0.0.104
+pipecat-ai[daily,cartesia,openai,silero,elevenlabs,deepgram,azure,websocket,assemblyai,speechmatics,soniox]==0.0.104
 pyrnnoise==0.3.8
 audiolab==0.3.6
 vosk==0.3.44

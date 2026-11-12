@@ -5,6 +5,8 @@ from types import MethodType
 
 from openai import APITimeoutError
 from deepgram import LiveOptions
+from pipecat.services.assemblyai.models import AssemblyAIConnectionParams
+from pipecat.services.assemblyai.stt import AssemblyAISTTService
 from pipecat.services.azure.llm import AzureLLMService
 from pipecat.services.qwen.llm import QwenLLMService
 from pipecat.services.cartesia.stt import CartesiaLiveOptions, CartesiaSTTService
@@ -12,6 +14,8 @@ from pipecat.services.cartesia.tts import CartesiaTTSService, GenerationConfig
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.elevenlabs.stt import CommitStrategy, ElevenLabsRealtimeSTTService as _ElevenLabsRealtimeSTTService
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
+from pipecat.services.soniox.stt import SonioxInputParams, SonioxSTTService
+from pipecat.services.speechmatics.stt import SpeechmaticsSTTService
 from pipecat.transcriptions.language import Language
 from collection_agents.services.stt_local import VoskSTTService
 
@@ -31,7 +35,9 @@ from collection_agents.services.call_config import (
     LLM_RETRY_ON_TIMEOUT_DEFAULT,
     LLM_TIMEOUT_SECS_DEFAULT,
     coerce_positive_int,
-    get_tts_default_model,
+    get_asr_fallback_model,
+    get_tts_fallback_model,
+    normalize_asr_provider,
     normalize_tts_provider,
 )
 
@@ -106,77 +112,193 @@ def select_azure_llm_target():
 
 
 def resolve_stt_provider(asr_config, robot_code):
-    configured = str(asr_config.get("provider") or "").strip().lower()
-    return configured or "deepgram"
+    return normalize_asr_provider(asr_config.get("provider"))
 
 
-def create_stt_service(asr_config, robot_code, robot_name, grammar=None):
-    # provider = "elevenlabs"
+def _asr_provider_config(asr_config):
+    provider_config = asr_config.get("provider_config", {})
+    return dict(provider_config) if isinstance(provider_config, dict) else {}
+
+
+def _asr_provider_params(asr_config):
+    params = _asr_provider_config(asr_config).get("params", {})
+    return dict(params) if isinstance(params, dict) else {}
+
+
+def _stt_language(locale):
+    normalized = str(locale or "en").strip().replace("_", "-")
+    for candidate in (normalized, normalized.split("-", 1)[0].lower()):
+        try:
+            return Language(candidate)
+        except ValueError:
+            continue
+    raise ValueError(f"Unsupported STT language: {locale}")
+
+
+def _create_cartesia_stt_service(asr_config, robot_code, robot_name, grammar):
+    api_key = os.getenv("CARTESIA_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("CARTESIA_API_KEY is required for Cartesia STT")
     provider = resolve_stt_provider(asr_config, robot_code)
-    
-    locale = asr_config.get("locale", "zh-CN")
-
-    if provider == "cartesia":
-        api_key = os.getenv("CARTESIA_API_KEY", "").strip()
-        if not api_key:
-            raise ValueError("CARTESIA_API_KEY is required for Cartesia STT")
-
-        language = _cartesia_stt_language(locale)
-        sample_rate = 8000
-        return CartesiaSTTService(
-            api_key=api_key,
+    sample_rate = 8000
+    return CartesiaSTTService(
+        api_key=api_key,
+        sample_rate=sample_rate,
+        live_options=CartesiaLiveOptions(
+            model=asr_config.get("model") or get_asr_fallback_model(provider),
+            language=_cartesia_stt_language(asr_config.get("locale", "zh-CN")),
+            encoding="pcm_s16le",
             sample_rate=sample_rate,
-            live_options=CartesiaLiveOptions(
-                model=asr_config.get("model", "ink-whisper"),
-                language=language,
-                encoding="pcm_s16le",
-                sample_rate=sample_rate,
-            ),
-        )
-
-    if provider == "elevenlabs":
-        logging.info("Using ElevenLabsRealtimeSTTService")
-        api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
-        if not api_key:
-            raise ValueError("ELEVENLABS_API_KEY is required for ElevenLabs STT")
-
-        language_code = _elevenlabs_stt_language(locale)
-        return ElevenLabsRealtimeSTTService(
-            api_key=api_key,
-            sample_rate=8000,
-            params=ElevenLabsRealtimeSTTService.InputParams(
-                language_code=language_code,
-                commit_strategy=CommitStrategy.VAD,
-                vad_silence_threshold_secs=0.3,
-                vad_threshold=0.6,
-            ),
-        )
-
-    if provider == "vosk":
-        model_path = asr_config.get("model_path", "/mnt/data/vosk-model-small-es-0.42")
-        return VoskSTTService(model_path=model_path, sample_rate=8000, grammar=grammar)
-
-    if provider == "deepgram":
-        return DeepgramSTTService(
-            api_key=os.environ.get("DEEPGRAM_API_KEY"),
-            live_options=LiveOptions(
-                encoding="linear16",
-                language=_deepgram_stt_language(locale=locale),
-                model=asr_config.get("model") or "nova-2",
-                sample_rate=8000,
-                channels=1,
-                interim_results=True,
-                endpointing=100,
-                smart_format=False,
-            ),
-        )
-
-    logging.warning(f"Unknown STT provider: {provider}, using deepgram")
-    return create_stt_service(
-        {"provider": "deepgram", "locale": locale},
-        robot_code,
-        robot_name,
+        ),
     )
+
+
+def _create_elevenlabs_stt_service(asr_config, robot_code, robot_name, grammar):
+    logging.info("Using ElevenLabsRealtimeSTTService")
+    api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("ELEVENLABS_API_KEY is required for ElevenLabs STT")
+    language_code = _elevenlabs_stt_language(asr_config.get("locale", "zh-CN"))
+    return ElevenLabsRealtimeSTTService(
+        api_key=api_key,
+        sample_rate=8000,
+        params=ElevenLabsRealtimeSTTService.InputParams(
+            language_code=language_code,
+            commit_strategy=CommitStrategy.VAD,
+            vad_silence_threshold_secs=0.3,
+            vad_threshold=0.6,
+        ),
+    )
+
+
+def _create_vosk_stt_service(asr_config, robot_code, robot_name, grammar):
+    model_path = asr_config.get("model_path", "/mnt/data/vosk-model-small-es-0.42")
+    return VoskSTTService(model_path=model_path, sample_rate=8000, grammar=grammar)
+
+
+def _create_deepgram_stt_service(asr_config, robot_code, robot_name, grammar):
+    provider = resolve_stt_provider(asr_config, robot_code)
+    live_options = _asr_provider_params(asr_config)
+    live_options.update(
+        {
+            "encoding": "linear16",
+            "language": _deepgram_stt_language(asr_config.get("locale", "zh-CN")),
+            "model": asr_config.get("model") or get_asr_fallback_model(provider),
+            "sample_rate": 8000,
+            "channels": 1,
+            "interim_results": True,
+        }
+    )
+    live_options.setdefault("endpointing", 100)
+    live_options.setdefault("smart_format", False)
+    return DeepgramSTTService(
+        api_key=os.environ.get("DEEPGRAM_API_KEY"),
+        live_options=LiveOptions(**live_options),
+    )
+
+
+def _create_assemblyai_stt_service(asr_config, robot_code, robot_name, grammar):
+    api_key = os.getenv("ASSEMBLYAI_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("ASSEMBLYAI_API_KEY is required for AssemblyAI STT")
+    provider = resolve_stt_provider(asr_config, robot_code)
+    connection_params = _asr_provider_params(asr_config)
+    connection_params.setdefault("sample_rate", 8000)
+    connection_params.setdefault("encoding", "pcm_s16le")
+    connection_params["speech_model"] = (
+        asr_config.get("model") or get_asr_fallback_model(provider)
+    )
+    provider_config = _asr_provider_config(asr_config)
+    service_options = {
+        key: provider_config[key]
+        for key in (
+            "api_endpoint_base_url",
+            "vad_force_turn_endpoint",
+            "should_interrupt",
+            "speaker_format",
+        )
+        if key in provider_config
+    }
+    return AssemblyAISTTService(
+        api_key=api_key,
+        language=_stt_language(asr_config.get("locale", "zh-CN")),
+        connection_params=AssemblyAIConnectionParams(**connection_params),
+        **service_options,
+    )
+
+
+def _create_speechmatics_stt_service(asr_config, robot_code, robot_name, grammar):
+    api_key = os.getenv("SPEECHMATICS_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("SPEECHMATICS_API_KEY is required for Speechmatics STT")
+    provider = resolve_stt_provider(asr_config, robot_code)
+    params = _asr_provider_params(asr_config)
+    params["language"] = _stt_language(asr_config.get("locale", "zh-CN"))
+    params["operating_point"] = asr_config.get("model") or get_asr_fallback_model(provider)
+    params.setdefault("audio_encoding", "pcm_s16le")
+    provider_config = _asr_provider_config(asr_config)
+    service_options = {
+        key: provider_config[key]
+        for key in ("base_url", "should_interrupt")
+        if key in provider_config
+    }
+    return SpeechmaticsSTTService(
+        api_key=api_key,
+        sample_rate=8000,
+        params=SpeechmaticsSTTService.InputParams(**params),
+        **service_options,
+    )
+
+
+def _create_soniox_stt_service(asr_config, robot_code, robot_name, grammar):
+    api_key = os.getenv("SONIOX_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("SONIOX_API_KEY is required for Soniox STT")
+    provider = resolve_stt_provider(asr_config, robot_code)
+    params = _asr_provider_params(asr_config)
+    params["model"] = asr_config.get("model") or get_asr_fallback_model(provider)
+    params.setdefault("audio_format", "pcm_s16le")
+    params.setdefault("num_channels", 1)
+    params.setdefault(
+        "language_hints",
+        [_stt_language(asr_config.get("locale", "zh-CN"))],
+    )
+    provider_config = _asr_provider_config(asr_config)
+    service_options = {
+        key: provider_config[key]
+        for key in ("url", "vad_force_turn_endpoint")
+        if key in provider_config
+    }
+    return SonioxSTTService(
+        api_key=api_key,
+        sample_rate=8000,
+        params=SonioxInputParams(**params),
+        **service_options,
+    )
+
+
+STT_SERVICE_BUILDERS = {
+    "deepgram": _create_deepgram_stt_service,
+    "cartesia": _create_cartesia_stt_service,
+    "elevenlabs": _create_elevenlabs_stt_service,
+    "assemblyai": _create_assemblyai_stt_service,
+    "speechmatics": _create_speechmatics_stt_service,
+    "soniox": _create_soniox_stt_service,
+    "vosk": _create_vosk_stt_service,
+}
+
+
+def create_stt_service(asr_config, robot_code="", robot_name="", grammar=None):
+    provider = resolve_stt_provider(asr_config, robot_code)
+    builder = STT_SERVICE_BUILDERS.get(provider)
+    if builder is None:
+        logging.warning(f"Unknown STT provider: {provider}, using deepgram")
+        asr_config = {
+            "provider": "deepgram",
+            "locale": asr_config.get("locale", "zh-CN"),
+        }
+        builder = STT_SERVICE_BUILDERS["deepgram"]
+    return builder(asr_config, robot_code, robot_name, grammar)
 
 
 def resolve_deepgram_shadow_config(asr_config, robot_code):
@@ -269,7 +391,7 @@ def _create_cartesia_tts_service(tts_config):
         generation_config=generation_config,
     )
     return CartesiaTTSService(
-        model=tts_config.get("model") or get_tts_default_model(provider),
+        model=tts_config.get("model") or get_tts_fallback_model(provider),
         api_key=os.getenv("CARTESIA_API_KEY"),
         voice_id=voice_id or "71a7ad14-091c-4e8e-a314-022ece01c121",
         sample_rate=8000,
@@ -296,7 +418,7 @@ def _create_elevenlabs_tts_service(tts_config):
     return ElevenLabsTTSService(
         api_key=api_key,
         voice_id=voice_id,
-        model=tts_config.get("model") or get_tts_default_model(provider),
+        model=tts_config.get("model") or get_tts_fallback_model(provider),
         sample_rate=8000,
         params=ElevenLabsTTSService.InputParams(language=language, speed=speed),
     )

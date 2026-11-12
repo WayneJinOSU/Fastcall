@@ -8,7 +8,7 @@ from collection_agents.text.words_process import convert_numbers_in_text
 LLM_TIMEOUT_SECS_DEFAULT = 6.0
 LLM_RETRY_ON_TIMEOUT_DEFAULT = True
 
-TTS_PROVIDER_DEFAULT_MODELS = {
+TTS_PROVIDER_FALLBACK_MODELS = {
     "cartesia": "sonic-3.6",
     "elevenlabs": "eleven_flash_v2_5",
 }
@@ -18,11 +18,34 @@ def normalize_tts_provider(provider) -> str:
     return str(provider or "cartesia").strip().lower()
 
 
-def get_tts_default_model(provider) -> str:
+def get_tts_fallback_model(provider) -> str:
     normalized = normalize_tts_provider(provider)
-    return TTS_PROVIDER_DEFAULT_MODELS.get(
+    return TTS_PROVIDER_FALLBACK_MODELS.get(
         normalized,
-        TTS_PROVIDER_DEFAULT_MODELS["cartesia"],
+        TTS_PROVIDER_FALLBACK_MODELS["cartesia"],
+    )
+
+
+ASR_PROVIDER_FALLBACK_MODELS = {
+    "deepgram": "nova-2",
+    "cartesia": "ink-whisper",
+    "assemblyai": "u3-rt-pro",
+    "speechmatics": "enhanced",
+    "soniox": "stt-rt-v4",
+    "elevenlabs": "",
+    "vosk": "",
+}
+
+
+def normalize_asr_provider(provider) -> str:
+    return str(provider or "deepgram").strip().lower()
+
+
+def get_asr_fallback_model(provider) -> str:
+    normalized = normalize_asr_provider(provider)
+    return ASR_PROVIDER_FALLBACK_MODELS.get(
+        normalized,
+        ASR_PROVIDER_FALLBACK_MODELS["deepgram"],
     )
 
 
@@ -52,16 +75,18 @@ class CallConfigManager:
     def get_asr_config(self):
         asr = self.config.get("asr", {})
         asr = asr if isinstance(asr, dict) else {}
-        provider = str(asr.get("provider", "deepgram") or "deepgram").strip().lower()
+        provider = normalize_asr_provider(asr.get("provider"))
+        provider_config = asr.get("provider_config", {})
+        provider_config = provider_config if isinstance(provider_config, dict) else {}
         config = {
             "provider": provider,
             "locale": asr.get("language", asr.get("locale", "zh-CN")),
             "name": asr.get("name", "中文"),
+            "model": asr.get("model") or get_asr_fallback_model(provider),
+            "provider_config": dict(provider_config),
         }
-        if provider == "cartesia":
-            config["model"] = asr.get("model", "ink-whisper") or "ink-whisper"
-        elif "model" in asr:
-            config["model"] = asr["model"]
+        if "model_path" in asr:
+            config["model_path"] = asr["model_path"]
         return config
 
     def get_tts_config(self):
@@ -75,7 +100,7 @@ class CallConfigManager:
         return {
             "provider": provider,
             "voice_id": tts.get("voice_id", tts.get("name", "")),
-            "model": tts.get("model") or get_tts_default_model(provider),
+            "model": tts.get("model") or get_tts_fallback_model(provider),
             "locale": tts.get("language", tts.get("locale", "zh-CN")),
             "volume": tts.get("volume", ttsConfig.get("volume", 1.0)),
             "speed": tts.get("speed", ttsConfig.get("rate", 0.9)),

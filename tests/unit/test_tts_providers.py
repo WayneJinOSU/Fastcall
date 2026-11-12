@@ -63,6 +63,25 @@ class TTSConfigTests(unittest.TestCase):
         self.assertEqual(copilot["provider"], "cartesia")
         self.assertEqual(copilot["model"], "sonic-3.6")
 
+    def test_remote_values_override_local_fallbacks(self):
+        payload = {
+            "tts": {
+                "provider": "elevenlabs",
+                "voice_id": "remote-voice",
+                "model": "remote-model",
+                "language": "en-US",
+            }
+        }
+        configs = [
+            CallConfigManager({"config": payload}).get_tts_config(),
+            CopilotConfigManager({"config": payload}).get_tts_config(),
+        ]
+
+        for config in configs:
+            self.assertEqual(config["provider"], "elevenlabs")
+            self.assertEqual(config["voice_id"], "remote-voice")
+            self.assertEqual(config["model"], "remote-model")
+
 
 class ElevenLabsTTSFactoryTests(unittest.TestCase):
     @patch("collection_agents.services.providers.ElevenLabsTTSService")
