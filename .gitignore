@@ -1,4 +1,5 @@
 # ===== 密钥与环境 =====
+.env
 .env.temp
 .env.*
 !.env.example
