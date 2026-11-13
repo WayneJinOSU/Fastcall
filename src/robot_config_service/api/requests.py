@@ -1,4 +1,6 @@
-from pydantic import BaseModel, ConfigDict, Field
+import datetime
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class RequestModel(BaseModel):
@@ -39,3 +41,23 @@ class ResolveRequest(RequestModel):
 class VoiceTestSessionRequest(RequestModel):
     draft_revision: int = Field(ge=1)
     variables: dict = Field(default_factory=dict)
+
+
+class CallAnalysisRequest(RequestModel):
+    business_result: str | None = Field(default=None, max_length=255)
+    analysis: dict = Field(default_factory=dict)
+
+
+class AgentSessionEventRequest(RequestModel):
+    event_id: str = Field(min_length=1, max_length=255)
+    claim_generation: int = Field(ge=1)
+    agent_version: str = Field(min_length=1, max_length=128)
+    occurred_at: datetime.datetime
+    detail: dict = Field(default_factory=dict)
+
+    @field_validator("occurred_at")
+    @classmethod
+    def require_offset(cls, value):
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("occurred_at must include an offset")
+        return value

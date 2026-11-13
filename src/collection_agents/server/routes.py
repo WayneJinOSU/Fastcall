@@ -9,8 +9,10 @@
 """
 
 import asyncio
+import hmac
 import json
 import logging
+import os
 import traceback
 
 from fastapi import FastAPI, WebSocket
@@ -21,11 +23,62 @@ from collection_agents.bots.realtime import run_realtime_bot
 from collection_agents.bots.standard import run_standard_bot
 from collection_agents.infra.logging import set_request_trace_code
 from collection_agents.infra.paths import PROJECT_ROOT
+from collection_agents.session_lifecycle import SessionLifecycle
+from collection_agents.session_registry import SessionSlotError, SessionSlotRegistry
 
 _TWIML_PATH = PROJECT_ROOT / "templates" / "streams.xml"
 
 
+async def _run_v2_bot(websocket, app, call_data):
+    data = call_data.get("data", {})
+    callee = str(data.get("callee", ""))
+    config = data.get("config", {})
+    agent_name = config.get("name", "")
+    realtime_config = (
+        config.get("schema_version") == "robot-app/v1"
+        and isinstance(config.get("realtime"), dict)
+    )
+    generation = data.get("claimGeneration")
+    lifecycle = None
+    slot = None
+    if generation is not None:
+        expected = os.getenv("FASTCALL_AGENT_TOKEN", "")
+        authorization = websocket.headers.get("authorization", "")
+        provided = authorization[7:] if authorization.lower().startswith("bearer ") else ""
+        if not expected or not hmac.compare_digest(provided, expected):
+            await websocket.close(code=1008)
+            return
+        call_id = data.get("callUUID", "")
+        try:
+            slot = await app.state.session_slot_registry.attach(call_id, generation)
+            lifecycle = SessionLifecycle(
+                websocket, call_id, generation, data.get("configHash", "")
+            )
+            await lifecycle.attached()
+        except SessionSlotError:
+            await websocket.close(code=1009)
+            return
+    try:
+        if realtime_config or "realtime" in agent_name.casefold():
+            await run_realtime_bot(
+                websocket, callee or "test", call_data, session_lifecycle=lifecycle
+            )
+        else:
+            await run_standard_bot(
+                websocket, callee or "test", call_data, session_lifecycle=lifecycle
+            )
+    except Exception as error:
+        if lifecycle is not None:
+            await lifecycle.failed(str(error))
+        raise
+    finally:
+        if slot is not None:
+            await app.state.session_slot_registry.release(slot)
+
+
 def register_routes(app: FastAPI):
+    if not hasattr(app.state, "session_slot_registry"):
+        app.state.session_slot_registry = SessionSlotRegistry()
     @app.get("/")
     async def index():
         return {"message": "server is running"}
@@ -56,26 +109,8 @@ def register_routes(app: FastAPI):
                     continue
 
                 data = call_data.get("data", {})
-                callee = str(data.get("callee", ""))[-10:]
-                config = data.get("config", {})
-                agent_name = config.get("name", "")
-                realtime_config = (
-                    config.get("schema_version") == "robot-app/v1"
-                    and isinstance(config.get("realtime"), dict)
-                )
-
-                logging.info(
-                    "call_uuid=%s callee=%s",
-                    data.get("callUUID", ""),
-                    callee,
-                )
-
-                if realtime_config or "realtime" in agent_name.casefold():
-                    logging.info("server run with realtime_bot")
-                    await run_realtime_bot(websocket, callee or "test", call_data)
-                else:
-                    logging.info("server run with standard_bot")
-                    await run_standard_bot(websocket, callee or "test", call_data)
+                logging.info("call_uuid=%s", data.get("callUUID", ""))
+                await _run_v2_bot(websocket, app, call_data)
                 break
             except json.JSONDecodeError:
                 logging.info("Received non-JSON message, skipping...")

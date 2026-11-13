@@ -959,3 +959,22 @@ wscat -c ws://localhost:8765/ws-v2
 ---
 
 这是一个非常成熟的企业级AI语音交互系统！
+
+---
+
+## Fast-Call 独立外呼服务 V1（2026-11-13）
+
+项目现支持完整外呼任务闭环：创建任务、加密导入名单、按容量拨号、Agent 通话、失败重试、结果查询和 Webhook。该能力与原有三种 Bot 模式复用同一 Collection Agent Pipeline，但任务、调度和拨号状态由独立 Fast-Call 模块管理。
+
+| 模块 | 主要实现 |
+| --- | --- |
+| Open/Admin API | `src/robot_config_service/api/openapi/`、`adminapi/` |
+| 任务与名单 | `application/outbound_tasks.py`、`outbound_queries.py` |
+| Scheduler | `application/scheduler.py`、`scheduler_main.py` |
+| Adapter | `application/dispatch.py`、`media.py`、`adapter_main.py` |
+| Agent Session | `application/call_events.py`、`collection_agents/session_registry.py` |
+| 事件与结果 | `application/telephony_events.py`、`call_results.py` |
+| Outbox 与 Webhook | `application/webhooks.py`、`infrastructure/webhooks/` |
+| 数据迁移 | `migrations/versions/0002_outbound_service.py`、`0003_call_analysis.py`、`0004_outbound_call_analysis.py` |
+
+关键保证包括单次 originate、重启不补发、MySQL 条件更新、Agent 代际控制、双向音频有界缓冲、原子终态与 Outbox、结果修订及安全 Webhook。详细组件图和事务边界见 `ARCHITECTURE.md` 第 11 节，启动步骤见 `QUICK_START.md` 的 Fast-Call 部分。

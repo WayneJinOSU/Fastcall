@@ -45,6 +45,41 @@ def resolve_auth(
     )
 
 
+def openapi_auth(request: Request, authorization: str | None = Header(default=None)):
+    _check_token(_bearer_token(authorization), request.app.state.settings.openapi_token)
+
+
+def admin_actor(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_actor_id: str | None = Header(default=None),
+):
+    _check_token(_bearer_token(authorization), request.app.state.settings.admin_token)
+    actor = (x_actor_id or "").strip()
+    if not actor:
+        raise RobotConfigError("ACTOR_REQUIRED", "X-Actor-Id is required")
+    return actor
+
+
+def adapter_auth(request: Request, authorization: str | None = Header(default=None)):
+    _check_token(_bearer_token(authorization), request.app.state.settings.adapter_token)
+
+
+def agent_auth(request: Request, authorization: str | None = Header(default=None)):
+    _check_token(_bearer_token(authorization), request.app.state.settings.agent_token)
+
+
+def media_auth(request: Request, authorization: str | None = Header(default=None)):
+    _check_token(_bearer_token(authorization), request.app.state.settings.media_token)
+
+
+def get_secret_codec(request: Request):
+    if request.app.state.secret_codec is None:
+        from robot_config_service.infrastructure.security import SecretCodec
+        request.app.state.secret_codec = SecretCodec.from_env()
+    return request.app.state.secret_codec
+
+
 def get_uow(request: Request):
     uow = request.app.state.uow_factory()
     try:

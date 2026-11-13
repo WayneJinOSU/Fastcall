@@ -4,7 +4,9 @@ metadata:
   name: robot-config-service
   namespace: ${PROJECT}
 spec:
-  replicas: ${REPLICAS}
+  replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: robot-config-service

@@ -40,6 +40,7 @@ from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
     FastAPIWebsocketTransport,
 )
+from collection_agents.session_lifecycle import SessionFastAPIWebsocketTransport
 from pipecat.turns.user_start import TranscriptionUserTurnStartStrategy
 from pipecat.turns.user_stop import SpeechTimeoutUserTurnStopStrategy
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
@@ -279,7 +280,11 @@ async def _setup_realtime_call(call_ctx, session_context, websocket_client, stre
             input_sample_rate=TELEPHONY_SAMPLE_RATE,
             output_sample_rate=TELEPHONY_SAMPLE_RATE,
         )
-        transport = FastAPIWebsocketTransport(
+        transport_class = (
+            SessionFastAPIWebsocketTransport
+            if session_lifecycle is not None else FastAPIWebsocketTransport
+        )
+        transport = transport_class(
             websocket=websocket_client,
             params=FastAPIWebsocketParams(
                 audio_out_enabled=True,
@@ -379,6 +384,7 @@ async def run_realtime_bot(
     stream_sid,
     call_data,
     call_timeout=180,
+    session_lifecycle=None,
 ):
     """Run the collection bot using Azure GA Realtime via Pipecat."""
     call_ctx = None
@@ -749,7 +755,13 @@ async def run_realtime_bot(
                 realtime_model,
                 realtime_voice,
             )
+            if session_lifecycle is not None:
+                await session_lifecycle.ready()
             await runner.run(task)
+            if session_lifecycle is not None:
+                await session_lifecycle.completed({
+                    "voicemail": bool(session_context.get("voicemail_detected"))
+                })
             if duration_monitor:
                 duration_monitor.cancel()
             metrics_collector.finalize(datetime.datetime.now())

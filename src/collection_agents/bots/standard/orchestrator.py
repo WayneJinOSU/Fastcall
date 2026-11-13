@@ -24,6 +24,7 @@ from collection_agents.transport.telephony_websocket import (
     TelephonyFrameSerializer,
     TelephonyEventRouter,
 )
+from collection_agents.session_lifecycle import SessionFastAPIWebsocketTransport
 from collection_agents.transport.websocket_safe_send import harden_pipecat_websocket_transport
 from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
@@ -126,7 +127,9 @@ def _build_silence_frame(duration_ms: int, sample_rate: int = 8000, channels: in
     )
 
 
-async def run_standard_bot(websocket_client, stream_sid, call_data, call_timeout=180):
+async def run_standard_bot(
+    websocket_client, stream_sid, call_data, call_timeout=180, session_lifecycle=None
+):
     """Run bot with v3 configuration system - fixes assistant message recording"""
     call_ctx = None
     svc = None
@@ -205,7 +208,11 @@ async def run_standard_bot(websocket_client, stream_sid, call_data, call_timeout
             # answer is lost. 0.2s still filters line noise bursts.
             vad_start_secs = 0.2 if stt_provider == "vosk" else 0.3
             vad_stop_secs = 0.5 if allow_interruptions else 1.0
-            transport = FastAPIWebsocketTransport(
+            transport_class = (
+                SessionFastAPIWebsocketTransport
+                if session_lifecycle is not None else FastAPIWebsocketTransport
+            )
+            transport = transport_class(
                 websocket=websocket_client,
                 params=FastAPIWebsocketParams(
                     audio_out_enabled=True,
@@ -452,6 +459,8 @@ async def run_standard_bot(websocket_client, stream_sid, call_data, call_timeout
             async def _opening_silence_hangup_cb():
                 hangup_state.is_hanging_up = True
                 await send_hangup_signal(websocket_client)
+                if session_lifecycle is not None:
+                    await _queue_end_frame("opening_silence_hangup")
 
             def _on_voicemail_detected():
                 session_context["voicemail_detected"] = True
@@ -626,7 +635,13 @@ async def run_standard_bot(websocket_client, stream_sid, call_data, call_timeout
             # Run pipeline
             runner = PipelineRunner(handle_sigint=False)
             metrics_collector.task_start_time = datetime.datetime.now()
+            if session_lifecycle is not None:
+                await session_lifecycle.ready()
             await runner.run(task)
+            if session_lifecycle is not None:
+                await session_lifecycle.completed({
+                    "voicemail": bool(session_context.get("voicemail_detected"))
+                })
             if duration_monitor:
                 duration_monitor.cancel()
             metrics_collector.finalize(datetime.datetime.now())

@@ -7,15 +7,12 @@ metadata:
   name: ${APP}
   namespace: ${PROJECT}
 spec:
-  replicas: ${REPLICAS}
+  replicas: 1
   selector:
     matchLabels:
       app: ${APP}
   strategy:
-    rollingUpdate:
-      maxSurge: 10%
-      maxUnavailable: 25%
-    type: RollingUpdate
+    type: Recreate
   template:
     metadata:
       labels:

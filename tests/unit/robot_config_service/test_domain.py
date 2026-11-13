@@ -47,7 +47,7 @@ class DomainValidationTests(unittest.TestCase):
     def test_language_voice_and_combination_validation(self):
         cases = (
             ("asr", "language", "fr-FR", "ASR_LANGUAGE_UNSUPPORTED"),
-            ("tts", "voice_id", "missing", "TTS_VOICE_UNSUPPORTED"),
+            ("tts", "voice_id", "", "TTS_VOICE_UNSUPPORTED"),
             ("tts", "language", "fr-FR", "TTS_VOICE_LANGUAGE_MISMATCH"),
         )
         for block, field, value, expected in cases:
@@ -109,6 +109,71 @@ class DomainValidationTests(unittest.TestCase):
         locales = {locale for voice in voices for locale in voice["languages"]}
         self.assertTrue({"es-MX", "en-US", "ur-PK", "tl-PH", "vi-VN", "hi-IN", "en-IN"} <= locales)
         self.assertIn("sonic-3.6", cartesia["models"])
+
+    def test_new_asr_providers_pass_catalog_validation(self):
+        providers = {
+            "assemblyai": "u3-rt-pro",
+            "speechmatics": "enhanced",
+            "soniox": "stt-rt-v4",
+        }
+        for provider, model in providers.items():
+            with self.subTest(provider=provider):
+                config = valid_config()
+                config["asr"].update({"provider": provider, "model": model})
+                config["asr"]["provider_config"] = {"params": {}}
+                report = self.validate(config)
+                self.assertTrue(report.valid, report.as_dict())
+
+    def test_cartesia_custom_voice_and_official_voice_validation(self):
+        config = valid_config()
+        config["tts"]["voice_id"] = "cartesia-account-voice"
+        report = self.validate(config)
+        self.assertTrue(report.valid, report.as_dict())
+
+        official = valid_config()
+        official["tts"]["model"] = "sonic-3.6"
+        report = self.validate(official)
+        self.assertFalse(report.valid)
+        self.assertIn("TTS_VOICE_UNSUPPORTED", {issue.code for issue in report.errors})
+
+    def test_elevenlabs_custom_voice_and_speed_validation(self):
+        config = valid_config()
+        config["tts"].update({
+            "provider": "elevenlabs",
+            "model": "eleven_flash_v2_5",
+            "voice_id": "account-voice",
+            "language": "en-US",
+            "speed": 1.0,
+            "provider_config": {},
+        })
+        report = self.validate(config)
+        self.assertTrue(report.valid, report.as_dict())
+
+        for field, value in (("voice_id", ""), ("speed", 1.3)):
+            with self.subTest(field=field):
+                invalid = copy.deepcopy(config)
+                invalid["tts"][field] = value
+                report = self.validate(invalid)
+                self.assertFalse(report.valid)
+                self.assertIn(f"tts.{field}", {issue.path for issue in report.errors})
+
+    def test_elevenlabs_catalog_contains_current_default_voices(self):
+        voices = load_catalog().data["tts"]["elevenlabs"]["voices"]
+        self.assertEqual(len(voices), 20)
+        self.assertEqual(len({voice["voice_id"] for voice in voices}), 20)
+        self.assertIn("Sarah", {voice["name"] for voice in voices})
+        self.assertNotIn("Rachel", {voice["name"] for voice in voices})
+
+        config = valid_config()
+        config["tts"].update({
+            "provider": "elevenlabs",
+            "model": "eleven_flash_v2_5",
+            "voice_id": "EXAVITQu4vr4xnSDxMaL",
+            "language": "en-US",
+            "speed": 1.0,
+        })
+        report = self.validate(config)
+        self.assertTrue(report.valid, report.as_dict())
 
     def test_hash_canonicalization_and_runtime_sensitivity(self):
         config = valid_config()

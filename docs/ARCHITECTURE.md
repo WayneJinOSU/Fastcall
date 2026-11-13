@@ -864,3 +864,79 @@ Client ◄────────────────► Server
 ---
 
 这就是Collection Agents项目的完整架构设计！
+
+---
+
+## 11. Fast-Call 独立外呼服务 V1
+
+Fast-Call 在现有 Collection Agent 和 Robot Config 之上增加完整的任务外呼闭环，但没有改变原有 Bot Pipeline 的职责。MySQL 是任务、联系人和 Call 的业务事实源，电话事件只用于推进状态，不能绕过事务守卫直接改写结果。
+
+### 11.1 组件与进程边界
+
+```text
+客户系统
+  │ Open API / Webhook
+  ▼
+Robot Config / Fast-Call API
+  ├── Outbound Task / Contact / Query / Review
+  ├── Robot 精确版本 Resolve
+  └── Call Event / Outbox
+           │
+           ├── scheduler_main.py
+           │     └── 到期名单、公平性、容量、速率和重试
+           │           仅创建 reserved，通过内部 API 请求 dispatch
+           │
+           ├── adapter_main.py
+           │     ├── 唯一 originate 发送权
+           │     ├── ESL 事件与通道恢复
+           │     ├── Agent Claim / Session 生命周期
+           │     ├── FreeSWITCH 媒体 WebSocket
+           │     └── checking / unknown 核查
+           │
+           └── webhook_main.py
+                 └── Outbox 租约、HMAC 签名和安全投递
+
+FreeSWITCH → SIP 线路 → 电话用户
+     │
+     ├── ESL 控制与事件
+     └── mod-audio-stream → Adapter ↔ Collection Agent
+```
+
+| 进程 | 入口 | 职责 |
+| --- | --- | --- |
+| API | `robot_config_service.main:app` | Open/Admin/Internal API、Robot 配置和查询 |
+| Scheduler | `robot_config_service.scheduler_main` | 到期扫描、预留、重试和调度恢复 |
+| Adapter | `robot_config_service.adapter_main` | 单次拨号、ESL、Session、媒体和核查 |
+| Agent | `collection_agents.server.app:app` | Session slot 和 AI Pipeline，不操作任务或 ESL |
+| Webhook Worker | `robot_config_service.webhook_main` | 独立投递与重试，不影响电话状态 |
+
+Scheduler 不拼接或发送 FreeSWITCH 命令。Adapter 只有在当前进程内完成 `reserved + send_state=NONE → 数据库提交 → STARTED` 后才能调用一次 originate；重启、核查和恢复流程没有补发权限。
+
+### 11.2 状态与事务
+
+- Task、Contact、Call 均使用 `state_version` 做条件更新，Call 操作同时校验 `contact.active_call_id`。
+- 预留 Call 和 Contact=`calling` 在同一事务提交。只有确认 `dial_requested_at IS NULL` 的 `reserved` 才能回收。
+- `checking/unknown` 保留容量。人工核查必须带证据和期望版本，不能隐式重拨。
+- Call、Contact 首次终态、重试额度、任务完成及对应 Outbox 在同一事务处理。
+- 重试使用新 Call，未授权故障不占 `call_count` 或重试额度；取消任务不再进入 `waiting_retry`。
+- 不同来源、不同 event ID 的重复终态只记录事件，不重复收敛。FreeSWITCH 先终态后到达的 Agent `completed` 仍保存业务分析并 ACK，不重复转换 Call。
+- 暂停期间最后一个活动 Call 结束时任务保持暂停，恢复时补做任务完成和 `task.completed`。
+
+### 11.3 Agent Session 与媒体
+
+- `call_id` 同时用于 dispatch 幂等、Agent `callUUID` 和 FreeSWITCH `fastcall_call_id`。
+- 初始 Claim 幂等返回当前代际；pre-ready recover 增加 `claim_generation`。任何代际的 `session.failed` 都阻止后续 Claim。
+- attached 持久化并 ACK 后才初始化 Pipeline。旧代际 ready 无效，pre-ready failed 可来自历史代际，ready 后只接受当前代际。
+- Agent slot 在 Pipeline、Provider、媒体和清理回调全部结束后释放。pre-ready 断连使用有界 recover，ready 后断线立即失败并挂断。
+- 媒体使用 signed PCM16 little-endian、单声道、8000Hz。Adapter 按字节重组 320B/20ms 帧，双方队列最多 500ms；溢出终止当前 Call。
+- ready 先到或媒体先到都通过同一 pending 状态协调，ready 后才发送 `answer` 和预缓冲音频。
+
+### 11.4 数据与回调
+
+Alembic 当前基线为 `0004`，包含 Robot 配置、外呼任务、联系人、Call、事件、禁呼、Outbox、调度状态和 `outbound_call_analysis`。`outbound_call_analysis.business_result` 独立于 Call 技术结果，不触发重试，也不进入客户 Webhook。该表与旧 Collection Agents 的 `call_analysis` 物理分离，旧表的 `analysis_type/result_json` 结构保持不变。
+
+Webhook 使用稳定事件 ID 和结果 revision。`unknown` 被迟到事件或人工核查修订时发送新的 `contact.result_changed`。投递重新解析并验证全部 IP，连接已验证 IP，同时保留原域名用于 Host、SNI 和证书校验；禁止重定向和环境代理。
+
+### 11.5 部署约束
+
+`deploy/fastcall-outbound-deploy.yaml` 定义 Scheduler、Adapter 和 Webhook Worker，均为单副本 `Recreate`。Collection Agent 同样保持单副本 `Recreate`，禁止滚动期间新旧实例并存及 HPA。FreeSWITCH 和 SIP 线路作为外部基础设施运行。

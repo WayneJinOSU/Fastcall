@@ -81,7 +81,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(resolved.status_code, 200, resolved.text)
         self.assertEqual(resolved.json()["app_config"], valid_config())
         self.assertNotIn("environment", resolved.json())
-        self.assertEqual(resolved.json()["runtime_catalog_version"], "2026-11-11.1")
+        self.assertEqual(resolved.json()["runtime_catalog_version"], "2026-11-12.3")
 
         changed = valid_config()
         changed["prompt"]["system_template"] = "Changed {{user_name}}"

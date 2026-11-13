@@ -1,5 +1,5 @@
 {
-  "catalog_version": "2026-11-11.1",
+  "catalog_version": "2026-11-12.3",
   "runtime_profiles": [
     {
       "provider": "deepseek",
@@ -62,20 +62,62 @@
       "encodings": [
         "pcm_s16le"
       ]
+    },
+    "assemblyai": {
+      "enabled": true,
+      "deprecated": false,
+      "models": {
+        "u3-rt-pro": {
+          "enabled": true,
+          "deprecated": false,
+          "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN"]
+        }
+      },
+      "sample_rates": [8000],
+      "encodings": ["pcm_s16le"]
+    },
+    "speechmatics": {
+      "enabled": true,
+      "deprecated": false,
+      "models": {
+        "enhanced": {
+          "enabled": true,
+          "deprecated": false,
+          "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"]
+        }
+      },
+      "sample_rates": [8000],
+      "encodings": ["pcm_s16le"]
+    },
+    "soniox": {
+      "enabled": true,
+      "deprecated": false,
+      "models": {
+        "stt-rt-v4": {
+          "enabled": true,
+          "deprecated": false,
+          "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"]
+        }
+      },
+      "sample_rates": [8000],
+      "encodings": ["pcm_s16le"]
     }
   },
   "tts": {
     "cartesia": {
       "enabled": true,
       "deprecated": false,
+      "voice_input": "catalog_or_custom",
       "models": {
         "sonic-2": {
           "enabled": true,
-          "deprecated": false
+          "deprecated": false,
+          "languages": ["en-GB", "en-US", "es-ES", "es-MX", "tl-PH", "zh-CN"]
         },
         "sonic-3.6": {
           "enabled": true,
-          "deprecated": false
+          "deprecated": false,
+          "languages": ["ar-SA", "bg-BG", "de-DE", "en-GB", "en-IN", "en-NZ", "en-US", "es-ES", "es-MX", "fr-CA", "fr-FR", "he-IL", "hi-IN", "it-IT", "ja-JP", "kn-IN", "ko-KR", "ml-IN", "mr-IN", "no-NO", "or-IN", "pt-BR", "ta-IN", "te-IN", "th-TH", "tl-PH", "ur-IN", "ur-PK", "vi-VN", "zh-CN", "zh-TW"]
         }
       },
       "voices": [
@@ -709,6 +751,46 @@
       "encodings": [
         "pcm_s16le"
       ]
+    },
+    "elevenlabs": {
+      "enabled": true,
+      "deprecated": false,
+      "voice_input": "catalog_or_custom",
+      "speed_range": {
+        "min": 0.7,
+        "max": 1.2
+      },
+      "models": {
+        "eleven_flash_v2_5": {
+          "enabled": true,
+          "deprecated": false,
+          "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"]
+        }
+      },
+      "voices": [
+        {"voice_id": "Xb7hH8MSUJpSbSDYk0k2", "name": "Alice", "country": "GB", "gender": "female", "description": "Confident voice for news", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
+        {"voice_id": "9BWtsMINqrJLrRacOk9x", "name": "Aria", "country": "US", "gender": "female", "description": "Expressive voice for social media", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
+        {"voice_id": "pqHfZKP75CvOlQylNhV4", "name": "Bill", "country": "US", "gender": "male", "description": "Trustworthy voice for narration", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
+        {"voice_id": "nPczCjzI2devNBz1zQrb", "name": "Brian", "country": "US", "gender": "male", "description": "Deep voice for narration", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
+        {"voice_id": "N2lVS1w4EtoT3dr4eOWO", "name": "Callum", "country": "", "gender": "male", "description": "Intense transatlantic voice for characters", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
+        {"voice_id": "IKne3meq5aSn9XLyUdCD", "name": "Charlie", "country": "AU", "gender": "male", "description": "Natural Australian voice for conversational use", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
+        {"voice_id": "XB0fDUnXU5powFXDhCwa", "name": "Charlotte", "country": "SE", "gender": "female", "description": "Swedish voice for characters", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
+        {"voice_id": "iP95p4xoKVk53GoZ742B", "name": "Chris", "country": "US", "gender": "male", "description": "Casual voice for conversational use", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
+        {"voice_id": "onwK4e9ZLuTAKqWW03F9", "name": "Daniel", "country": "GB", "gender": "male", "description": "Authoritative British voice for news", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
+        {"voice_id": "cjVigY5qzO86Huf0OWal", "name": "Eric", "country": "US", "gender": "male", "description": "Friendly voice for conversational use", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
+        {"voice_id": "JBFqnCBsd6RMkjVDRZzb", "name": "George", "country": "GB", "gender": "male", "description": "Warm British voice for narration", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
+        {"voice_id": "cgSgspJ2msm6clMCkdW9", "name": "Jessica", "country": "US", "gender": "female", "description": "Expressive voice for conversational use", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
+        {"voice_id": "FGY2WhTYpPnrIDTdsKH5", "name": "Laura", "country": "US", "gender": "female", "description": "Upbeat voice for social media", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
+        {"voice_id": "TX3LPaxmHKxFdv7VOQHJ", "name": "Liam", "country": "US", "gender": "male", "description": "Articulate voice for narration", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
+        {"voice_id": "pFZP5JQG7iQjIQuC4Bku", "name": "Lily", "country": "GB", "gender": "female", "description": "Warm British voice for narration", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
+        {"voice_id": "XrExE9yKIg1WjnnlVkGX", "name": "Matilda", "country": "US", "gender": "female", "description": "Friendly voice for narration", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
+        {"voice_id": "SAz9YHcvj6GT2YYXdXww", "name": "River", "country": "US", "gender": "non-binary", "description": "Confident voice for social media", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
+        {"voice_id": "CwhRBWXzGAHq8TQ4Fs17", "name": "Roger", "country": "US", "gender": "male", "description": "Confident voice for social media", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
+        {"voice_id": "EXAVITQu4vr4xnSDxMaL", "name": "Sarah", "country": "US", "gender": "female", "description": "Soft voice for news", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
+        {"voice_id": "bIHbv24MWmeRgasZH58o", "name": "Will", "country": "US", "gender": "male", "description": "Friendly voice for social media", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false}
+      ],
+      "sample_rates": [8000],
+      "encodings": ["pcm_s16le"]
     }
   },
   "realtime": {

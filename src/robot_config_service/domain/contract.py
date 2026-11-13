@@ -32,6 +32,7 @@ def validate_object_fields(
     block: str,
     specs: dict,
     issues: list,
+    optional_fields: set[str] | None = None,
 ) -> None:
     value = config.get(block)
     if not isinstance(value, dict):
@@ -40,10 +41,12 @@ def validate_object_fields(
     unknown = set(value) - set(specs)
     if unknown:
         add_issue(issues, block, f"Unknown fields: {sorted(unknown)}")
+    optional = optional_fields or set()
     for field, expected in specs.items():
         path = f"{block}.{field}"
         if field not in value:
-            add_issue(issues, path, "Field is required")
+            if field not in optional:
+                add_issue(issues, path, "Field is required")
             continue
         field_value = value[field]
         validators = {

@@ -41,7 +41,7 @@ class FakeResult:
 
 
 class FakeConnection:
-    def __init__(self, revision="0001"):
+    def __init__(self, revision="0004"):
         self.revision = revision
 
     def __enter__(self):
@@ -57,7 +57,7 @@ class FakeConnection:
 class FakeEngine:
     dialect = FakeDialect()
 
-    def __init__(self, revision="0001"):
+    def __init__(self, revision="0004"):
         self.revision = revision
 
     def connect(self):
@@ -76,7 +76,9 @@ class SchemaStartupTests(unittest.TestCase):
         database = Database(FakeEngine(revision="old"), None)
         tables = [
             "robot_app", "robot_app_version", "robot_release",
-            "robot_config_audit_log", "robot_config_alembic_version",
+            "robot_config_audit_log", "outbound_task", "task_contact",
+            "outbound_call", "call_event", "call_blacklist", "webhook_delivery",
+            "scheduler_state", "outbound_call_analysis", "robot_config_alembic_version",
         ]
         with patch("robot_config_service.infrastructure.database.inspect") as inspector:
             inspector.return_value.get_table_names.return_value = tables
@@ -87,7 +89,9 @@ class SchemaStartupTests(unittest.TestCase):
         database = Database(FakeEngine(), None)
         tables = [
             "robot_app", "robot_app_version", "robot_release",
-            "robot_config_audit_log", "robot_config_alembic_version",
+            "robot_config_audit_log", "outbound_task", "task_contact",
+            "outbound_call", "call_event", "call_blacklist", "webhook_delivery",
+            "scheduler_state", "outbound_call_analysis", "robot_config_alembic_version",
         ]
         with patch("robot_config_service.infrastructure.database.inspect") as inspector:
             inspector.return_value.get_table_names.return_value = tables

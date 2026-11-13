@@ -109,7 +109,7 @@ class ApplicationTests(unittest.TestCase):
         self.assertFalse(report["valid"])
         resolved = ResolveUseCase(self.uow).execute("example-standard-en")
         self.assertEqual(resolved["robot_app_version_id"], published["robot_app_version_id"])
-        self.assertEqual(resolved["runtime_catalog_version"], "2026-11-11.1")
+        self.assertEqual(resolved["runtime_catalog_version"], "2026-11-12.3")
 
     def test_resolve_does_not_expose_missing_unpublished_or_disabled_state(self):
         for robot_code in ("missing", "example-standard-en"):

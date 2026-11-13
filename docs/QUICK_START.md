@@ -572,3 +572,153 @@ COLLECTION_NOTE_ENGINE=post_process
 ---
 
 祝您使用愉快！🎉
+
+---
+
+## Fast-Call 外呼服务启动指南
+
+### 1. 配置基础设施
+
+需要 MySQL、FreeSWITCH 和 Collection Agent。Fast-Call API、Scheduler、Adapter 与 Webhook Worker 共用业务 MySQL；生产环境按部署约束分别运行单副本。
+
+先执行迁移：
+
+```bash
+export ROBOT_CONFIG_DATABASE_URL='mysql+pymysql://user:password@host:3306/robot_config'
+venv/bin/alembic -c deploy/robot_config_alembic.ini upgrade head
+```
+
+当前启动检查要求 Alembic 版本为 `0004`，并包含外呼及 `outbound_call_analysis` 表。Fast-Call 的分析表与旧 Collection Agents 的 `call_analysis` 分开，迁移不会重命名或删除旧表。迁移必须使用专用业务库，不能用会重建测试表的集成测试代替。
+
+### 2. 配置凭据与密钥
+
+从 `.env.example` 复制并填写 Robot Config 和 Fast-Call 配置。以下凭据必须全部存在且互不相同：
+
+```bash
+FASTCALL_OPENAPI_TOKEN=...
+FASTCALL_ADMIN_TOKEN=...
+FASTCALL_ADAPTER_TOKEN=...
+FASTCALL_AGENT_TOKEN=...
+FASTCALL_MEDIA_TOKEN=...
+```
+
+号码和变量使用带版本的 AES-GCM 密钥；号码去重和禁呼使用独立 HMAC 密钥。两个 JSON 中的密钥均为 32 字节随机值的 base64：
+
+```bash
+FASTCALL_ENCRYPTION_KEYS_JSON={"v1":"base64-key"}
+FASTCALL_ENCRYPTION_ACTIVE_VERSION=v1
+FASTCALL_HMAC_KEYS_JSON={"v1":"base64-key"}
+FASTCALL_HMAC_ACTIVE_VERSION=v1
+FASTCALL_WEBHOOK_SECRETS_JSON={"crm":"random-secret"}
+```
+
+FreeSWITCH 和进程地址配置：
+
+```bash
+FREESWITCH_HOST=freeswitch
+FREESWITCH_ESL_PORT=8021
+FREESWITCH_ESL_PASSWORD=...
+FREESWITCH_SIP_GATEWAY=...
+FREESWITCH_INSTANCE_ID=fs-1
+COLLECTION_AGENT_WS_URL=ws://collection-agent:8765/ws-v2
+FASTCALL_ADAPTER_INTERNAL_URL=http://fastcall-adapter:8767
+FASTCALL_MEDIA_WS_URL=ws://fastcall-adapter:8767/internal/media
+```
+
+如需回调企业内网 CRM，只配置 HTTPS 地址，并显式设置 hostname 或 CIDR 白名单。链路本地和云元数据地址始终禁止。
+
+### 3. 启动各进程
+
+在源码目录、已激活虚拟环境且 `PYTHONPATH=src` 时：
+
+```bash
+# API（默认端口 8766）
+venv/bin/uvicorn robot_config_service.main:app --host 0.0.0.0 --port 8766
+
+# Collection Agent（默认端口 8765）
+venv/bin/python main.py
+
+# Adapter（默认端口 8767）
+venv/bin/python -m robot_config_service.adapter_main
+
+# Scheduler（通过内部 API 请求 Adapter，不直接拨号）
+venv/bin/python -m robot_config_service.scheduler_main
+
+# Webhook Worker
+venv/bin/python -m robot_config_service.webhook_main
+```
+
+Kubernetes 使用 `deploy/fastcall-outbound-deploy.yaml`，Scheduler、Adapter、Agent 和 Webhook Worker 均不得并行运行新旧副本。
+
+### 4. Open API 基本顺序
+
+1. 创建并发布 Robot 版本。
+2. `PUT /openapi/v1/outbound-tasks/{customer_task_id}` 创建草稿任务。
+3. `POST /openapi/v1/outbound-tasks/{task_id}/contacts` 导入联系人。
+4. 携带当前 `expected_state_version` 调用 `start`，启动时固定精确 Robot 版本并重新校验全部变量。
+5. 使用 `pause/resume/cancel` 控制任务，使用联系人/Call 查询接口观察结果。
+6. `checking/unknown` 只能通过 Admin review 处理，不会自动重拨。
+
+完整路径和字段约束见 `FASTCALL_OUTBOUND_SERVICE_DESIGN.md` 第 9 节。
+
+### 5. 测试与真实媒体 POC
+
+```bash
+# 外呼相关单元测试
+PYTHONPATH=src venv/bin/python -m unittest discover -s tests/unit/robot_config_service -t .
+
+# 模拟完整业务闭环
+PYTHONPATH=src venv/bin/python -m unittest tests.integration.test_outbound_e2e
+
+# 真实 MySQL（使用独立测试库，禁止指向业务库）
+ROBOT_CONFIG_TEST_DATABASE_URL='mysql+pymysql://user:password@host:3306/fastcall_test' \
+  PYTHONPATH=src venv/bin/python -m unittest tests.integration.robot_config_mysql.test_mysql
+```
+
+真实 FreeSWITCH 媒体 POC 需要已启动的 Docker Desktop 和可用 Docker daemon：
+
+```bash
+bash scripts/test_freeswitch_media_poc.sh
+```
+
+如果 Docker CLI 位于 Docker Desktop 内但尚未加入 PATH：
+
+```bash
+PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH" \
+  bash scripts/test_freeswitch_media_poc.sh
+```
+
+脚本固定 `AlchemillaHQ/mod-audio-stream` commit `a25fb1fe530ec6a612d321ff04f70be69b1a257c`，构建 FreeSWITCH 1.10.12 和模块，等待 ESL 就绪后执行双向 PCM、暂停/恢复、break、停止及错误场景测试，并在结束后清理容器和网络。部署使用该模块需满足 AGPL-3.0 或商业许可。
+
+### 无 SIP 线路的 loopback 验收
+
+没有运营商线路时，应把 FreeSWITCH 作为独立被测服务，使用它现有的 ESL、自动接听 dialplan 和 loopback 能力，**不要为了通过测试修改 FreeSWITCH 的运行配置或 ACL**。
+
+只需为 Adapter 增加测试配置：
+
+```bash
+FREESWITCH_DIAL_MODE=loopback
+FREESWITCH_HOST=实际-FreeSWITCH-地址
+FREESWITCH_ESL_PASSWORD=实际-ESL-密码
+FREESWITCH_SIP_GATEWAY=loopback
+FASTCALL_MEDIA_WS_URL=ws://实际-Adapter-地址:8767/internal/media
+```
+
+联系人仍必须使用 E.164，例如 `+12025550101`；loopback 模式只在 Adapter 生成拨号命令时移除前导 `+`，生成 `loopback/12025550101`。生产环境省略 `FREESWITCH_DIAL_MODE` 或设为 `gateway`，继续使用真实 SIP Gateway。
+
+如果现有 FreeSWITCH 的 ESL 只允许容器内连接，就在容器内部运行验证客户端，不修改监听地址或 ACL。模块集成镜像则直接使用其自带配置，不挂载替代配置。该模式已实际验证 originate、自动接听和挂断。
+
+需要验证真实 STT → LLM → TTS 时，可按第 4 节创建并启动单联系人任务，等待 Call 进入 `talking`，再把一段 8kHz、单声道、PCM16 WAV 播到 loopback 另一腿。以下 `<fs-container>` 为现有 FreeSWITCH 容器，`<call-uuid>` 取 Call 的 `freeswitch_uuid`：
+
+```bash
+docker cp caller-8k.wav <fs-container>:/tmp/fastcall-caller.wav
+docker exec <fs-container> fs_cli -x 'uuid_dump <call-uuid>'
+# 从输出读取 variable_other_loopback_leg_uuid，替换下面的 <peer-uuid>
+docker exec <fs-container> fs_cli -x 'uuid_broadcast <peer-uuid> /tmp/fastcall-caller.wav'
+```
+
+用户语音可使用 Cartesia `/tts/bytes` 以 `pcm_s16le/8000Hz` 生成。播放后应在 Agent 日志看到真实转写、LLM 响应和 TTS 输出；任务自然结束后应满足：
+
+- Call 和 Contact 为 `succeeded`，Task 为 `completed`；联系人 `call_count=1`、双方 `result_revision=1`。
+- `contact.completed` 与 `task.completed` 各一条，Webhook 状态为 `delivered`、HTTP 为 204，且重投保持事件 ID 不变。
+- Collection Agent 原有通话记录及业务分析独立落库。Fast-Call 以 FreeSWITCH 终态收敛，不要求通过修改 Agent 业务代码来复制分类。

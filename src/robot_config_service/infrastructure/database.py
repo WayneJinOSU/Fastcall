@@ -9,9 +9,17 @@ REQUIRED_TABLES = {
     "robot_app_version",
     "robot_release",
     "robot_config_audit_log",
+    "outbound_task",
+    "task_contact",
+    "outbound_call",
+    "call_event",
+    "call_blacklist",
+    "webhook_delivery",
+    "scheduler_state",
+    "outbound_call_analysis",
 }
 ALEMBIC_TABLE = "robot_config_alembic_version"
-EXPECTED_REVISION = "0001"
+EXPECTED_REVISION = "0004"
 
 
 @dataclass

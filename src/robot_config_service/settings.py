@@ -15,6 +15,11 @@ class Settings:
     console_admin_password_hash: str = ""
     console_session_secret: str = ""
     collection_agent_ws_url: str = "ws://127.0.0.1:8765/ws-v2"
+    openapi_token: str = ""
+    admin_token: str = ""
+    adapter_token: str = ""
+    agent_token: str = ""
+    media_token: str = ""
 
     @classmethod
     def from_env(cls):
@@ -32,6 +37,11 @@ class Settings:
             collection_agent_ws_url=(
                 os.getenv("COLLECTION_AGENT_WS_URL", "ws://127.0.0.1:8765/ws-v2").strip()
             ),
+            openapi_token=os.getenv("FASTCALL_OPENAPI_TOKEN", "").strip(),
+            admin_token=os.getenv("FASTCALL_ADMIN_TOKEN", "").strip(),
+            adapter_token=os.getenv("FASTCALL_ADAPTER_TOKEN", "").strip(),
+            agent_token=os.getenv("FASTCALL_AGENT_TOKEN", "").strip(),
+            media_token=os.getenv("FASTCALL_MEDIA_TOKEN", "").strip(),
         )
 
     def validate(self):
@@ -39,10 +49,14 @@ class Settings:
             raise RuntimeError("APP_ENV must be one of: dev, test, prod")
         if not self.database_url.startswith("mysql+pymysql://"):
             raise RuntimeError("Robot Config Service requires a MySQL PyMySQL database URL")
-        if not self.management_token or not self.resolve_token:
-            raise RuntimeError("Both Robot Config Service tokens are required")
-        if self.management_token == self.resolve_token:
-            raise RuntimeError("Management and Resolve tokens must be different")
+        tokens = [
+            self.management_token, self.resolve_token, self.openapi_token,
+            self.admin_token, self.adapter_token, self.agent_token, self.media_token,
+        ]
+        if any(not token for token in tokens):
+            raise RuntimeError("All Robot Config and Fast-Call API tokens are required")
+        if len(set(tokens)) != len(tokens):
+            raise RuntimeError("Robot Config and Fast-Call API tokens must be different")
         if not self.console_admin_actor_id or not self.console_admin_password_hash:
             raise RuntimeError("Console administrator identity and password hash are required")
         if len(self.console_session_secret) < 32:

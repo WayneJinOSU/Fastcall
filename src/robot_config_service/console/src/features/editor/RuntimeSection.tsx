@@ -5,17 +5,43 @@ const COUNTRY_NAMES: Record<string, string> = {
   GB: '英国', CN: '中国', ES: '西班牙', BR: '巴西', FR: '法国', DE: '德国', JP: '日本',
 };
 
+const PROVIDER_NAMES: Record<string, string> = {
+  deepgram: 'Deepgram', cartesia: 'Cartesia', elevenlabs: 'ElevenLabs',
+  assemblyai: 'AssemblyAI', speechmatics: 'Speechmatics', soniox: 'Soniox',
+};
+
 function voiceLabel(voice: any) {
   const country = COUNTRY_NAMES[voice.country] || voice.country || '';
   return `${voice.name || voice.voice_id}${country ? ` · ${country}` : ''}`;
 }
 
+function enabledModels(provider: any): string[] {
+  return Object.entries(provider?.models || {})
+    .filter(([, model]: [string, any]) => model.enabled)
+    .map(([name]) => name);
+}
+
+function modelLanguages(provider: any, model: string): string[] {
+  return provider?.models?.[model]?.languages || [];
+}
+
+function compatibleLanguage(language: string, languages: string[]): string {
+  return languages.includes(language) ? language : languages[0] || '';
+}
+
 export default function RuntimeSection({ config, catalog, onChange, readOnly }: { config: AppConfig; catalog: CapabilityCatalog; onChange: (value: AppConfig) => void; readOnly: boolean }) {
   const profile = catalog.runtime_profiles.find(item => item.provider === config.llm.provider && item.model === config.llm.model);
   const isRealtime = profile?.runtime_engine === 'realtime';
-  const ttsModel = String(config.tts?.model || 'sonic-2');
-  const ttsVoices = catalog.tts.cartesia.voices.filter((voice: any) => voice.enabled && voice.models?.includes(ttsModel));
-  const selectedTtsVoice = catalog.tts.cartesia.voices.find((voice: any) => voice.voice_id === config.tts?.voice_id);
+  const asrProvider = catalog.asr[String(config.asr?.provider || 'deepgram')] || {};
+  const asrModel = String(config.asr?.model || '');
+  const ttsProvider = catalog.tts[String(config.tts?.provider || 'cartesia')] || {};
+  const ttsModel = String(config.tts?.model || '');
+  const ttsVoices = (ttsProvider.voices || []).filter((voice: any) => voice.enabled);
+  const selectedTtsVoice = ttsVoices.find((voice: any) => voice.voice_id === config.tts?.voice_id);
+  const catalogOrCustomVoice = ttsProvider.voice_input === 'catalog_or_custom';
+  const customVoice = ttsProvider.voice_input === 'custom' || (catalogOrCustomVoice && !selectedTtsVoice);
+  const ttsLanguages = customVoice ? modelLanguages(ttsProvider, ttsModel) : selectedTtsVoice?.languages || [];
+  const speedRange = ttsProvider.speed_range || { min: 0.5, max: 2 };
 
   function changeModel(modelKey: string) {
     const selected = catalog.runtime_profiles.find(item => `${item.provider}:${item.model}` === modelKey);
@@ -46,18 +72,57 @@ export default function RuntimeSection({ config, catalog, onChange, readOnly }: 
     onChange({ ...config, [block]: { ...config[block], [field]: value } });
   }
 
+  function changeAsrProvider(providerName: string) {
+    const provider = catalog.asr[providerName];
+    const model = enabledModels(provider)[0] || '';
+    const language = compatibleLanguage(String(config.asr?.language || ''), modelLanguages(provider, model));
+    onChange({ ...config, asr: { ...config.asr, provider: providerName, model, language, sample_rate: 8000, encoding: 'pcm_s16le', interim_results: true, endpointing_ms: 100 } });
+  }
+
+  function changeAsrModel(model: string) {
+    const language = compatibleLanguage(String(config.asr?.language || ''), modelLanguages(asrProvider, model));
+    onChange({ ...config, asr: { ...config.asr, model, language } });
+  }
+
+  function ttsSelection(provider: any, model: string, voiceId: string, language: string) {
+    const catalogVoices = provider.voices || [];
+    const isCustom = provider.voice_input === 'custom' || (
+      provider.voice_input === 'catalog_or_custom'
+      && voiceId
+      && !catalogVoices.some((voice: any) => voice.voice_id === voiceId)
+    );
+    if (isCustom) {
+      return { voice_id: voiceId, language: compatibleLanguage(language, modelLanguages(provider, model)) };
+    }
+    const voices = catalogVoices.filter((voice: any) => voice.enabled && voice.models?.includes(model));
+    const voice = voices.find((item: any) => item.voice_id === voiceId) || voices[0];
+    return {
+      voice_id: voice?.voice_id || '',
+      language: compatibleLanguage(language, voice?.languages || []),
+    };
+  }
+
+  function changeTtsProvider(providerName: string) {
+    const provider = catalog.tts[providerName];
+    const model = enabledModels(provider)[0] || '';
+    const selection = ttsSelection(provider, model, '', String(config.tts?.language || ''));
+    onChange({ ...config, tts: { ...config.tts, provider: providerName, model, ...selection, speed: config.tts?.speed ?? 0.9, volume: config.tts?.volume ?? 80, sample_rate: 8000, encoding: 'pcm_s16le' } });
+  }
+
   function changeTtsModel(model: string) {
-    const compatibleVoices = catalog.tts.cartesia.voices.filter((voice: any) => voice.enabled && voice.models?.includes(model));
-    const currentVoice = compatibleVoices.find((voice: any) => voice.voice_id === config.tts?.voice_id);
-    const nextVoice = currentVoice || compatibleVoices[0];
-    const language = nextVoice?.languages.includes(config.tts?.language) ? config.tts?.language : nextVoice?.languages[0] || '';
-    onChange({ ...config, tts: { ...config.tts, model, voice_id: nextVoice?.voice_id || '', language } });
+    const selection = ttsSelection(ttsProvider, model, String(config.tts?.voice_id || ''), String(config.tts?.language || ''));
+    onChange({ ...config, tts: { ...config.tts, model, ...selection } });
   }
 
   function changeTtsVoice(voiceId: string) {
-    const nextVoice = catalog.tts.cartesia.voices.find((voice: any) => voice.voice_id === voiceId);
-    const language = nextVoice?.languages.includes(config.tts?.language) ? config.tts?.language : nextVoice?.languages[0] || '';
-    onChange({ ...config, tts: { ...config.tts, voice_id: voiceId, language } });
+    if (!voiceId) {
+      onChange({ ...config, tts: { ...config.tts, voice_id: '' } });
+      return;
+    }
+    const nextVoice = (ttsProvider.voices || []).find((voice: any) => voice.voice_id === voiceId);
+    const language = compatibleLanguage(String(config.tts?.language || ''), nextVoice?.languages || []);
+    const model = nextVoice?.models?.includes(ttsModel) ? ttsModel : nextVoice?.models?.[0] || ttsModel;
+    onChange({ ...config, tts: { ...config.tts, voice_id: voiceId, model, language } });
   }
 
   return <>
@@ -74,15 +139,18 @@ export default function RuntimeSection({ config, catalog, onChange, readOnly }: 
       {profile && !profile.remote_runtime_supported && <div className="alert warning">远程 Adapter 尚未启用，可保存草稿，但不能发布。</div>}
     </section>
     {!isRealtime && config.asr && config.tts && <>
-      <section className="editor-card form-card"><div className="editor-card-head"><div><span className="editor-card-title">Deepgram ASR</span><span className="editor-card-subtitle">音频格式由通话链路固定</span></div></div><div className="form-grid two">
-        <label>模型<select disabled={readOnly} value={String(config.asr.model)} onChange={event => updateBlock('asr', 'model', event.target.value)}>{Object.keys(catalog.asr.deepgram.models).map(model => <option key={model}>{model}</option>)}</select></label>
-        <label>语言<select disabled={readOnly} value={String(config.asr.language)} onChange={event => updateBlock('asr', 'language', event.target.value)}>{catalog.asr.deepgram.models[String(config.asr.model)]?.languages.map((language: string) => <option key={language}>{language}</option>)}</select></label>
+      <section className="editor-card form-card"><div className="editor-card-head"><div><span className="editor-card-title">{PROVIDER_NAMES[String(config.asr.provider)] || config.asr.provider} ASR</span><span className="editor-card-subtitle">厂商、模型与语言联动；音频格式由通话链路固定</span></div></div><div className="form-grid two">
+        <label>厂商<select aria-label="ASR 厂商" disabled={readOnly} value={String(config.asr.provider)} onChange={event => changeAsrProvider(event.target.value)}>{Object.entries(catalog.asr).filter(([, provider]: [string, any]) => provider.enabled).map(([name]) => <option key={name} value={name}>{PROVIDER_NAMES[name] || name}</option>)}</select></label>
+        <label>模型<select aria-label="ASR 模型" disabled={readOnly} value={asrModel} onChange={event => changeAsrModel(event.target.value)}>{enabledModels(asrProvider).map(model => <option key={model}>{model}</option>)}</select></label>
+        <label>语言<select aria-label="ASR 语言" disabled={readOnly} value={String(config.asr.language)} onChange={event => updateBlock('asr', 'language', event.target.value)}>{modelLanguages(asrProvider, asrModel).map((language: string) => <option key={language}>{language}</option>)}</select></label>
       </div></section>
-      <section className="editor-card form-card"><div className="editor-card-head"><div><span className="editor-card-title">Cartesia TTS</span><span className="editor-card-subtitle">选择播放音色、语言与语速</span></div></div><div className="form-grid two">
-        <label>模型<select aria-label="TTS 模型" disabled={readOnly} value={ttsModel} onChange={event => changeTtsModel(event.target.value)}>{Object.keys(catalog.tts.cartesia.models).map(model => <option key={model}>{model}</option>)}</select></label>
-        <label>音色<select aria-label="TTS 音色" disabled={readOnly} value={String(config.tts.voice_id)} onChange={event => changeTtsVoice(event.target.value)}>{ttsVoices.map((voice: any) => <option key={voice.voice_id} value={voice.voice_id}>{voiceLabel(voice)}</option>)}</select></label>
-        <label>语言<select disabled={readOnly} value={String(config.tts.language)} onChange={event => updateBlock('tts', 'language', event.target.value)}>{selectedTtsVoice?.languages.map((language: string) => <option key={language}>{language}</option>)}</select></label>
-        <NumberField label="语速" step="0.1" value={Number(config.tts.speed)} readOnly={readOnly} onChange={value => updateBlock('tts', 'speed', value)} />
+      <section className="editor-card form-card"><div className="editor-card-head"><div><span className="editor-card-title">{PROVIDER_NAMES[String(config.tts.provider)] || config.tts.provider} TTS</span><span className="editor-card-subtitle">选择播放模型、音色、语言与语速</span></div></div><div className="form-grid two">
+        <label>厂商<select aria-label="TTS 厂商" disabled={readOnly} value={String(config.tts.provider)} onChange={event => changeTtsProvider(event.target.value)}>{Object.entries(catalog.tts).filter(([, provider]: [string, any]) => provider.enabled).map(([name]) => <option key={name} value={name}>{PROVIDER_NAMES[name] || name}</option>)}</select></label>
+        <label>模型<select aria-label="TTS 模型" disabled={readOnly} value={ttsModel} onChange={event => changeTtsModel(event.target.value)}>{enabledModels(ttsProvider).map(model => <option key={model}>{model}</option>)}</select></label>
+        {(!customVoice || catalogOrCustomVoice) && <label>音色<select aria-label="TTS 音色" disabled={readOnly} value={String(config.tts.voice_id)} onChange={event => changeTtsVoice(event.target.value)}>{ttsVoices.map((voice: any) => <option key={voice.voice_id} value={voice.voice_id}>{voiceLabel(voice)}</option>)}{catalogOrCustomVoice && <option value="">自定义 Voice ID</option>}{catalogOrCustomVoice && customVoice && config.tts.voice_id && <option value={String(config.tts.voice_id)}>当前自定义音色</option>}</select></label>}
+        {customVoice && <label>Voice ID<input aria-label="TTS Voice ID" readOnly={readOnly} value={String(config.tts.voice_id || '')} placeholder="输入账号可用的 Voice ID" onChange={event => updateBlock('tts', 'voice_id', event.target.value)} /></label>}
+        <label>语言<select aria-label="TTS 语言" disabled={readOnly} value={String(config.tts.language)} onChange={event => updateBlock('tts', 'language', event.target.value)}>{ttsLanguages.map((language: string) => <option key={language}>{language}</option>)}</select></label>
+        <NumberField label="语速" step="0.1" min={speedRange.min} max={speedRange.max} value={Number(config.tts.speed)} readOnly={readOnly} onChange={value => updateBlock('tts', 'speed', value)} />
       </div></section>
     </>}
     {isRealtime && config.realtime && <section className="editor-card form-card"><div className="editor-card-head"><span className="editor-card-title">Realtime</span></div><div className="form-grid two">
@@ -95,6 +163,6 @@ export default function RuntimeSection({ config, catalog, onChange, readOnly }: 
   </>;
 }
 
-function NumberField({ label, value, onChange, readOnly, step = '1' }: { label: string; value: number; onChange: (value: number) => void; readOnly: boolean; step?: string }) {
-  return <label>{label}<input type="number" step={step} readOnly={readOnly} value={Number.isFinite(value) ? value : 0} onChange={event => onChange(Number(event.target.value))} /></label>;
+function NumberField({ label, value, onChange, readOnly, step = '1', min, max }: { label: string; value: number; onChange: (value: number) => void; readOnly: boolean; step?: string; min?: number; max?: number }) {
+  return <label>{label}<input type="number" step={step} min={min} max={max} readOnly={readOnly} value={Number.isFinite(value) ? value : 0} onChange={event => onChange(Number(event.target.value))} /></label>;
 }

@@ -14,7 +14,11 @@ from robot_config_service.infrastructure.database import Database
 from robot_config_service.settings import Settings
 
 
-def create_app(settings=None, database=None, uow_factory=None, validate_startup=True, console_static_dir=None):
+def create_app(
+    settings=None, database=None, uow_factory=None, validate_startup=True,
+    console_static_dir=None, secret_codec=None, media_runtime=None,
+    phone_hmac=None, freeswitch_gateway=None, dispatcher=None, verify_console_assets=True,
+):
     settings = settings or Settings.from_env()
 
     @asynccontextmanager
@@ -24,7 +28,8 @@ def create_app(settings=None, database=None, uow_factory=None, validate_startup=
             app.state.database = Database.create(settings.database_url)
         if validate_startup:
             app.state.database.verify()
-            verify_console_static(app.state.console_static_dir)
+            if verify_console_assets:
+                verify_console_static(app.state.console_static_dir)
         app.state.ready = True
         try:
             yield
@@ -39,6 +44,11 @@ def create_app(settings=None, database=None, uow_factory=None, validate_startup=
     app.state.catalog = load_catalog()
     app.state.ready = False
     app.state.voice_test_sessions = VoiceTestSessionStore()
+    app.state.secret_codec = secret_codec
+    app.state.media_runtime = media_runtime
+    app.state.phone_hmac = phone_hmac
+    app.state.freeswitch_gateway = freeswitch_gateway
+    app.state.dispatcher = dispatcher
     app.state.uow_factory = uow_factory or partial(default_uow_factory, app)
     register_error_handlers(app)
     register_routes(app)

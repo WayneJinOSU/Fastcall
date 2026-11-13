@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastcall-scheduler
+  namespace: ${PROJECT}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: fastcall-scheduler
+  template:
+    metadata:
+      labels:
+        app: fastcall-scheduler
+    spec:
+      containers:
+        - name: fastcall-scheduler
+          image: ${IMAGE}
+          command: ["python", "-m", "robot_config_service.scheduler_main"]
+          env:
+            - name: APP_ENV
+              value: ${APP_ENV}
+          envFrom:
+            - secretRef:
+                name: robot-config-service-secret
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastcall-adapter
+  namespace: ${PROJECT}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: fastcall-adapter
+  template:
+    metadata:
+      labels:
+        app: fastcall-adapter
+    spec:
+      containers:
+        - name: fastcall-adapter
+          image: ${IMAGE}
+          command: ["python", "-m", "robot_config_service.adapter_main"]
+          ports:
+            - containerPort: 8767
+          env:
+            - name: APP_ENV
+              value: ${APP_ENV}
+          envFrom:
+            - secretRef:
+                name: robot-config-service-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastcall-adapter
+  namespace: ${PROJECT}
+spec:
+  selector:
+    app: fastcall-adapter
+  ports:
+    - port: 8767
+      targetPort: 8767
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastcall-webhook-worker
+  namespace: ${PROJECT}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: fastcall-webhook-worker
+  template:
+    metadata:
+      labels:
+        app: fastcall-webhook-worker
+    spec:
+      containers:
+        - name: fastcall-webhook-worker
+          image: ${IMAGE}
+          command: ["python", "-m", "robot_config_service.webhook_main"]
+          env:
+            - name: APP_ENV
+              value: ${APP_ENV}
+          envFrom:
+            - secretRef:
+                name: robot-config-service-secret

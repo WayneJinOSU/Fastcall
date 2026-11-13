@@ -116,13 +116,14 @@ def _validate_standard(config, catalog, issues, warnings) -> None:
     validate_object_fields(config, "asr", {
         "provider": "string", "model": "string", "language": "string",
         "sample_rate": "integer", "encoding": "string", "interim_results": "boolean",
-        "endpointing_ms": "integer",
-    }, issues)
+        "endpointing_ms": "integer", "provider_config": "object",
+    }, issues, optional_fields={"provider_config"})
     validate_object_fields(config, "llm", STANDARD_LLM_FIELDS, issues)
     validate_object_fields(config, "tts", {
         "provider": "string", "model": "string", "voice_id": "string", "language": "string",
         "speed": "number", "volume": "number", "sample_rate": "integer", "encoding": "string",
-    }, issues)
+        "provider_config": "object",
+    }, issues, optional_fields={"provider_config"})
 
     asr = config.get("asr") if isinstance(config.get("asr"), dict) else {}
     llm = config.get("llm") if isinstance(config.get("llm"), dict) else {}
@@ -151,19 +152,30 @@ def _validate_standard(config, catalog, issues, warnings) -> None:
         tts_model = tts_provider["models"].get(tts.get("model"))
         if tts_model is None or not tts_model.get("enabled", False):
             add_issue(issues, "tts.model", "Unsupported or disabled TTS model")
+        voice_input = tts_provider.get("voice_input", "catalog")
         voice = next(
             (item for item in tts_provider["voices"] if item["voice_id"] == tts.get("voice_id")),
             None,
         )
-        if voice is None or not voice.get("enabled", False):
-            add_issue(issues, "tts.voice_id", "Unsupported or disabled TTS voice", "TTS_VOICE_UNSUPPORTED")
+        if voice_input == "custom" or (voice_input == "catalog_or_custom" and voice is None):
+            if not str(tts.get("voice_id") or "").strip():
+                add_issue(issues, "tts.voice_id", "A custom TTS voice is required", "TTS_VOICE_UNSUPPORTED")
+            elif tts_model and tts.get("language") not in tts_model.get("languages", []):
+                add_issue(issues, "tts.language", "TTS model does not support this language", "TTS_VOICE_LANGUAGE_MISMATCH")
         else:
-            if tts.get("model") not in voice["models"]:
-                add_issue(issues, "tts.voice_id", "Voice does not support this model", "TTS_VOICE_UNSUPPORTED")
-            if tts.get("language") not in voice["languages"]:
-                add_issue(issues, "tts.language", "Voice does not support this language", "TTS_VOICE_LANGUAGE_MISMATCH")
-            if voice.get("deprecated"):
-                warnings.append({"code": "DEPRECATED_CAPABILITY", "path": "tts.voice_id", "message": "TTS voice is deprecated"})
+            if voice is None or not voice.get("enabled", False):
+                add_issue(issues, "tts.voice_id", "Unsupported or disabled TTS voice", "TTS_VOICE_UNSUPPORTED")
+            else:
+                if tts.get("model") not in voice["models"]:
+                    add_issue(issues, "tts.voice_id", "Voice does not support this model", "TTS_VOICE_UNSUPPORTED")
+                if tts.get("language") not in voice["languages"]:
+                    add_issue(issues, "tts.language", "Voice does not support this language", "TTS_VOICE_LANGUAGE_MISMATCH")
+                if voice.get("deprecated"):
+                    warnings.append({"code": "DEPRECATED_CAPABILITY", "path": "tts.voice_id", "message": "TTS voice is deprecated"})
+        speed_range = tts_provider.get("speed_range", {"min": 0.5, "max": 2})
+        speed = tts.get("speed")
+        if is_number(speed) and not speed_range["min"] <= speed <= speed_range["max"]:
+            add_issue(issues, "tts.speed", f"Must be between {speed_range['min']} and {speed_range['max']}")
         if tts.get("sample_rate") not in tts_provider["sample_rates"]:
             add_issue(issues, "tts.sample_rate", "Unsupported TTS sample rate")
         if tts.get("encoding") not in tts_provider["encodings"]:
@@ -172,7 +184,6 @@ def _validate_standard(config, catalog, issues, warnings) -> None:
     for block, field, minimum, maximum in (
         (llm, "temperature", 0, 2),
         (llm, "top_p", 0, 1),
-        (tts, "speed", 0.5, 2),
         (tts, "volume", 0, 100),
     ):
         value = block.get(field)

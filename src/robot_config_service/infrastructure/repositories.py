@@ -93,6 +93,10 @@ class SqlAlchemyRobotVersionRepository:
         ).scalars().all()
         return [_version_record(model) for model in models]
 
+    def get_by_id(self, version_id):
+        model = self.session.get(RobotAppVersionModel, version_id)
+        return _version_record(model) if model else None
+
     def get(self, app_id, version_id):
         model = self.session.execute(
             select(RobotAppVersionModel).where(
