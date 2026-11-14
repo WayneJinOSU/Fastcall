@@ -2,7 +2,7 @@
 name = "collection-agents"
 version = "0.2.0"
 description = "AI 语音外呼机器人系统（Pipecat 框架，支持标准/实时/Copilot 三种模式）"
-readme = "README_ZH.md"
+readme = "README.md"
 requires-python = ">=3.10"
 # 依赖清单以 requirements.txt 为准（pip install -r requirements.txt）
 # 本文件提供项目元数据，便于工具链（uv / pip / IDE）识别。
