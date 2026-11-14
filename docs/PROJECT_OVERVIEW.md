@@ -968,7 +968,7 @@ wscat -c ws://localhost:8765/ws-v2
 
 | 模块 | 主要实现 |
 | --- | --- |
-| Open/Admin API | `src/robot_config_service/api/openapi/`、`adminapi/` |
+| Open/Admin API | `src/fastcall/api/openapi/`、`adminapi/` |
 | 任务与名单 | `application/outbound_tasks.py`、`outbound_queries.py` |
 | Scheduler | `application/scheduler.py`、`scheduler_main.py` |
 | Adapter | `application/dispatch.py`、`media.py`、`adapter_main.py` |

@@ -37,10 +37,10 @@ Console BFF 是面向浏览器的管理后端。现有 Token 管理 API 保留�
 
 ## 3. 前端与静态资源目录
 
-前端源码只属于 `robot_config_service`，不放入 `collection_agents`。
+前端源码只属于 `fastcall`，不放入 `collection_agents`。
 
 ```text
-src/robot_config_service/
+src/fastcall/
 ├── console/                        # React 源码和构建配置
 │   ├── package.json
 │   ├── package-lock.json

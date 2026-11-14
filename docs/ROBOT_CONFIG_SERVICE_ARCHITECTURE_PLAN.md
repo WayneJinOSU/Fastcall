@@ -35,7 +35,7 @@ React 管理控制台（与 Robot Config Service 同进程部署）
 ## 2. 服务目录规划
 
 ```text
-src/robot_config_service/
+src/fastcall/
 ├── __init__.py
 ├── main.py                         # ASGI 入口，只做应用装配
 ├── settings.py                     # APP_ENV、MySQL、双 Token 配置及启动校验
@@ -90,7 +90,7 @@ src/robot_config_service/
 
 tests/
 ├── unit/
-│   └── robot_config_service/       # 契约、能力、哈希、用例和 API 测试
+│   └── fastcall/       # 契约、能力、哈希、用例和 API 测试
 └── integration/
     └── robot_config_mysql/         # 真实 MySQL 并发、事务和 Trigger 测试
 
@@ -103,7 +103,7 @@ deploy/
 
 ### 目录约束
 
-- `robot_config_service` 不导入 `collection_agents`。
+- `fastcall` 不导入 `collection_agents`。
 - Collection Agent 运行链路不导入配置服务的 API、数据库或 Repository。
 - 两个服务通过 JSON 契约交互，不通过共享 Python 运行对象交互。
 - 哈希和契约使用跨服务一致性测试，避免因复制实现而产生规范漂移。

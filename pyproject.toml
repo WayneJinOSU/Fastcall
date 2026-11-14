@@ -12,11 +12,16 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-# src 布局：包代码在 src/collection_agents/ 下
+# src 布局：统一发现 fastcall、fastcall_adapter、fastcall_core、collection_agents
 package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = [ "src" ]
 
 [tool.setuptools.package-data]
-robot_config_service = ["capabilities/*.json"]
+fastcall = [
+    "capabilities/*.json",
+    "console/index.html",
+    "console/dist/index.html",
+    "console/dist/assets/*",
+]

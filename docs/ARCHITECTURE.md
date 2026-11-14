@@ -904,11 +904,17 @@ FreeSWITCH → SIP 线路 → 电话用户
 
 | 进程 | 入口 | 职责 |
 | --- | --- | --- |
-| API | `robot_config_service.main:app` | Open/Admin/Internal API、Robot 配置和查询 |
-| Scheduler | `robot_config_service.scheduler_main` | 到期扫描、预留、重试和调度恢复 |
-| Adapter | `robot_config_service.adapter_main` | 单次拨号、ESL、Session、媒体和核查 |
+| API | `fastcall.main:app` | Open/Admin/Internal API、Robot 配置和查询 |
+| Scheduler | `fastcall.scheduler_main` | 到期扫描、预留、重试和调度恢复 |
+| Adapter | `fastcall_adapter.main` | 单次拨号、ESL、Session、媒体和核查 |
 | Agent | `collection_agents.server.app:app` | Session slot 和 AI Pipeline，不操作任务或 ESL |
-| Webhook Worker | `robot_config_service.webhook_main` | 独立投递与重试，不影响电话状态 |
+| Webhook Worker | `fastcall.webhook_main` | 独立投递与重试，不影响电话状态 |
+
+本地开发使用 `fastcall.local_main` 在同一事件循环运行 API、Scheduler 和 Webhook Worker；任一组件退出会触发整体清理。该入口不得与独立 Scheduler/Webhook Worker 双跑。生产仍使用表中的独立入口，Adapter 和 Agent 不加入聚合进程。
+
+代码在 `src/` 下分为 `fastcall`、`fastcall_adapter`、`fastcall_core` 和 `collection_agents` 四个平级包。Fast-Call 与 Adapter 只共同依赖 core 的共享领域和事务能力；二者不互相 import，Agent 不依赖 Fast-Call 内部包。Adapter 使用独立应用工厂和镜像，不再装配控制面 Console/Open API 路由。
+
+Admin review 由 Adapter 执行通道检查和结果事务，控制面保留原外部地址并通过认证代理转发。取消任务在控制面提交状态及持久化挂断指令，再由 Adapter 即时命令和周期对账完成幂等挂断；`hangup_active=false` 不产生挂断指令。
 
 Scheduler 不拼接或发送 FreeSWITCH 命令。Adapter 只有在当前进程内完成 `reserved + send_state=NONE → 数据库提交 → STARTED` 后才能调用一次 originate；重启、核查和恢复流程没有补发权限。
 
@@ -937,8 +943,8 @@ Scheduler 不拼接或发送 FreeSWITCH 命令。Adapter 只有在当前进程�
 
 Alembic 当前基线为 `0004`，包含 Robot 配置、外呼任务、联系人、Call、事件、禁呼、Outbox、调度状态和 `outbound_call_analysis`。`outbound_call_analysis.business_result` 独立于 Call 技术结果，不触发重试，也不进入客户 Webhook。该表与旧 Collection Agents 的 `call_analysis` 物理分离，旧表的 `analysis_type/result_json` 结构保持不变。
 
-Webhook 使用稳定事件 ID 和结果 revision。`unknown` 被迟到事件或人工核查修订时发送新的 `contact.result_changed`。投递重新解析并验证全部 IP，连接已验证 IP，同时保留原域名用于 Host、SNI 和证书校验；禁止重定向和环境代理。
+Webhook 使用稳定事件 ID 和结果 revision。`unknown` 被迟到事件或人工核查修订时仍更新内部结果；`contact.result_changed` 默认不生成，只有显式设置 `FASTCALL_WEBHOOK_ENABLE_RESULT_CHANGED=true` 才投递，客户需要最新修订时查询 API。投递重新解析并验证全部 IP，连接已验证 IP，同时保留原域名用于 Host、SNI 和证书校验；禁止重定向和环境代理。
 
 ### 11.5 部署约束
 
-`deploy/fastcall-outbound-deploy.yaml` 定义 Scheduler、Adapter 和 Webhook Worker，均为单副本 `Recreate`。Collection Agent 同样保持单副本 `Recreate`，禁止滚动期间新旧实例并存及 HPA。FreeSWITCH 和 SIP 线路作为外部基础设施运行。
+`deploy/fastcall-outbound-deploy.yaml` 定义 Scheduler、Adapter 和 Webhook Worker，均为单副本 `Recreate`。Scheduler/Webhook 使用 `FASTCALL_IMAGE`，Adapter 使用独立的 `FASTCALL_ADAPTER_IMAGE`。Collection Agent 同样保持单副本 `Recreate`，禁止滚动期间新旧实例并存及 HPA。FreeSWITCH 和 SIP 线路作为外部基础设施运行。

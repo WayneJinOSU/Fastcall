@@ -3,9 +3,8 @@ WORKDIR /app
 ENV PYTHONPATH=/app/src
 RUN pip install --no-cache-dir \
     fastapi uvicorn python-dotenv SQLAlchemy==1.4.27 PyMySQL==1.0.2 \
-    Alembic==1.14.1 phonenumbers==9.0.43 cryptography==50.0.2 \
-    websockets==15.0.1 httpx==0.28.1 httpcore==1.0.9
-COPY src/robot_config_service ./src/robot_config_service
-COPY deploy ./deploy
+    cryptography==50.0.2 websockets==15.0.1 httpx==0.28.1 httpcore==1.0.9
+COPY src/fastcall_adapter ./src/fastcall_adapter
+COPY src/fastcall_core ./src/fastcall_core
 EXPOSE 8767
-CMD ["python", "-m", "robot_config_service.adapter_main"]
+CMD ["python", "-m", "fastcall_adapter.main"]

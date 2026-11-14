@@ -627,28 +627,40 @@ FASTCALL_MEDIA_WS_URL=ws://fastcall-adapter:8767/internal/media
 
 如需回调企业内网 CRM，只配置 HTTPS 地址，并显式设置 hostname 或 CIDR 白名单。链路本地和云元数据地址始终禁止。
 
-### 3. 启动各进程
+### 3. 启动服务
 
-在源码目录、已激活虚拟环境且 `PYTHONPATH=src` 时：
+本地开发使用聚合控制面，在一个 `asyncio` 进程中运行 API、Scheduler 和 Webhook Worker。默认 API 地址为 `0.0.0.0:8770`，可用 `FASTCALL_API_HOST` 和 `FASTCALL_API_PORT` 调整：
 
 ```bash
-# API（默认端口 8766）
-venv/bin/uvicorn robot_config_service.main:app --host 0.0.0.0 --port 8766
+# Fast-Call 本地控制面：API + Scheduler + Webhook Worker
+PYTHONPATH=src venv/bin/python -m fastcall.local_main
 
 # Collection Agent（默认端口 8765）
 venv/bin/python main.py
 
 # Adapter（默认端口 8767）
-venv/bin/python -m robot_config_service.adapter_main
-
-# Scheduler（通过内部 API 请求 Adapter，不直接拨号）
-venv/bin/python -m robot_config_service.scheduler_main
-
-# Webhook Worker
-venv/bin/python -m robot_config_service.webhook_main
+PYTHONPATH=src venv/bin/python -m fastcall_adapter.main
 ```
 
-Kubernetes 使用 `deploy/fastcall-outbound-deploy.yaml`，Scheduler、Adapter、Agent 和 Webhook Worker 均不得并行运行新旧副本。
+聚合入口与独立 `scheduler_main`、`webhook_main` 禁止同时运行，避免重复拨号或重复投递。任一聚合组件退出或失败时，整个进程会停止其余组件并非零退出。
+
+生产环境不使用聚合入口，继续分别启动：
+
+```bash
+# API
+PYTHONPATH=src venv/bin/uvicorn fastcall.main:app --host 0.0.0.0 --port 8766
+
+# Scheduler（通过内部 API 请求 Adapter，不直接拨号）
+PYTHONPATH=src venv/bin/python -m fastcall.scheduler_main
+
+# Webhook Worker
+PYTHONPATH=src venv/bin/python -m fastcall.webhook_main
+
+# Adapter
+PYTHONPATH=src venv/bin/python -m fastcall_adapter.main
+```
+
+Kubernetes 使用 `deploy/fastcall-outbound-deploy.yaml`。Scheduler/Webhook 配置 `FASTCALL_IMAGE`，Adapter 配置独立的 `FASTCALL_ADAPTER_IMAGE`；Scheduler、Adapter、Agent 和 Webhook Worker 均不得并行运行新旧副本。
 
 ### 4. Open API 基本顺序
 
@@ -665,7 +677,7 @@ Kubernetes 使用 `deploy/fastcall-outbound-deploy.yaml`，Scheduler、Adapter�
 
 ```bash
 # 外呼相关单元测试
-PYTHONPATH=src venv/bin/python -m unittest discover -s tests/unit/robot_config_service -t .
+PYTHONPATH=src venv/bin/python -m unittest discover -s tests/unit/fastcall -t .
 
 # 模拟完整业务闭环
 PYTHONPATH=src venv/bin/python -m unittest tests.integration.test_outbound_e2e

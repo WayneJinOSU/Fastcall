@@ -8,19 +8,18 @@ from alembic.config import Config
 from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.orm import sessionmaker
 
-from robot_config_service.application.publication import PublicationUseCase
-from robot_config_service.application.robot_apps import RobotAppsUseCase
-from robot_config_service.application.validation import ValidateConfigUseCase
-from robot_config_service.capabilities.loader import load_catalog
-from robot_config_service.application.outbound_ports import CallEventRecord
-from robot_config_service.infrastructure.orm import RobotAppVersionModel, RobotConfigAuditLogModel
-from robot_config_service.infrastructure.outbound_orm import CallEventModel
-from robot_config_service.application.outbound_tasks import OutboundTasksUseCase
-from robot_config_service.infrastructure.outbound_unit_of_work import SqlAlchemyOutboundUnitOfWork
-from robot_config_service.infrastructure.security import PhoneHmac, SecretCodec
-from robot_config_service.infrastructure.unit_of_work import SqlAlchemyUnitOfWork
-from tests.unit.robot_config_service.fixtures import valid_config
-from tests.unit.robot_config_service.test_outbound_repositories import (
+from fastcall.application.publication import PublicationUseCase
+from fastcall.application.robot_apps import RobotAppsUseCase
+from fastcall.application.validation import ValidateConfigUseCase
+from fastcall.capabilities.loader import load_catalog
+from fastcall_core.application.outbound_ports import CallEventRecord
+from fastcall_core.infrastructure.orm import RobotAppVersionModel, RobotConfigAuditLogModel
+from fastcall_core.infrastructure.outbound_orm import CallEventModel
+from fastcall.application.outbound_tasks import OutboundTasksUseCase
+from fastcall.infrastructure.security import PhoneHmac, SecretCodec
+from fastcall.infrastructure.unit_of_work import SqlAlchemyUnitOfWork
+from tests.unit.fastcall.fixtures import valid_config
+from tests.unit.fastcall.test_outbound_repositories import (
     NOW,
     contact_record,
     task_record,
@@ -109,8 +108,8 @@ class MySQLIntegrationTests(unittest.TestCase):
         self.uow.session.rollback()
 
     def test_real_schema_startup_check_and_resolve(self):
-        from robot_config_service.application.resolve import ResolveUseCase
-        from robot_config_service.infrastructure.database import Database
+        from fastcall.application.resolve import ResolveUseCase
+        from fastcall.infrastructure.database import Database
 
         Database(self.engine, self.sessions).verify()
         report = self.apps.validate(self.app["app_id"], 1, self.validator)
@@ -128,7 +127,7 @@ class MySQLIntegrationTests(unittest.TestCase):
             self.app["app_id"], 1, report["config_hash"], "integration"
         )
         self.uow.commit()
-        outbound = SqlAlchemyOutboundUnitOfWork(self.sessions())
+        outbound = SqlAlchemyUnitOfWork(self.sessions())
         task = task_record()
         task.robot_app_id = self.app["app_id"]
         task.robot_version_id = published["robot_app_version_id"]
@@ -139,7 +138,7 @@ class MySQLIntegrationTests(unittest.TestCase):
         outbound.commit()
 
         def enqueue(index):
-            uow = SqlAlchemyOutboundUnitOfWork(self.sessions())
+            uow = SqlAlchemyUnitOfWork(self.sessions())
             try:
                 inserted = uow.call_events.enqueue(CallEventRecord(
                     id=f"event_row_{index}", source="agent",

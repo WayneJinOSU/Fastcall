@@ -1,6 +1,8 @@
 # Fast-Call 本地聚合入口与 Webhook 简化实施计划
 
-依据 `docs/FASTCALL_HANDOFF.md` 第一部分制定。本文是实施计划，不是已完成状态的描述。
+依据 `docs/FASTCALL_HANDOFF.md` 第一部分制定。本文保留早期实施思路，不是当前状态说明。
+
+> 当前目录、Adapter 拆包和分层方案以 `FASTCALL_SERVICE_RESTRUCTURING_PLAN.md` 为准。本文关于 `services/` 归档、推迟 Adapter 独立包及旧模块路径的内容已被替代。
 
 ## 0. 前置变更：包改名 `robot_config_service` → `fastcall`
 

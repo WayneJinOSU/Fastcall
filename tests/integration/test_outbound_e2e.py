@@ -5,18 +5,19 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from robot_config_service.application.call_events import AgentSessionUseCase
-from robot_config_service.application.dispatch import DispatchService
-from robot_config_service.application.telephony_events import FreeSwitchEventService
-from robot_config_service.application.webhooks import WebhookWorker
-from robot_config_service.infrastructure.orm import Base, RobotAppModel, RobotAppVersionModel
-from robot_config_service.infrastructure.outbound_orm import WebhookDeliveryModel
-from robot_config_service.infrastructure.security import PhoneHmac, SecretCodec
-from robot_config_service.infrastructure.unit_of_work import SqlAlchemyUnitOfWork
-from tests.unit.robot_config_service.fixtures import valid_config
-from tests.unit.robot_config_service.test_outbound_dispatch import FakeGateway
-from tests.unit.robot_config_service.test_outbound_repositories import NOW, contact_record, task_record
-from tests.unit.robot_config_service.test_outbound_webhooks import FakeSender
+from fastcall_core.application.call_events import AgentSessionUseCase
+from fastcall_adapter.application.dispatch import DispatchService
+from fastcall_adapter.application.telephony_events import FreeSwitchEventService
+from fastcall_adapter.infrastructure.uow import SqlAlchemyAdapterUnitOfWork
+from fastcall.application.webhooks import WebhookWorker
+from fastcall_core.infrastructure.orm import Base, RobotAppModel, RobotAppVersionModel
+from fastcall_core.infrastructure.outbound_orm import WebhookDeliveryModel
+from fastcall.infrastructure.security import PhoneHmac, SecretCodec
+from fastcall.infrastructure.unit_of_work import SqlAlchemyUnitOfWork
+from tests.unit.fastcall.fixtures import valid_config
+from tests.unit.fastcall_adapter.test_outbound_dispatch import FakeGateway
+from tests.unit.fastcall.test_outbound_repositories import NOW, contact_record, task_record
+from tests.unit.fastcall.test_outbound_webhooks import FakeSender
 
 
 class OutboundEndToEndTests(unittest.TestCase):
@@ -28,6 +29,7 @@ class OutboundEndToEndTests(unittest.TestCase):
             Base.metadata.create_all(engine)
             sessions = sessionmaker(engine, expire_on_commit=False)
             factory = lambda: SqlAlchemyUnitOfWork(sessions())
+            adapter_factory = lambda: SqlAlchemyAdapterUnitOfWork(sessions())
             codec = SecretCodec({"v1": b"k" * 32}, "v1")
             hmac_keys = PhoneHmac({"v1": b"h" * 32}, "v1")
             uow = factory()
@@ -56,10 +58,11 @@ class OutboundEndToEndTests(unittest.TestCase):
 
             gateway = FakeGateway()
             dispatcher = DispatchService(
-                factory, gateway, codec, hmac_keys, clock=lambda: NOW, adapter_boot_id="boot-1"
+                adapter_factory, gateway, codec, hmac_keys,
+                clock=lambda: NOW, adapter_boot_id="boot-1",
             )
             self.assertEqual((await dispatcher.dispatch("call_1"))["dispatch"], "started")
-            events = factory()
+            events = adapter_factory()
             common = {
                 "instance_id": "fs-1", "stream_epoch": "boot-1", "channel_uuid": "origin_1",
                 "origination_uuid": "origin_1", "fastcall_call_id": "call_1", "occurred_at": NOW,

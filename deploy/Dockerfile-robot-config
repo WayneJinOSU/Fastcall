@@ -1,20 +1,22 @@
 FROM node:22-bookworm AS console-builder
 
 WORKDIR /build/console
-COPY src/robot_config_service/console/package.json src/robot_config_service/console/package-lock.json ./
+COPY src/fastcall/console/package.json src/fastcall/console/package-lock.json ./
 RUN npm ci
-COPY src/robot_config_service/console/ ./
+COPY src/fastcall/console/ ./
 RUN npm run build
 
 FROM python:3.12-bullseye
 
 WORKDIR /app
 ENV PYTHONPATH=/app/src
-COPY requirements.txt README.md ./
+COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r requirements.txt
-COPY . .
-COPY --from=console-builder /build/console/dist/ ./src/robot_config_service/console/dist/
+COPY src/fastcall ./src/fastcall
+COPY src/fastcall_core ./src/fastcall_core
+COPY deploy/robot_config_alembic.ini ./deploy/robot_config_alembic.ini
+COPY --from=console-builder /build/console/dist/ ./src/fastcall/console/dist/
 
 EXPOSE 8766
-CMD ["uvicorn", "robot_config_service.main:app", "--host", "0.0.0.0", "--port", "8766"]
+CMD ["uvicorn", "fastcall.main:app", "--host", "0.0.0.0", "--port", "8766"]

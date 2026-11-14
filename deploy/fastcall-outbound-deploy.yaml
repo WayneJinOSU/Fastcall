@@ -17,8 +17,8 @@ spec:
     spec:
       containers:
         - name: fastcall-scheduler
-          image: ${IMAGE}
-          command: ["python", "-m", "robot_config_service.scheduler_main"]
+          image: ${FASTCALL_IMAGE}
+          command: ["python", "-m", "fastcall.scheduler_main"]
           env:
             - name: APP_ENV
               value: ${APP_ENV}
@@ -45,8 +45,8 @@ spec:
     spec:
       containers:
         - name: fastcall-adapter
-          image: ${IMAGE}
-          command: ["python", "-m", "robot_config_service.adapter_main"]
+          image: ${FASTCALL_ADAPTER_IMAGE}
+          command: ["python", "-m", "fastcall_adapter.main"]
           ports:
             - containerPort: 8767
           env:
@@ -87,8 +87,8 @@ spec:
     spec:
       containers:
         - name: fastcall-webhook-worker
-          image: ${IMAGE}
-          command: ["python", "-m", "robot_config_service.webhook_main"]
+          image: ${FASTCALL_IMAGE}
+          command: ["python", "-m", "fastcall.webhook_main"]
           env:
             - name: APP_ENV
               value: ${APP_ENV}

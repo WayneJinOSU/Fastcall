@@ -241,7 +241,7 @@ created_by / created_at
 | `id/event_id` | 投递 ID 和稳定业务事件 ID |
 | `aggregate_type/aggregate_id/aggregate_revision` | 聚合及结果版本 |
 | `task_id/contact_id/call_id` | 业务关联 |
-| `event_type` | 四类客户事件 |
+| `event_type` | 三类必需客户事件及可选修订事件 |
 | `endpoint_url/payload_json` | 地址和内容快照 |
 | `status` | `pending/delivering/delivered/failed` |
 | `delivery_owner/delivery_lease_until` | 投递者和租约 |
@@ -253,7 +253,7 @@ created_by / created_at
 - `event_id` 唯一。
 - `(event_type,aggregate_type,aggregate_id,aggregate_revision)` 唯一。
 - 联系人首次终态与 `contact.completed` 同事务。
-- 人工结果修订与 `contact.result_changed` 同事务。
+- 显式开启修订通知时，人工或自动结果修订与 `contact.result_changed` 同事务；默认关闭时仍更新结果和 revision，但不入队该事件。
 - 任务终态与 `task.completed/task.cancelled` 同事务。
 - 最后一个联系人终态、任务终态及两类 Outbox 在同一锁任务的事务中完成。
 - Worker 领取到期的 `pending`，并回收租约过期的 `delivering`；重投保持相同 `event_id/payload`。
@@ -432,7 +432,7 @@ checking
 - `restore_active` 仅用于 Call=`checking`、Contact=`calling` 且任务未终态。
 - `unknown` 联系人只能修正终态，不重新激活。
 - 活动通道需要结束时，先对实际 `freeswitch_uuid` 执行 `uuid_kill`，等待终态后释放容量。
-- 核查请求携带期望 `state_version`、证据和说明；结果变化时写新 revision 的 `contact.result_changed`。
+- 核查请求携带期望 `state_version`、证据和说明；结果变化时更新 revision，只有显式开启修订通知才生成 `contact.result_changed`。
 
 ### 6.5 时间窗
 
@@ -697,12 +697,17 @@ POST /adminapi/v1/calls/{call_id}/review
 
 ### 10.1 客户事件
 
+当前客户接入只需处理三个事件：
+
 - `contact.completed`：联系人首次终态，每个联系人一次。
-- `contact.result_changed`：人工修订，带新 `result_revision`、旧/新结果和独立 `event_id`。
 - `task.completed`：任务完成。
 - `task.cancelled`：任务取消；不再发送 `task.completed`。
 
-联系人事件包含 `task/customer_task/contact/customer_contact` 标识、`status/result_code`、派生 `call_count/last_call_id`、`result_revision` 和时间。修订事件另含 `reason/evidence_ref/changed_at`。
+`contact.result_changed` 默认关闭，不属于当前必需接入契约。设置 `FASTCALL_WEBHOOK_ENABLE_RESULT_CHANGED=true` 可显式开启，用于兼容人工或迟到电话事件导致的自动修订；事件带新 `result_revision`、旧/新结果和独立 `event_id`。
+
+默认关闭只影响修订通知，不影响内部结果修订、revision 或 API 查询。客户以首次 `contact.completed` 为通知基线；需要内部最新修订结果时主动查询 API，不能仅依赖 Webhook 获得后续修订。
+
+联系人事件包含 `task/customer_task/contact/customer_contact` 标识、`status/result_code`、派生 `call_count/last_call_id`、`result_revision` 和时间。可选修订事件另含 `reason/evidence_ref/changed_at`。
 
 投递规则：
 
@@ -749,31 +754,25 @@ HMAC 轮换：
 ### 11.1 模块
 
 ```text
-src/robot_config_service/
-├── api/
-│   ├── openapi/
-│   ├── adminapi/
-│   └── internal/
-├── application/
-│   ├── outbound_tasks.py
-│   ├── contacts.py
-│   ├── dispatch.py
-│   ├── call_events.py
-│   ├── retries.py
-│   ├── call_checks.py
-│   └── webhooks.py
-├── domain/
-│   ├── outbound_tasks.py
-│   ├── calls.py
-│   ├── retry_policy.py
-│   └── telephony_results.py
-└── infrastructure/
-    ├── scheduler.py
-    ├── freeswitch/
-    └── webhooks/
+src/
+├── fastcall/                       # Open/Admin/Console、任务、调度与 Webhook
+│   ├── api/
+│   ├── application/
+│   ├── domain/                     # Robot Config 专有规则
+│   ├── infrastructure/             # 控制面 DAO、HTTP Gateway、UOW
+│   └── migrations/
+├── fastcall_adapter/               # 独立拨号与媒体运行面
+│   ├── api/                        # internal、review、hangup
+│   ├── application/                # dispatch、媒体、电话事件与核查
+│   └── infrastructure/             # Adapter DAO、ESL Gateway、UOW
+├── fastcall_core/                  # 共享领域、终态、Session、Outbox 与共享 DAO
+│   ├── domain/
+│   ├── application/
+│   └── infrastructure/
+└── collection_agents/              # 独立 Agent Pipeline
 ```
 
-Domain 不导入 FastAPI、SQLAlchemy 或 ESL；Application 不拼接 FreeSWITCH 命令；精确版本 Resolve 通过 Application 用例直接调用。
+Domain 不导入 FastAPI、SQLAlchemy 或 ESL；Application 通过现有 Protocol/UOW 编排，不拼接 SQL 或 FreeSWITCH 命令。Controller 不直接提交事务；DAO 不拥有业务决策。Fast-Call 与 Adapter 只共同依赖 core，Agent 不依赖 Fast-Call 内部包。
 
 ### 11.2 顺序
 
@@ -817,7 +816,7 @@ Domain 不导入 FastAPI、SQLAlchemy 或 ESL；Application 不拼接 FreeSWITCH
 - 派生 `call_count/last_call_id` 与 Call 历史一致，列表批量查询。
 - 联系人/任务终态不会缺少同事务 Outbox。
 - Event/Webhook Worker 崩溃后的过期租约可回收，处理保持幂等。
-- 人工修订产生新 revision 的 `contact.result_changed`，不恢复已终态任务或隐式重拨。
+- 人工修订更新 revision；显式开启时才产生 `contact.result_changed`，不恢复已终态任务或隐式重拨。
 - Webhook 重投使用相同事件 ID；失败不影响电话执行。
 - 白名单内网 CRM 可回调，重定向、DNS rebinding、环境代理和云元数据地址被拒绝。
 
@@ -833,7 +832,7 @@ Domain 不导入 FastAPI、SQLAlchemy 或 ESL；Application 不拼接 FreeSWITCH
 - `waiting_retry` 不是终态，不发送 `contact.completed`。取消任务的活动 Call 不再进入重试。
 - 暂停期间所有活动 Call 结束时任务仍为 paused，resume 时补做任务完成和 Outbox。
 - 最终拨号栅栏发现禁呼或 Robot 停用时，联系人直接进入对应失败终态，不重新排队。
-- `unknown` 被迟到电话事件修订时，与人工修订一样产生新 revision 的 `contact.result_changed`。
+- `unknown` 被迟到电话事件修订时更新 revision；与人工修订一样，只有显式开启时才产生 `contact.result_changed`。
 - 人工核查和周期核查隔离单 Call 异常，不终止整个 Adapter；无 FreeSWITCH gateway 时禁止释放活动 Call。
 - 业务分析由 `outbound_call_analysis` 保存，迁移基线为 `0004`。事件只保存必要业务结果，完整分析进入该表，不改变技术结果或重试。旧 Collection Agents 的 `call_analysis` 结构不同，迁移不会重命名或删除旧表。
 - Scheduler 通过 Adapter Internal dispatch API 提交请求，不直接持有 originate 权限。`bgapi` Job-UUID 仅保存在命令事件。
