@@ -15,9 +15,12 @@ if config.config_file_name is not None:
 
 
 def database_url():
-    url = os.getenv("ROBOT_CONFIG_DATABASE_URL", "").strip() or os.getenv("DATABASE_URL", "").strip()
+    for name in ("FASTCALL_DATABASE_URL", "DATABASE_URL"):
+        url = os.getenv(name, "").strip()
+        if url:
+            break
     if not url.startswith("mysql+pymysql://"):
-        raise RuntimeError("Robot Config Service migrations require a MySQL PyMySQL URL")
+        raise RuntimeError("Fast-Call migrations require a MySQL PyMySQL URL")
     return url
 
 

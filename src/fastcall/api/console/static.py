@@ -11,7 +11,7 @@ def verify_console_static(static_dir: Path) -> None:
     index = static_dir / "index.html"
     assets = static_dir / "assets"
     if not index.is_file() or not assets.is_dir() or not any(assets.iterdir()):
-        raise RuntimeError("Robot Config Console production build is missing; run npm run build")
+        raise RuntimeError("Fast-Call Console production build is missing; run npm run build")
 
 
 def register_console_static(app: FastAPI, static_dir=None) -> None:

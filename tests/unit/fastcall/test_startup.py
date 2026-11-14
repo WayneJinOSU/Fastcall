@@ -27,6 +27,36 @@ class StartupTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "only supports MySQL"):
             database.verify()
 
+    def test_only_fastcall_environment_names_are_accepted(self):
+        from fastcall_adapter.settings import Settings as AdapterSettings
+
+        values = {
+            "APP_ENV": "test",
+            "FASTCALL_DATABASE_URL": "mysql+pymysql://new/db",
+            "FASTCALL_MANAGEMENT_TOKEN": "new-management",
+            "FASTCALL_RESOLVE_TOKEN": "new-resolve",
+        }
+        with patch.dict("os.environ", values, clear=True):
+            settings = Settings.from_env()
+            adapter_settings = AdapterSettings.from_env()
+        self.assertEqual(settings.database_url, "mysql+pymysql://new/db")
+        self.assertEqual(settings.management_token, "new-management")
+        self.assertEqual(settings.resolve_token, "new-resolve")
+        self.assertEqual(adapter_settings.database_url, "mysql+pymysql://new/db")
+
+        with patch.dict("os.environ", {
+            "APP_ENV": "test",
+            "ROBOT_CONFIG_DATABASE_URL": "mysql+pymysql://old/db",
+            "ROBOT_CONFIG_MANAGEMENT_TOKEN": "old-management",
+            "ROBOT_CONFIG_RESOLVE_TOKEN": "old-resolve",
+        }, clear=True):
+            settings = Settings.from_env()
+            adapter_settings = AdapterSettings.from_env()
+        self.assertEqual(settings.database_url, "")
+        self.assertEqual(settings.management_token, "")
+        self.assertEqual(settings.resolve_token, "")
+        self.assertEqual(adapter_settings.database_url, "")
+
 
 class FakeDialect:
     name = "mysql"

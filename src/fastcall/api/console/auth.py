@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict
 from fastcall_core.domain.errors import RobotConfigError
 
 
-COOKIE_NAME = "robot_config_console_session"
+COOKIE_NAME = "fastcall_console_session"
 SESSION_TTL_SECONDS = 8 * 60 * 60
 
 

@@ -27,14 +27,14 @@ class Settings:
         return cls(
             app_env=os.getenv("APP_ENV", "").strip(),
             database_url=(
-                os.getenv("ROBOT_CONFIG_DATABASE_URL", "").strip()
+                os.getenv("FASTCALL_DATABASE_URL", "").strip()
                 or os.getenv("DATABASE_URL", "").strip()
             ),
-            management_token=os.getenv("ROBOT_CONFIG_MANAGEMENT_TOKEN", "").strip(),
-            resolve_token=os.getenv("ROBOT_CONFIG_RESOLVE_TOKEN", "").strip(),
-            console_admin_actor_id=os.getenv("ROBOT_CONFIG_CONSOLE_ADMIN_ACTOR_ID", "").strip(),
-            console_admin_password_hash=os.getenv("ROBOT_CONFIG_CONSOLE_ADMIN_PASSWORD_HASH", "").strip(),
-            console_session_secret=os.getenv("ROBOT_CONFIG_CONSOLE_SESSION_SECRET", "").strip(),
+            management_token=os.getenv("FASTCALL_MANAGEMENT_TOKEN", "").strip(),
+            resolve_token=os.getenv("FASTCALL_RESOLVE_TOKEN", "").strip(),
+            console_admin_actor_id=os.getenv("FASTCALL_CONSOLE_ADMIN_ACTOR_ID", "").strip(),
+            console_admin_password_hash=os.getenv("FASTCALL_CONSOLE_ADMIN_PASSWORD_HASH", "").strip(),
+            console_session_secret=os.getenv("FASTCALL_CONSOLE_SESSION_SECRET", "").strip(),
             collection_agent_ws_url=(
                 os.getenv("COLLECTION_AGENT_WS_URL", "ws://127.0.0.1:8765/ws-v2").strip()
             ),
@@ -52,15 +52,15 @@ class Settings:
         if self.app_env not in SUPPORTED_ENVIRONMENTS:
             raise RuntimeError("APP_ENV must be one of: dev, test, prod")
         if not self.database_url.startswith("mysql+pymysql://"):
-            raise RuntimeError("Robot Config Service requires a MySQL PyMySQL database URL")
+            raise RuntimeError("Fast-Call requires a MySQL PyMySQL database URL")
         tokens = [
             self.management_token, self.resolve_token, self.openapi_token,
             self.admin_token, self.adapter_token, self.agent_token, self.media_token,
         ]
         if any(not token for token in tokens):
-            raise RuntimeError("All Robot Config and Fast-Call API tokens are required")
+            raise RuntimeError("All Fast-Call API tokens are required")
         if len(set(tokens)) != len(tokens):
-            raise RuntimeError("Robot Config and Fast-Call API tokens must be different")
+            raise RuntimeError("Fast-Call API tokens must be different")
         if not self.console_admin_actor_id or not self.console_admin_password_hash:
             raise RuntimeError("Console administrator identity and password hash are required")
         if len(self.console_session_secret) < 32:

@@ -207,7 +207,7 @@ src/
 | Agent 通话与分析 | `collection_agents` | call_record、call_transcript、call_analysis、Provider 指标 |
 | 业务分析 | `fastcall_core` | `outbound_call_analysis.business_result`，不改变电话技术结果 |
 
-`robot_config_alembic_version` 与 Agent 自有迁移相互独立。`outbound_call_analysis` 不覆盖 Agent 旧 `call_analysis`。
+Alembic 配置为 `deploy/fastcall-alembic.ini`，version table 为兼容历史数据库的 `robot_config_alembic_version`。它与 Agent 自有迁移相互独立。`outbound_call_analysis` 不覆盖 Agent 旧 `call_analysis`。
 
 ## 12. 基础设施与运维约束
 

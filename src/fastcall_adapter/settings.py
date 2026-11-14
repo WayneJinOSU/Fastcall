@@ -20,7 +20,7 @@ class Settings:
         return cls(
             app_env=os.getenv("APP_ENV", "").strip(),
             database_url=(
-                os.getenv("ROBOT_CONFIG_DATABASE_URL", "").strip()
+                os.getenv("FASTCALL_DATABASE_URL", "").strip()
                 or os.getenv("DATABASE_URL", "").strip()
             ),
             collection_agent_ws_url=(

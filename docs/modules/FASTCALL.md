@@ -136,11 +136,11 @@ GET  /openapi/v1/calls/{call_id}
 
 ## 7. 配置与数据所有权
 
-保留现有 `ROBOT_CONFIG_*` 和 `FASTCALL_*` 名称。Adapter 地址使用 `FASTCALL_ADAPTER_INTERNAL_URL`，Agent 地址使用 `COLLECTION_AGENT_WS_URL`。
+配置统一使用 `FASTCALL_*`（通用 `DATABASE_URL` 除外）。Adapter 地址使用 `FASTCALL_ADAPTER_INTERNAL_URL`，Agent 地址使用 `COLLECTION_AGENT_WS_URL`。
 
 控制面启动要求 MySQL PyMySQL URL、七种互不相同的 API/内部 token，以及 Console actor、密码哈希和至少 32 字符 session secret。还必须提供 `FASTCALL_ENCRYPTION_KEYS_JSON`、`FASTCALL_ENCRYPTION_ACTIVE_VERSION`、`FASTCALL_HMAC_KEYS_JSON`、`FASTCALL_HMAC_ACTIVE_VERSION`。仅配置外呼 Open API 凭据不足以启动完整控制面。
 
-Fast-Call 拥有 Alembic 迁移和完整 schema 校验，version table 为 `robot_config_alembic_version`，当前基线 `0004`。不得在业务测试中使用非独立业务库重建 schema。
+Fast-Call 拥有 Alembic 迁移和完整 schema 校验。当前基线为 `0004`，version table 继续使用兼容历史数据库的 `robot_config_alembic_version` 名称。不得在业务测试中使用非独立业务库重建 schema。
 
 ## 8. 测试与修改指引
 
@@ -149,7 +149,7 @@ Fast-Call 拥有 Alembic 迁移和完整 schema 校验，version table 为 `robo
 - `tests/unit/fastcall/`：API、任务、调度、Webhook、Console、启动。
 - `tests/unit/architecture/`：包边界、路由集合、事务所有权、UOW 不变量。
 - `tests/integration/test_outbound_e2e`：跨模块模拟闭环。
-- `tests/integration/robot_config_mysql/`：真实 MySQL，仅允许独立测试库。
+- `tests/integration/fastcall_mysql/`：真实 MySQL，仅允许独立测试库。
 
 修改公开 API 时同步更新业务契约、总览和本分册。新增控制面 DAO 不得泄入 core；新增 Adapter 行为不得通过控制面直接操作 FreeSWITCH。
 
@@ -204,7 +204,7 @@ Console 使用 React SPA + 同源 FastAPI BFF，BFF 直接调用现有 Applicati
 - actor 由服务端 Session 取得，浏览器不能通过 `X-Actor-Id` 冒充。
 - Session 和浏览器存储不保存内部 Token 或配置草稿。
 - 未认证返回 401，CSRF 失败返回 403。
-- 单管理员配置为 `ROBOT_CONFIG_CONSOLE_ADMIN_ACTOR_ID`、`_PASSWORD_HASH`、`_SESSION_SECRET`；只保存密码哈希，后续可用 SSO 替换认证适配器。
+- 单管理员配置为 `FASTCALL_CONSOLE_ADMIN_ACTOR_ID`、`FASTCALL_CONSOLE_ADMIN_PASSWORD_HASH`、`FASTCALL_CONSOLE_SESSION_SECRET`；只保存密码哈希，后续可用 SSO 替换认证适配器。
 
 ### 10.3 编辑器与版本管理
 
@@ -244,3 +244,12 @@ Admin review 请求字段：
 - 期望版本、证据、说明和操作者身份必须明确，actor 长度不得超过数据库字段限制。
 
 Robot 版本和配置审计只追加，不允许 UPDATE/DELETE；数据库 Trigger 是 Repository 之外的第二道约束。审计仅保存操作标识、对象、版本 ID、哈希和非敏感摘要，不记录 API Key、完整 Prompt、真实通话变量或被叫号码。
+
+## 12. 命名与兼容约定
+
+- 控制面镜像为 `deploy/Dockerfile-fastcall`，控制面部署为 `deploy/fastcall-api-deploy.yaml`，Alembic 配置为 `deploy/fastcall-alembic.ini`。
+- `FASTCALL_IMAGE`、`FASTCALL_ADAPTER_IMAGE` 和 `COLLECTION_AGENT_IMAGE` 分别对应三个独立镜像。
+- 配置统一使用 `FASTCALL_*`（通用 `DATABASE_URL` 除外），不再读取旧 `ROBOT_CONFIG_*` 环境变量。
+- `robot_config_alembic_version` 是已部署数据库中的历史版本表名，必须保留，不能仅为命名统一而修改。
+- Kubernetes 使用 `fastcall-api` 和 `fastcall-secret`。上线新名称前需创建对应 Secret，并确认原 `robot-config-service` 的 DNS/调用方已完成迁移；不得只修改 Manifest 名称而忽略外部依赖。
+- Console 仅接受 `fastcall_console_session`，旧 `robot_config_console_session` 不再用于认证。

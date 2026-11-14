@@ -131,7 +131,7 @@ review 在 Adapter 中完成 gateway 检查、必要挂断、结果修订、事�
 
 ## 8. 配置、镜像与测试
 
-- 使用现有 `ROBOT_CONFIG_DATABASE_URL`/`DATABASE_URL`、`FASTCALL_*`、FreeSWITCH 和 Agent 地址配置。
+- 使用 `FASTCALL_DATABASE_URL`（或通用 `DATABASE_URL`）、其他 `FASTCALL_*`、FreeSWITCH 和 Agent 地址配置。
 - Settings 只校验 Admin/Adapter/Agent/Media 等自身凭据，不要求 Console 凭据；完整运行入口还要求加密/HMAC 的 key JSON 与 active 版本，以及 `FREESWITCH_ESL_PASSWORD`、`FREESWITCH_SIP_GATEWAY`。
 - `deploy/Dockerfile-fastcall-adapter` 只复制 `fastcall_adapter` 和 `fastcall_core`，入口为 `python -m fastcall_adapter.main`。
 - Kubernetes 使用 `FASTCALL_ADAPTER_IMAGE`，单副本、单 worker、`Recreate`。

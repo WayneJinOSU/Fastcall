@@ -24,7 +24,7 @@ spec:
               value: ${APP_ENV}
           envFrom:
             - secretRef:
-                name: robot-config-service-secret
+                name: fastcall-secret
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -54,7 +54,7 @@ spec:
               value: ${APP_ENV}
           envFrom:
             - secretRef:
-                name: robot-config-service-secret
+                name: fastcall-secret
 ---
 apiVersion: v1
 kind: Service
@@ -94,4 +94,4 @@ spec:
               value: ${APP_ENV}
           envFrom:
             - secretRef:
-                name: robot-config-service-secret
+                name: fastcall-secret

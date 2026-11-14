@@ -54,7 +54,7 @@ def create_app(
             if app.state.database is not None:
                 app.state.database.close()
 
-    app = FastAPI(title="Robot Config Service", lifespan=lifespan)
+    app = FastAPI(title="Fast-Call", lifespan=lifespan)
     app.state.settings = settings
     app.state.database = database
     app.state.catalog = load_catalog()

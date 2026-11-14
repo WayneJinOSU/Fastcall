@@ -78,12 +78,12 @@ def upgrade():
         op.execute(f"""
             CREATE TRIGGER {table}_no_update BEFORE UPDATE ON {table}
             FOR EACH ROW SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'Robot Config Service records are immutable'
+            SET MESSAGE_TEXT = 'Fast-Call records are immutable'
         """)
         op.execute(f"""
             CREATE TRIGGER {table}_no_delete BEFORE DELETE ON {table}
             FOR EACH ROW SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'Robot Config Service records are immutable'
+            SET MESSAGE_TEXT = 'Fast-Call records are immutable'
         """)
 
 

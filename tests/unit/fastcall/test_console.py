@@ -57,6 +57,23 @@ class ConsoleApiTests(unittest.TestCase):
             audit = session_db.execute(select(RobotConfigAuditLogModel).where(RobotConfigAuditLogModel.action == "app.create")).scalar_one()
             self.assertEqual(audit.actor, "admin")
 
+    def test_logout_deletes_fastcall_cookie(self):
+        csrf = self.login()
+        response = self.client.post(
+            "/console/api/v1/logout", headers={"X-CSRF-Token": csrf}
+        )
+        self.assertEqual(response.status_code, 200)
+        cookies = response.headers.get_list("set-cookie")
+        self.assertTrue(any("fastcall_console_session" in cookie for cookie in cookies))
+
+    def test_legacy_cookie_name_is_not_accepted(self):
+        self.login()
+        token = self.client.cookies.get("fastcall_console_session")
+        self.client.cookies.delete("fastcall_console_session")
+        self.client.cookies.set("robot_config_console_session", token)
+        response = self.client.get("/console/api/v1/robot-apps")
+        self.assertEqual(response.status_code, 401)
+
     def test_default_uow_factory_uses_database_session(self):
         from fastcall.infrastructure.database import Database
 

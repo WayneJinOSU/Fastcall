@@ -24,17 +24,17 @@ EXPECTED_REVISION = "0004"
 class Database(CoreDatabase):
     def verify(self) -> None:
         if self.engine.dialect.name != "mysql":
-            raise RuntimeError("Robot Config Service only supports MySQL")
+            raise RuntimeError("Fast-Call only supports MySQL")
         with self.engine.connect() as connection:
             connection.execute(text("SELECT 1"))
             table_names = set(inspect(connection).get_table_names())
             missing = (REQUIRED_TABLES | {ALEMBIC_TABLE}) - table_names
             if missing:
-                raise RuntimeError(f"Robot Config Service schema is missing: {sorted(missing)}")
+                raise RuntimeError(f"Fast-Call schema is missing: {sorted(missing)}")
             revision = connection.execute(
                 text(f"SELECT version_num FROM {ALEMBIC_TABLE}")
             ).scalar()
             if revision != EXPECTED_REVISION:
                 raise RuntimeError(
-                    f"Robot Config Service schema revision must be {EXPECTED_REVISION}"
+                    f"Fast-Call schema revision must be {EXPECTED_REVISION}"
                 )

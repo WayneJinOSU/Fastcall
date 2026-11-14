@@ -86,7 +86,7 @@ async def voice_test_websocket(websocket: WebSocket, session_id: str, ticket: st
     tasks = []
     try:
         console = decode_session_token(
-            websocket.cookies.get("robot_config_console_session", ""),
+            websocket.cookies.get("fastcall_console_session", ""),
             settings.console_session_secret,
         )
         session = store.claim(session_id, ticket, console.actor)
