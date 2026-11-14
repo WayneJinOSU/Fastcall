@@ -929,7 +929,9 @@ Scheduler 不拼接或发送 FreeSWITCH 命令。Adapter 只有在当前进程�
 - attached 持久化并 ACK 后才初始化 Pipeline。旧代际 ready 无效，pre-ready failed 可来自历史代际，ready 后只接受当前代际。
 - Agent slot 在 Pipeline、Provider、媒体和清理回调全部结束后释放。pre-ready 断连使用有界 recover，ready 后断线立即失败并挂断。
 - 媒体使用 signed PCM16 little-endian、单声道、8000Hz。Adapter 按字节重组 320B/20ms 帧，双方队列最多 500ms；溢出终止当前 Call。
-- ready 先到或媒体先到都通过同一 pending 状态协调，ready 后才发送 `answer` 和预缓冲音频。
+- ready 先到或媒体先到都通过同一 pending 状态协调，ready 后才发送 `answer` 和预缓冲音频；ready 看门狗就绪后不再结束媒体任务。
+- Agent 主动挂断后丢弃不再可播放的尾部音频，完成事件能收到则处理并 ACK；FreeSWITCH 终态到达后即可清理，不额外等待完成事件。只处理 Fast-Call originate 主通道事件，loopback 另一腿不得覆盖主通道或创建第二个 Session。
+- Collection Agent 原有通话记录、语音信箱和业务分析独立落库，不依赖 Fast-Call WebSocket 的存活；Fast-Call 可由 FreeSWITCH 终态完成技术结果和 Webhook，不要求修改 Agent 业务流程来复制分类。
 
 ### 11.4 数据与回调
 

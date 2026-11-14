@@ -121,6 +121,8 @@ class FreeSwitchESL:
         response = await self.commands.command(f"api uuid_audio_stream {channel_uuid} stop")
         reply = response.get("Reply-Text", "")
         if not reply.startswith("+OK") and "not found" not in reply.lower():
+            if not await self.channel_exists(channel_uuid):
+                return
             raise ESLError("Unable to stop FreeSWITCH audio stream")
 
     async def listen_events(self, callback):

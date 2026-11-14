@@ -838,12 +838,12 @@ Domain 不导入 FastAPI、SQLAlchemy 或 ESL；Application 不拼接 FreeSWITCH
 - 业务分析由 `outbound_call_analysis` 保存，迁移基线为 `0004`。事件只保存必要业务结果，完整分析进入该表，不改变技术结果或重试。旧 Collection Agents 的 `call_analysis` 结构不同，迁移不会重命名或删除旧表。
 - Scheduler 通过 Adapter Internal dispatch API 提交请求，不直接持有 originate 权限。`bgapi` Job-UUID 仅保存在命令事件。
 - 只处理属于 Fast-Call originate 主通道的 ESL 事件；loopback 另一腿即使继承 `fastcall_call_id`，也不能覆盖主通道 UUID 或触发二次 Agent Session。
-- ready 看门狗在 ready 后不得结束媒体任务。Agent 主动挂断后继续接收 `session.completed`，等待生命周期 ACK 后再关闭 Agent WebSocket；此期间 FreeSWITCH 的关闭或写错误不得抢先终止 Agent 生命周期。
+- ready 看门狗在 ready 后不得结束媒体任务。Agent 主动挂断后丢弃不可播放的尾部音频，生命周期完成事件能收到则处理并 ACK；FreeSWITCH 终态到达后即可清理，不额外等待完成事件，也不把它作为业务成功前置条件。
 - Fast-Call Session 使用的 Pipecat transport 在 Pipeline `EndFrame` 时不提前关闭底层 WebSocket，由 Agent 路由在生命周期和清理完成后关闭。等待 ACK 时跳过二进制音频，仅解析 ACK 文本；完成事件确实丢失时仍按 FreeSWITCH 终态兜底。
 
 ### 13.2 已执行验证
 
-- Robot Config 全部单元测试：103 项通过。
+- Robot Config 全部单元测试：104 项通过。
 - 模拟 FreeSWITCH、Agent、Webhook 的完整端到端测试通过。
 - 真实 Docker FreeSWITCH loopback + 生产 Deepgram/DeepSeek/Cartesia：真实用户语音经 STT 识别、LLM 生成两轮回复、TTS 播放，自然挂断后 Call/Contact 成功、Task 完成，两类 Webhook 均以 HMAC + HTTPS 送达并返回 204；未修改 FreeSWITCH 配置。Collection Agent 原有通话记录和业务分析独立落库，Fast-Call 不以其完成事件作为业务成功前置条件。
 - 真实 MySQL：6 项集成测试通过，包含迁移升级/降级、启动检查、并发事件去重、加密名单和任务控制。

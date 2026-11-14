@@ -45,6 +45,13 @@ class FreeSwitchESLTests(unittest.TestCase):
         response = asyncio.run(connection.command("api uuid_exists channel-1"))
         self.assertEqual(response["Reply-Text"], "true")
 
+    def test_stop_media_is_idempotent_when_channel_has_ended(self):
+        gateway = FreeSwitchESL("localhost", 8021, "secret", "carrier", "ws://adapter/media")
+        gateway.commands.command = AsyncMock(return_value={"Reply-Text": "-ERR Operation Failed"})
+        gateway.channel_exists = AsyncMock(return_value=False)
+        asyncio.run(gateway.stop_media("ended-channel"))
+        gateway.channel_exists.assert_awaited_once_with("ended-channel")
+
     def test_event_plain_body_headers_are_parsed(self):
         connection = ESLConnection("localhost", 8021, "secret")
         body = "Event-Name: CHANNEL_ANSWER\nUnique-ID: origin-1\n"

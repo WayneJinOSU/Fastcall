@@ -107,18 +107,14 @@ class MediaTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_freeswitch_write_failure_waits_for_completion_after_hangup(self):
+    def test_freeswitch_write_failure_is_idempotent_after_hangup(self):
         async def scenario():
             fs = FakeFreeSwitchSocket()
             fs.send_bytes = AsyncMock(side_effect=RuntimeError("disconnected"))
             bridge = MediaBridge(fs, FakeAgentSocket(), "call_1")
             bridge.hangup_requested = True
             await bridge.accept_agent_bytes(b"a" * 320)
-            send = asyncio.create_task(bridge._freeswitch_send())
-            await asyncio.sleep(0.03)
-            self.assertFalse(send.done())
-            bridge._agent_completed.set()
-            await send
+            await bridge._freeswitch_send()
 
         asyncio.run(scenario())
 

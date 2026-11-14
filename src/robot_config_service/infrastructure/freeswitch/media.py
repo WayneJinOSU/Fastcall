@@ -94,12 +94,6 @@ class MediaBridge:
                 raise MediaBackpressureOverflow("Agent audio output exceeded 500ms")
             self.agent_frames.put_nowait(frame)
 
-    async def _wait_for_agent_completion(self):
-        try:
-            await asyncio.wait_for(self._agent_completed.wait(), timeout=10)
-        except asyncio.TimeoutError as error:
-            raise RuntimeError("Agent did not complete after requesting hangup") from error
-
     async def _freeswitch_receive(self):
         reassembler = PCMFrameReassembler()
         while True:
@@ -109,8 +103,6 @@ class MediaBridge:
                     "FreeSWITCH media disconnected call_id=%s code=%s reason=%s",
                     self.call_id, message.get("code"), message.get("reason"),
                 )
-                if self.hangup_requested:
-                    await self._wait_for_agent_completion()
                 break
             if message.get("bytes"):
                 await self.accept_caller_bytes(message["bytes"], reassembler)
@@ -154,7 +146,6 @@ class MediaBridge:
             except Exception:
                 if not self.hangup_requested:
                     raise
-                await self._wait_for_agent_completion()
                 break
             next_send += PCM_FRAME_INTERVAL_SEC
 
