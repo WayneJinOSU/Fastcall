@@ -1,0 +1,6 @@
+<extension name="fastcall_mock_call_browser">
+  <condition field="destination_number" expression="^mock-call$">
+    <action application="set" data="fastcall_mock_call_role=browser"/>
+    <action application="park"/>
+  </condition>
+</extension>

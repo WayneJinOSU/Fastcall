@@ -11,6 +11,7 @@ from fastcall_adapter.application.call_checks import CallCheckUseCase
 from fastcall_adapter.application.dispatch import DispatchService
 from fastcall_adapter.application.hangup import ReconcileHangupsUseCase
 from fastcall_adapter.application.media import AdapterMediaRuntime
+from fastcall_adapter.application.mock_call_media import MockCallMediaRuntime
 from fastcall_adapter.application.telephony_events import FreeSwitchEventService
 from fastcall_adapter.infrastructure.crypto import phone_hmac_from_env, secret_codec_from_env
 from fastcall_adapter.infrastructure.database import Database
@@ -49,21 +50,26 @@ async def run_adapter():
         os.environ["FREESWITCH_SIP_GATEWAY"],
         _media_url(),
         dial_mode=os.getenv("FREESWITCH_DIAL_MODE", "gateway"),
+        mock_target=os.getenv("FASTCALL_MOCK_LOOPBACK_TARGET", "mock-call"),
     )
+    mock_calls = MockCallMediaRuntime(uow_factory, gateway)
     dispatcher = DispatchService(
         uow_factory, gateway, codec, hmac_keys,
         global_max_concurrent=int(os.getenv("FASTCALL_GLOBAL_MAX_CONCURRENT", "50")),
         global_calls_per_minute=int(os.getenv("FASTCALL_GLOBAL_CALLS_PER_MINUTE", "60")),
+        mock_calls=mock_calls,
     )
     media = AdapterMediaRuntime(
-        uow_factory, codec, gateway, settings.collection_agent_ws_url, settings.agent_token
+        uow_factory, codec, gateway, settings.collection_agent_ws_url, settings.agent_token,
+        mock_calls=mock_calls,
     )
     app = create_app(
         settings=settings, database=database, secret_codec=codec, phone_hmac=hmac_keys,
         uow_factory=uow_factory, freeswitch_gateway=gateway, media_runtime=media,
-        dispatcher=dispatcher,
+        dispatcher=dispatcher, mock_call_media=mock_calls,
     )
     dispatcher.recover_unacknowledged()
+    await mock_calls.cleanup_stale()
     media_tasks = set()
 
     def media_done(task):
@@ -75,6 +81,14 @@ async def run_adapter():
             )
 
     async def on_event(event):
+        if event.get("variable_fastcall_mock_call") == "true" and (
+            event.get("Unique-ID") != event.get("variable_origination_uuid")
+        ):
+            try:
+                await mock_calls.handle_freeswitch(event)
+            except Exception:
+                logger.exception("Mock Call browser event processing failed")
+            return
         if (
             not event.get("variable_fastcall_call_id")
             or event.get("Unique-ID") != event.get("variable_origination_uuid")
@@ -97,6 +111,11 @@ async def run_adapter():
                 task = asyncio.create_task(media.run_call(result["call_id"]))
                 media_tasks.add(task)
                 task.add_done_callback(media_done)
+            if event["Event-Name"] in {"CHANNEL_DESTROY", "CHANNEL_HANGUP_COMPLETE"}:
+                call_id = result.get("call_id") or event.get("variable_fastcall_call_id")
+                call = event_uow.calls.get(call_id)
+                if call is not None:
+                    await mock_calls.finish(call.id, call.result_code)
         except Exception:
             logger.exception("FreeSWITCH event processing failed")
         finally:
@@ -112,6 +131,7 @@ async def run_adapter():
                 await checks.restore_answered_channels()
                 checks.expire_checks()
                 await media.recover_sessions()
+                await mock_calls.cleanup_stale()
                 await hangups.run_once()
             except Exception as error:
                 uow.rollback()

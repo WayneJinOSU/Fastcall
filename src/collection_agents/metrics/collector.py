@@ -79,6 +79,8 @@ def _count_meaningful_units(text: str) -> int:
 
 def call_source_from_payload(call_data):
     data = call_data.get("data", {}) or {}
+    if data.get("callSource") == "mock_call":
+        return "mock_call"
     if data.get("claimGeneration") is not None:
         return "fastcall_outbound"
     if str(data.get("callUUID", "")).startswith("console-test-"):

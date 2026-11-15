@@ -18,7 +18,7 @@ REQUIRED_TABLES = {
     "outbound_call_analysis",
 }
 ALEMBIC_TABLE = "robot_config_alembic_version"
-EXPECTED_REVISION = "0004"
+EXPECTED_REVISION = "0005"
 
 
 class Database(CoreDatabase):

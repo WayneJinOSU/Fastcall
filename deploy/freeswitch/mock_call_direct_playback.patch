@@ -1,0 +1,39 @@
+--- a/audio_streamer_glue.cpp
++++ b/audio_streamer_glue.cpp
+@@ -371,6 +371,36 @@
+         if (!psession) return;
+ 
+         switch_channel_t *ch = switch_core_session_get_channel(psession);
++        if (switch_channel_var_true(ch, "STREAM_PLAYBACK_DIRECT")) {
++            switch_codec_t *write_codec = switch_core_session_get_write_codec(psession);
++            if (!write_codec || !write_codec->implementation ||
++                !write_codec->implementation->iananame ||
++                std::strcmp(write_codec->implementation->iananame, "L16") != 0 ||
++                write_codec->implementation->actual_samples_per_second != 8000 ||
++                write_codec->implementation->number_of_channels != 1 || m_rawSampleRate != 8000) {
++                switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(psession), SWITCH_LOG_WARNING,
++                    "Mock direct playback requires PCM16LE mono L16 at 8kHz\n");
++                switch_core_session_rwunlock(psession);
++                return;
++            }
++            switch_frame_t direct_frame = {};
++            direct_frame.data = const_cast<void*>(data);
++            direct_frame.datalen = (uint32_t)len;
++            direct_frame.buflen = (uint32_t)len;
++            direct_frame.samples = (uint32_t)(len / 2);
++            direct_frame.channels = 1;
++            direct_frame.codec = write_codec;
++            direct_frame.rate = write_codec->implementation->actual_samples_per_second;
++            switch_status_t write_status = switch_core_session_write_frame(
++                psession, &direct_frame, SWITCH_IO_FLAG_NONE, 0
++            );
++            if (write_status != SWITCH_STATUS_SUCCESS) {
++                switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(psession), SWITCH_LOG_WARNING,
++                    "Mock direct playback write failed status=%d\n", write_status);
++            }
++            switch_core_session_rwunlock(psession);
++            return;
++        }
+         auto *media_bug = (switch_media_bug_t*) switch_channel_get_private(ch, MY_BUG_NAME);
+         if (media_bug) {
+             auto *tp = (private_t*) switch_core_media_bug_get_user_data(media_bug);

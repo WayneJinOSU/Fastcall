@@ -28,7 +28,7 @@ def list_call_records(
     limit: int = Query(50, ge=1, le=200),
     _=Depends(_authorize),
 ):
-    if source not in {"all", "fastcall_outbound", "console_voice_test", "generic_ws", "unclassified"}:
+    if source not in {"all", "fastcall_outbound", "mock_call", "console_voice_test", "generic_ws", "unclassified"}:
         raise HTTPException(status_code=400, detail="Invalid call source")
     try:
         return CallReportRepository().list_records(

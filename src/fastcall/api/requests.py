@@ -43,6 +43,13 @@ class VoiceTestSessionRequest(RequestModel):
     variables: dict = Field(default_factory=dict)
 
 
+class MockCallRequest(RequestModel):
+    app_id: str = Field(min_length=1, max_length=40)
+    robot_version_id: str = Field(min_length=1, max_length=40)
+    client_request_id: str = Field(min_length=8, max_length=100)
+    variables: dict = Field(default_factory=dict)
+
+
 class CallAnalysisRequest(RequestModel):
     business_result: str | None = Field(default=None, max_length=255)
     analysis: dict = Field(default_factory=dict)

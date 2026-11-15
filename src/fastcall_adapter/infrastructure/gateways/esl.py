@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from urllib.parse import urlsplit, urlunsplit
 
 
@@ -88,11 +89,15 @@ class ESLConnection:
 
 
 class FreeSwitchESL:
-    def __init__(self, host, port, password, gateway, media_ws_url, dial_mode="gateway"):
+    def __init__(
+        self, host, port, password, gateway, media_ws_url, dial_mode="gateway",
+        mock_target="mock-call",
+    ):
         self.commands = ESLConnection(host, port, password)
         self.gateway = gateway
         self.media_ws_url = media_ws_url
         self.dial_mode = dial_mode
+        self.mock_target = mock_target
 
     async def health_check(self):
         response = await self.commands.command("api status")
@@ -101,19 +106,35 @@ class FreeSwitchESL:
         return True
 
     async def originate(self, call_id, origination_uuid, callee, task_id, contact_id):
-        variables = ",".join((
+        return await self._originate(call_id, origination_uuid, callee, task_id, contact_id)
+
+    async def originate_mock(self, call_id, origination_uuid, task_id, contact_id):
+        return await self._originate(
+            call_id, origination_uuid, "", task_id, contact_id, mock=True
+        )
+
+    async def _originate(
+        self, call_id, origination_uuid, callee, task_id, contact_id, mock=False
+    ):
+        values = [
             f"origination_uuid={origination_uuid}",
             f"fastcall_call_id={call_id}",
             f"fastcall_task_id={task_id}",
             f"fastcall_contact_id={contact_id}",
             "STREAM_PLAYBACK=true",
             "STREAM_BUFFER_SIZE=20",
-        ))
-        if self.dial_mode == "loopback":
+        ]
+        if mock:
+            if not re.fullmatch(r"[A-Za-z0-9_-]+", self.mock_target):
+                raise ESLError("Mock Call loopback target is invalid")
+            values.append("fastcall_mock_call=true")
+            values.append("STREAM_PLAYBACK_DIRECT=true")
+            destination = f"loopback/{self.mock_target}"
+        elif self.dial_mode == "loopback":
             destination = f"loopback/{callee.lstrip('+')}"
         else:
             destination = f"sofia/gateway/{self.gateway}/{callee}"
-        command = f"bgapi originate {{{variables}}}{destination} &park()"
+        command = f"bgapi originate {{{','.join(values)}}}{destination} &park()"
         response = await self.commands.command(command)
         reply = response.get("Reply-Text", "")
         if not reply.startswith("+OK"):
@@ -122,14 +143,21 @@ class FreeSwitchESL:
         return {"uuid": origination_uuid, "job_uuid": job_uuid}
 
     async def start_media(self, channel_uuid, call_id, claim_generation):
+        await self._start_audio_stream(channel_uuid, call_id, "caller", claim_generation)
+
+    async def start_mock_media(self, channel_uuid, call_id):
+        await self._start_audio_stream(channel_uuid, call_id, "mock_browser")
+
+    async def _start_audio_stream(self, channel_uuid, call_id, direction, generation=None):
         metadata = json.dumps({
             "call_id": call_id,
-            "claim_generation": claim_generation,
-            "direction": "caller",
+            "claim_generation": generation,
+            "direction": direction,
         }, separators=(",", ":"))
         parsed = urlsplit(self.media_ws_url)
+        suffix = f"/{call_id}/browser" if direction == "mock_browser" else f"/{call_id}"
         url = urlunsplit((
-            parsed.scheme, parsed.netloc, f"{parsed.path.rstrip('/')}/{call_id}",
+            parsed.scheme, parsed.netloc, f"{parsed.path.rstrip('/')}{suffix}",
             parsed.query, "",
         ))
         response = await self.commands.command(
@@ -174,3 +202,8 @@ class FreeSwitchESL:
         reply = response.get("Reply-Text", "")
         if not reply.startswith("+OK") and "no such channel" not in reply.lower():
             raise ESLError("Unable to kill FreeSWITCH channel")
+
+    async def answer_channel(self, channel_uuid):
+        response = await self.commands.command(f"api uuid_answer {channel_uuid}")
+        if not response.get("Reply-Text", "").startswith("+OK"):
+            raise ESLError("Unable to answer FreeSWITCH channel")

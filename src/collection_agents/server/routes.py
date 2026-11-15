@@ -42,24 +42,24 @@ async def _run_v2_bot(websocket, app, call_data):
     generation = data.get("claimGeneration")
     lifecycle = None
     slot = None
-    if generation is not None:
-        expected = os.getenv("FASTCALL_AGENT_TOKEN", "")
-        authorization = websocket.headers.get("authorization", "")
-        provided = authorization[7:] if authorization.lower().startswith("bearer ") else ""
-        if not expected or not hmac.compare_digest(provided, expected):
-            await websocket.close(code=1008)
-            return
-        call_id = data.get("callUUID", "")
-        try:
-            slot = await app.state.session_slot_registry.attach(call_id, generation)
-            lifecycle = SessionLifecycle(
-                websocket, call_id, generation, data.get("configHash", "")
-            )
-            await lifecycle.attached()
-        except SessionSlotError:
-            await websocket.close(code=1009)
-            return
     try:
+        if generation is not None:
+            expected = os.getenv("FASTCALL_AGENT_TOKEN", "")
+            authorization = websocket.headers.get("authorization", "")
+            provided = authorization[7:] if authorization.lower().startswith("bearer ") else ""
+            if not expected or not hmac.compare_digest(provided, expected):
+                await websocket.close(code=1008)
+                return
+            call_id = data.get("callUUID", "")
+            try:
+                slot = await app.state.session_slot_registry.attach(call_id, generation)
+                lifecycle = SessionLifecycle(
+                    websocket, call_id, generation, data.get("configHash", "")
+                )
+                await lifecycle.attached()
+            except SessionSlotError:
+                await websocket.close(code=1009)
+                return
         if realtime_config or "realtime" in agent_name.casefold():
             await run_realtime_bot(
                 websocket, callee or "test", call_data, session_lifecycle=lifecycle

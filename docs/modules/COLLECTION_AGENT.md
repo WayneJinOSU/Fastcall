@@ -64,7 +64,7 @@ Fast-Call 使用的 start payload 包含 `callUUID`、`claimGeneration`、`calle
 - 同一代际最多一次 WebSocket attach。
 - Pipeline、Provider、媒体和清理回调全部结束后才释放 slot。
 
-**当前已知限制**：`server/routes.py` 在 slot 的 `try/finally` 释放范围之前等待 `session.attached` ACK；如果此时断线，slot 可能残留并导致后续 recover 被拒绝。这是当前实现缺陷，不应把该断线场景误写成已经可靠恢复。后续修复需把 attach/ACK 纳入明确清理范围，并增加“attached 后断线、无 ACK、随后 recover”的回归测试。
+`server/routes.py` 将 slot attach、attached ACK 和 Pipeline 生命周期纳入同一 `try/finally`；attached 后断线、未收到 ACK 时也释放 slot。该路径由目标回归覆盖，不影响普通 `/ws-v2` 的来源语义。
 
 ### 4.2 生命周期
 
@@ -106,7 +106,7 @@ WebSocket 音频 → Telephony Serializer → VAD/轮次与中断
 
 Agent 自有主要表：
 
-- `call_record`：技术指标、模型、时长和成本；`call_source` 区分正式外呼、语音测试和普通 WebSocket，`claim_generation` 保留 Agent 代际，`technical_config.pricing` 保存价格版本、USD 币种和估算标记。Console 语音测试不写该表，测试 transcript、日志和事件仍可独立保留；普通 WebSocket 不得因来源未知而误删指标。
+- `call_record`：技术指标、模型、时长和成本；`call_source` 区分正式外呼、Mock Call、语音测试和普通 WebSocket，`claim_generation` 保留 Agent 代际，`technical_config.pricing` 保存价格版本、USD 币种和估算标记。Console 语音测试不写该表，测试 transcript、日志和事件仍可独立保留；Mock Call 使用显式 `callSource=mock_call` 并保留完整技术记录，但正式 summary/daily BI 默认排除；普通 WebSocket 不得因来源未知而误删指标。
 - `call_transcript`：完整对话消息。
 - `call_analysis`：Agent 原有业务分析结构。
 

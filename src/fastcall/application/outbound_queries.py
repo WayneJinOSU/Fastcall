@@ -32,6 +32,7 @@ def _time(value):
 def console_task_view(task, contact_statistics=None, call_statistics=None, robot=None):
     return {
         "task_id": task.id,
+        "origin": task.origin,
         "customer_task_id": task.customer_task_id,
         "name": task.name,
         "robot_app_id": task.robot_app_id,

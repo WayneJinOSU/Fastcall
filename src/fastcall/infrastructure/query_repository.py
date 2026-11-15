@@ -4,6 +4,7 @@ from fastcall_core.application.outbound_ports import (
     OutboundCallRecord,
     OutboundTaskRecord,
     TaskContactRecord,
+    WebhookDeliveryRecord,
 )
 from fastcall_core.domain.calls import ACTIVE_CALL_STATUSES, CallStatus
 from fastcall_core.domain.outbound_tasks import TERMINAL_CONTACT_STATUSES
@@ -12,6 +13,7 @@ from fastcall_core.infrastructure.outbound_orm import (
     OutboundCallModel,
     OutboundTaskModel,
     TaskContactModel,
+    WebhookDeliveryModel,
 )
 from fastcall_core.infrastructure.outbound_repositories import _to_record
 
@@ -37,7 +39,7 @@ class SqlAlchemyOutboundQueryRepository:
     def list_tasks(
         self, *, status=None, robot_app_id=None, search=None, after=None, limit=50
     ):
-        statement = select(OutboundTaskModel)
+        statement = select(OutboundTaskModel).where(OutboundTaskModel.origin == "outbound")
         if status:
             statement = statement.where(OutboundTaskModel.status == status)
         if robot_app_id:
@@ -175,3 +177,20 @@ class SqlAlchemyOutboundQueryRepository:
             )
         ).scalars().all()
         return [_to_record(TaskContactRecord, model) for model in models]
+
+    def list_webhook_deliveries(self, task_id):
+        models = self.session.execute(
+            select(WebhookDeliveryModel)
+            .where(WebhookDeliveryModel.task_id == task_id)
+            .order_by(WebhookDeliveryModel.created_at, WebhookDeliveryModel.id)
+        ).scalars().all()
+        return [_to_record(WebhookDeliveryRecord, model) for model in models]
+
+    def list_draft_mock_tasks(self):
+        models = self.session.execute(
+            select(OutboundTaskModel).where(
+                OutboundTaskModel.origin == "mock_call",
+                OutboundTaskModel.status == "draft",
+            )
+        ).scalars().all()
+        return [_to_record(OutboundTaskRecord, model) for model in models]

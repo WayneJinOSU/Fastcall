@@ -140,7 +140,7 @@ GET  /openapi/v1/calls/{call_id}
 
 控制面启动要求 MySQL PyMySQL URL、七种互不相同的 API/内部 token，以及 Console actor、密码哈希和至少 32 字符 session secret。还必须提供 `FASTCALL_ENCRYPTION_KEYS_JSON`、`FASTCALL_ENCRYPTION_ACTIVE_VERSION`、`FASTCALL_HMAC_KEYS_JSON`、`FASTCALL_HMAC_ACTIVE_VERSION`。仅配置外呼 Open API 凭据不足以启动完整控制面。
 
-Fast-Call 拥有 Alembic 迁移和完整 schema 校验。当前基线为 `0004`，version table 继续使用兼容历史数据库的 `robot_config_alembic_version` 名称。不得在业务测试中使用非独立业务库重建 schema。
+Fast-Call 拥有 Alembic 迁移和完整 schema 校验。当前基线为 `0005`，version table 继续使用兼容历史数据库的 `robot_config_alembic_version` 名称。不得在业务测试中使用非独立业务库重建 schema。
 
 ## 8. 测试与修改指引
 
@@ -454,3 +454,11 @@ npm run build
 4. 已实现：任务启动、暂停、恢复和取消；状态变更同时刷新联系人和 Call 子表。
 5. 已实现：全局通话技术分析、日期时间日历、七张垂直趋势图、合并 TTFB 分布和每日报表；测试通话不写技术指标。
 6. 后续：任务创建与名单导入；异常 Call、Webhook 和 transcript 不混入本次前端目录首批实施。
+
+## 14. 独立 Mock Call
+
+Mock Call 是 `/mock-calls` 的独立运行验收能力，不改变 Robot 编辑页的草稿 Voice Test。用户选择当前已发布版本并填写变量；`PrepareMockCallUseCase` 在一个事务中创建 `origin=mock_call` 的 DRAFT Task 和单个 Contact，固定版本与配置哈希。浏览器和 Adapter 媒体入口注册后，才将 Task 激活为 RUNNING，由正式 Scheduler 预留并调用 Adapter dispatch。
+
+Mock Call 复用正式容量、速率、拨号授权、Agent Session、终态、Outbox 和 Webhook Worker。电话重试固定为零，但 Webhook 投递重试保持原语义。callback 只能使用服务端 `FASTCALL_MOCK_CALLBACK_URL` 和 `FASTCALL_MOCK_CALLBACK_SECRET_REF`，由现有服务内的 `/internal/mock-webhook` 验证 HMAC、时间戳和事件 ID 后返回 204；不得接受浏览器提供的客户地址或密钥，也不关闭 HTTPS、私网白名单或证书校验。
+
+`outbound_task.origin` 是唯一任务来源标记，正式任务列表只查询 `outbound`。Mock 页面通过现有 Task/Call、Agent 记录和 `webhook_delivery` 读取结果，不建立第二套 Call 聚合。

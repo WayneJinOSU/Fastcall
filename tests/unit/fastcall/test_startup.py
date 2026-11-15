@@ -71,7 +71,7 @@ class FakeResult:
 
 
 class FakeConnection:
-    def __init__(self, revision="0004"):
+    def __init__(self, revision="0005"):
         self.revision = revision
 
     def __enter__(self):
@@ -87,7 +87,7 @@ class FakeConnection:
 class FakeEngine:
     dialect = FakeDialect()
 
-    def __init__(self, revision="0004"):
+    def __init__(self, revision="0005"):
         self.revision = revision
 
     def connect(self):

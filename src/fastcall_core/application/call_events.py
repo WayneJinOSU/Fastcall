@@ -50,6 +50,7 @@ class AgentSessionUseCase:
                         ),
                         "robotVersionId": call.robot_version_id,
                         "configHash": call.config_hash,
+                        **({"callSource": "mock_call"} if task.origin == "mock_call" else {}),
                     },
                 },
             }

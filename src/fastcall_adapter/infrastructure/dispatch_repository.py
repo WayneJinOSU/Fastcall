@@ -113,10 +113,13 @@ class SqlAlchemyDispatchRepository:
 
     def list_recoverable_sessions(self):
         models = self.session.execute(
-            select(OutboundCallModel).where(
+            select(OutboundCallModel)
+            .join(OutboundTaskModel, OutboundTaskModel.id == OutboundCallModel.task_id)
+            .where(
                 OutboundCallModel.status == CallStatus.ANSWERED.value,
                 OutboundCallModel.session_ready_at.is_(None),
                 OutboundCallModel.session_state.in_(["claimed", "attached"]),
+                OutboundTaskModel.origin != "mock_call",
             )
         ).scalars().all()
         return [self.aggregate.calls.get(model.id) for model in models]

@@ -4,7 +4,7 @@ from functools import partial
 from fastapi import FastAPI
 
 from fastcall_adapter.api.errors import register_error_handlers
-from fastcall_adapter.api.routes import dispatch, hangup, health, media, review, sessions
+from fastcall_adapter.api.routes import dispatch, hangup, health, media, mock_calls, review, sessions
 from fastcall_adapter.infrastructure.crypto import phone_hmac_from_env, secret_codec_from_env
 from fastcall_adapter.infrastructure.database import Database
 from fastcall_adapter.infrastructure.uow import SqlAlchemyAdapterUnitOfWork
@@ -21,7 +21,7 @@ def _default_uow_factory(app):
 def create_app(
     settings=None, database=None, uow_factory=None, validate_startup=True,
     secret_codec=None, phone_hmac=None, freeswitch_gateway=None,
-    media_runtime=None, dispatcher=None,
+    media_runtime=None, dispatcher=None, mock_call_media=None,
 ):
     settings = settings or Settings.from_env()
 
@@ -52,12 +52,13 @@ def create_app(
     app.state.phone_hmac = phone_hmac
     app.state.freeswitch_gateway = freeswitch_gateway
     app.state.media_runtime = media_runtime
+    app.state.mock_call_media = mock_call_media
     app.state.dispatcher = dispatcher
     app.state.uow_factory = uow_factory or partial(_default_uow_factory, app)
     register_error_handlers(app)
     for router in (
         health.router, dispatch.router, sessions.router,
-        media.router, review.router, hangup.router,
+        media.router, mock_calls.router, review.router, hangup.router,
     ):
         app.include_router(router)
     return app

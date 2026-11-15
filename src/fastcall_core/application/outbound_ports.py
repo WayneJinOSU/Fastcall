@@ -33,6 +33,7 @@ class OutboundTaskRecord:
     started_at: datetime.datetime | None
     completed_at: datetime.datetime | None
     created_by: str
+    origin: str = "outbound"
 
 
 @dataclass
@@ -100,6 +101,7 @@ class OutboundCallRecord:
     conversation_started_at: datetime.datetime | None
     ended_at: datetime.datetime | None
     duration_sec: int | None
+    mock_browser_uuid: str | None = None
 
 
 @dataclass

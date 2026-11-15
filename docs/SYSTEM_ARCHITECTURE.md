@@ -149,6 +149,12 @@ src/
 5. Adapter 周期对账通过租约恢复指令，幂等挂断，只有确认终态后才将指令标记 processed。
 6. 普通 EventWorker 不领取挂断指令。
 
+### 6.5 独立 Mock Call
+
+Console `/mock-calls` 使用当前 Release 创建 `origin=mock_call` 的单联系人 Task。浏览器媒体注册后激活 Task，随后完整经过 Scheduler、Adapter dispatch、FreeSWITCH loopback、Agent Session、终态、Outbox 和 Webhook Worker。浏览器作为 B-leg 被叫，手动接听后才出现 A `CHANNEL_ANSWER` 并启动 Agent；支持拒接和无人接听，不自动重拨。
+
+Mock 使用独立固定 loopback target，不改变正式 gateway。A/B UUID 分别由 `outbound_call.freeswitch_uuid` 和 `mock_browser_uuid` 保存。Mock 保留完整 Agent 技术记录，但正式任务列表和正式 BI 默认排除；Webhook 只能投递到服务端固定、经过 HMAC/HTTPS 校验的 Mock Receiver。应用编辑器中的草稿 Voice Test 保持独立。
+
 ## 7. 数据、事务与内部设计规则
 
 - MySQL 是任务、联系人、Call、事件和 Outbox 的事实源。
@@ -161,7 +167,7 @@ src/
 - core 不读环境变量、不包含 FastAPI/ESL/Scheduler/Webhook 工作流。
 - 新增共享代码必须证明双方真实复用，不为假想需求建立通用框架。
 
-当前 Alembic 基线为 `0004`。Fast-Call 的 `outbound_call_analysis` 与 Agent 旧 `call_analysis` 物理分离，不改旧表结构。
+当前 Alembic 基线为 `0005`。Fast-Call 的 `outbound_call_analysis` 与 Agent 旧 `call_analysis` 物理分离，不改旧表结构。
 
 ## 8. 安全约束
 
@@ -177,11 +183,11 @@ src/
 
 截至 2026-11-15 的当前工作区：
 
-- 全量单元测试 236 项，235 项通过；唯一错误为既有 Realtime `_observer`，不属于本次 Console 改造。
-- Console 前端 49 项测试、TypeScript 检查和生产构建通过；纵轴刻度和节点悬浮提示已在实际页面验证。
-- 模拟 outbound e2e、架构边界、路由集合和 UOW 结构测试通过。
+- 全量单元测试 252 项，251 项通过；唯一错误为既有 Realtime `_observer`，不属于 Mock Call 改造。
+- Console 前端 51 项测试、TypeScript 检查和生产构建通过；Mock Call 独立页面已在真实浏览器验证导航、Release 和变量加载。
+- 模拟 outbound e2e、Mock Call 的 Scheduler/dispatch/手动接听/Claim/终态/Outbox e2e，以及架构边界、路由集合和 UOW 结构测试通过。真实 Docker FreeSWITCH Mock Call 已验证 B 来电、手动 answer、联合 ready、双向有效 PCM、ASR 非零文本、1 轮 LLM 对话、真实 TTS、USER_HANGUP、Task completed、两类 Webhook 各一次 204、Agent `mock_call` 落库及 A/B 通道清零。媒体修复使用 Mock-only direct playback patch，不改变正式 gateway 路径。
 - 真实浏览器已验收登录、任务列表/详情、联系人、Call、通话技术分析，以及任务启动、暂停、恢复、取消；Agent 不可用与恢复、取消后子表刷新、BI 空库/有数据、日历和每日指标展开也已验证。
-- Agent 当前另有 attached 等待 ACK 时断线可能残留 slot 的已知限制，详见 Collection Agent 分册；该场景不计入上述 loopback 的覆盖范围。
+- Agent 的 attached 等待 ACK 断线现已纳入 slot `try/finally` 释放，并有目标回归。
 - 真实 FreeSWITCH loopback 已验证当前源码：一个 Call 成功、Task 完成、两类 Webhook 各一次 204、无残留通道。
 - 语音验收包含真实 STT、LLM 和 TTS，Agent 通话指标及 transcript 独立落库。
 - 真实 MySQL 6 项在缺少独立测试库时不得记为已执行。
@@ -215,7 +221,7 @@ Alembic 配置为 `deploy/fastcall-alembic.ini`，version table 为兼容历史�
 
 - FreeSWITCH 负责 SIP 拨号、接听、挂机、CDR 和电话音频；Adapter 与 FreeSWITCH 可共享容器网络命名空间，避免修改 ESL ACL。
 - `mod-audio-stream` 固定 commit `a25fb1fe530ec6a612d321ff04f70be69b1a257c`，需满足 AGPL-3.0 或商业许可。
-- 无 SIP 线路时使用现有 loopback，不为验收修改 FreeSWITCH 配置、ACL 或 dialplan。
+- 无 SIP 线路时使用 loopback；既有验收不临时修改 ACL。Mock Call 只部署版本化、固定目标的 `deploy/freeswitch/mock_call_dialplan.xml`，不自动 answer，不增加通配路由或公网转发。
 - Provider 密钥留在各服务部署环境，不进入 Robot 配置 JSON、审计、Webhook 或文档。
 - 本地 `/tmp` 的运行脚本、runtime env、测试 CA 和 HTTPS 接收端只用于验收，不是生产组件。
 - `FASTCALL_DISABLE_SSL_CERT_FILE=1` 仅用于本地 Agent 验收，避免测试 CA 覆盖生产 Provider 证书；Webhook Worker 不通过关闭 TLS/HMAC/私网白名单绕过校验。

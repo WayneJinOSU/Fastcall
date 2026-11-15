@@ -95,9 +95,8 @@ Adapter 使用 `fastcall_adapter.api.app.create_app()`，不 import 控制面应
 - Claim 幂等返回当前代际；pre-ready recover 增加代际。
 - 任何代际的 `session.failed` 都阻止后续 Claim。
 - attached 持久化并 ACK 后才初始化 Agent Pipeline；旧代际 ready 无效。
-- Agent slot 在 Pipeline、Provider、媒体和清理结束后才释放。
+- Agent slot 在 Pipeline、Provider、媒体和清理结束后才释放；attached 等 ACK 时断线也由 Agent 的 `try/finally` 释放。
 - ready 后断线直接失败并挂断，不做对话续传。
-- Agent 在 attached 等 ACK 时断线的 slot 残留是当前已知限制，详见 Collection Agent 分册；不得把该场景视为已由现有测试覆盖。
 
 媒体契约：signed PCM16 little-endian、单声道、8000Hz、320B/20ms 逻辑帧。FreeSWITCH→Adapter 使用 caller-only mono；双方队列最多 500ms。FreeSWITCH→Agent 队列溢出时丢最旧帧并记录指标，Agent 输出队列溢出时终止当前 Call。ready 前的音频只预缓冲，ready ACK 后先 answer 再释放。
 
@@ -183,3 +182,13 @@ FreeSWITCH 负责 SIP codec 转码；模块与 Agent 内部处理其他采样率
 当前模块启动时设置 `STREAM_PLAYBACK=true` 和 `STREAM_BUFFER_SIZE=20`。metadata 包含 `call_id`、`claim_generation` 和 `direction`。这些参数应与现有 FreeSWITCH 配置保持一致，不得为目录或进程合并而随意修改。
 
 Ready 看门狗在 ready 后不得结束正常媒体任务。等待 Session ACK 时仅解析文本 ACK，跳过二进制音频；完成事件丢失时仍按 FreeSWITCH 终态兜底。
+
+## 11. Mock Call 双腿媒体
+
+Adapter 只针对关联 Task `origin=mock_call` 的 Call 使用固定 `FASTCALL_MOCK_LOOPBACK_TARGET` 发起 loopback，不读取浏览器目标，也不改变正式 gateway/dial mode。Mock 仍经过正式 dispatch 授权、全局容量/速率和单次 originate 栅栏；dispatch 前必须存在已注册的浏览器 transport。
+
+B-leg 只进入 Mock 媒体协调器，不进入正式电话事件服务。B `CHANNEL_CREATE` 持久化 `outbound_call.mock_browser_uuid` 后向页面发送 incoming；固定 dialplan 仅 park，不自动 answer。用户接听后 Adapter 对 B 执行 `uuid_answer`，A `CHANNEL_ANSWER` 才启动现有 Agent Claim。拒绝和超时使用现有 `CALL_REJECTED`/`NO_ANSWER` 终态，不重拨。
+
+A UUID 继续由 `outbound_call.freeswitch_uuid` 唯一保存，B UUID 只用于浏览器媒体和辅助清理。Agent ready、A 媒体、B 模块和浏览器 WS 未全部绑定前，不发送 ready ACK、Agent answer 或页面 ready。双腿使用独立 PCM 队列；挂断、断线和重启只执行幂等清理，不恢复对话或重新 originate。
+
+Mock originate 额外设置 `STREAM_PLAYBACK_DIRECT=true`。固定 `mod-audio-stream` 版本在当前 loopback/park 场景不会调度 WRITE_REPLACE 播放回调，因此部署 Mock 时需在固定模块源码上应用 `deploy/freeswitch/mock_call_direct_playback.patch` 并重建模块。该补丁只在收到 PCM 时利用 Adapter 的 20ms pacing 调用 `switch_core_session_write_frame`，不新增播放线程；仅接受 PCM16LE mono L16/8kHz，不匹配时拒绝写入。正式 originate 不设置该开关，仍使用原 WRITE_REPLACE 路径。

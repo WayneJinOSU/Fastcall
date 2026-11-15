@@ -6,6 +6,7 @@ from fastcall_core.application.dto import isoformat
 def task_view(task, status_counts=None):
     return {
         "task_id": task.id,
+        "origin": task.origin,
         "customer_task_id": task.customer_task_id,
         "name": task.name,
         "robot_app_id": task.robot_app_id,

@@ -7,8 +7,10 @@ from fastapi import FastAPI
 from fastcall.api.console.static import register_console_static, verify_console_static
 from fastcall.api.errors import register_error_handlers
 from fastcall.api.routes import register_routes
+from fastcall.application.mock_calls import MockCallTicketStore
+from fastcall.application.task_control import CancelTaskUseCase
 from fastcall.application.voice_test import VoiceTestSessionStore
-from fastcall.application.webhooks import result_changed_events_enabled
+from fastcall.application.webhooks import WebhookWorker, result_changed_events_enabled
 from fastcall.capabilities.loader import load_catalog
 from fastcall.infrastructure.agent_report_client import AgentReportClient
 from fastcall.infrastructure.database import Database
@@ -47,6 +49,14 @@ def create_app(
             app.state.database.verify()
             if verify_console_assets:
                 verify_console_static(app.state.console_static_dir)
+            uow = app.state.uow_factory()
+            try:
+                for task in uow.queries.list_draft_mock_tasks():
+                    await CancelTaskUseCase(uow, app.state.hangup_client).execute(
+                        task.id, task.state_version, hangup_active=False
+                    )
+            finally:
+                uow.close()
         app.state.ready = True
         try:
             yield
@@ -61,6 +71,8 @@ def create_app(
     app.state.catalog = load_catalog()
     app.state.ready = False
     app.state.voice_test_sessions = VoiceTestSessionStore()
+    app.state.mock_call_tickets = MockCallTicketStore()
+    app.state.mock_webhook_secrets = WebhookWorker.secrets_from_env()
     app.state.secret_codec = secret_codec
     app.state.media_runtime = media_runtime
     app.state.phone_hmac = phone_hmac

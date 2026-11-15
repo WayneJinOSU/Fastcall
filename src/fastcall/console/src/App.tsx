@@ -10,6 +10,7 @@ import TaskListPage from './features/tasks/TaskListPage';
 import TaskDetailPage from './features/tasks/TaskDetailPage';
 import CallDetailPage from './features/calls/CallDetailPage';
 import AgentReportsPage from './features/agent-reports/AgentReportsPage';
+import MockCallPage from './features/mock-calls/MockCallPage';
 
 export default function App() {
   const [session, setSession] = useState<ConsoleSession | null>(null);
@@ -44,6 +45,7 @@ export default function App() {
     <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
     <Route path="/calls/:callId" element={<CallDetailPage />} />
     <Route path="/reports/agent" element={<AgentReportsPage />} />
+    <Route path="/mock-calls" element={<MockCallPage />} />
     <Route path="/apps" element={<AppListPage />} />
     <Route path="/apps/:appId/edit" element={<AppEditorPage />} />
     <Route path="*" element={<Navigate to="/tasks" replace />} />

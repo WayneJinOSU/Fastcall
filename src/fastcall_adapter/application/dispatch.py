@@ -21,7 +21,7 @@ class DispatchService:
     def __init__(
         self, uow_factory, gateway, secret_codec, phone_hmac, *,
         global_max_concurrent=50, global_calls_per_minute=60, clock=utcnow,
-        adapter_boot_id=None,
+        adapter_boot_id=None, mock_calls=None,
     ):
         self.uow_factory = uow_factory
         self.gateway = gateway
@@ -31,6 +31,7 @@ class DispatchService:
         self.global_calls_per_minute = global_calls_per_minute
         self.clock = clock
         self.adapter_boot_id = adapter_boot_id or uuid.uuid4().hex
+        self.mock_calls = mock_calls
         self._contexts = {}
         self._contexts_lock = asyncio.Lock()
 
@@ -58,6 +59,14 @@ class DispatchService:
                 if call.dial_requested_at is not None or call.status != "reserved":
                     return self._checking(uow, call_id)
                 await asyncio.wait_for(self.gateway.health_check(), timeout=2)
+                task = uow.tasks.get(call.task_id)
+                if (
+                    task.origin == "mock_call"
+                    and (self.mock_calls is None or not self.mock_calls.has_browser(task.id))
+                ):
+                    raise RobotConfigError(
+                        "MOCK_BROWSER_NOT_READY", "Mock Call browser transport is not connected"
+                    )
                 uow.dispatch.authorize(
                     call_id,
                     call.state_version,
@@ -110,7 +119,7 @@ class DispatchService:
         try:
             call = uow.calls.get(call_id)
             if call and call.status == "reserved" and call.dial_requested_at is None:
-                if error_code in ("CALL_BLACKLISTED", "ROBOT_DISABLED"):
+                if error_code in ("CALL_BLACKLISTED", "ROBOT_DISABLED", "MOCK_BROWSER_NOT_READY"):
                     FinalizeCallUseCase(uow, self.clock).execute(
                         call_id, "failed", error_code, "failed",
                         failure_code=error_code, termination_reason="DIAL_PRECHECK_FAILED",
@@ -133,13 +142,20 @@ class DispatchService:
             callee = self.secret_codec.decrypt(
                 contact.phone_ciphertext, contact.encryption_key_version
             )
-            response = await self.gateway.originate(
-                call_id=call.id,
-                origination_uuid=call.origination_uuid,
-                callee=callee,
-                task_id=call.task_id,
-                contact_id=call.contact_id,
-            )
+            task = uow.tasks.get(call.task_id)
+            if task.origin == "mock_call":
+                response = await self.gateway.originate_mock(
+                    call_id=call.id, origination_uuid=call.origination_uuid,
+                    task_id=call.task_id, contact_id=call.contact_id,
+                )
+            else:
+                response = await self.gateway.originate(
+                    call_id=call.id,
+                    origination_uuid=call.origination_uuid,
+                    callee=callee,
+                    task_id=call.task_id,
+                    contact_id=call.contact_id,
+                )
             now = self.clock()
             payload = {"call_id": call_id, "job_uuid": response.get("job_uuid")}
             uow.call_events.enqueue(CallEventRecord(

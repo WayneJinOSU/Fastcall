@@ -48,6 +48,7 @@ class OutboundTaskModel(Base):
     started_at = Column(DateTime(6), nullable=True)
     completed_at = Column(DateTime(6), nullable=True)
     created_by = Column(String(128), nullable=False)
+    origin = Column(String(32), nullable=False, server_default="outbound")
 
 
 class TaskContactModel(Base):
@@ -111,6 +112,7 @@ class OutboundCallModel(Base):
     reserved_until = Column(DateTime(6), nullable=True)
     origination_uuid = Column(String(40), nullable=False)
     freeswitch_uuid = Column(String(40), nullable=True)
+    mock_browser_uuid = Column(String(40), nullable=True)
     claim_generation = Column(Integer(), nullable=False)
     session_state = Column(String(32), nullable=False)
     session_ready_at = Column(DateTime(6), nullable=True)

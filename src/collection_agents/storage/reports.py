@@ -266,7 +266,7 @@ class CallReportRepository:
         end_at = _parse_boundary(end_at, "end_at")
         if start_at and end_at and start_at >= end_at:
             raise ValueError("start_at must be before end_at")
-        where, params = self._where(start_at, end_at, robot_code, bot_mode, "all", None)
+        where, params = self._where(start_at, end_at, robot_code, bot_mode, "formal", None)
         return self._summary(where, params)
 
     def get_daily(
@@ -302,7 +302,7 @@ class CallReportRepository:
         days = []
         for day in ranges:
             where, params = self._where(
-                day["start"], day["end"], robot_code, bot_mode, "all", None
+                day["start"], day["end"], robot_code, bot_mode, "formal", None
             )
             item = self._summary_from_totals(
                 totals_by_day.get(day["date"], {}), where, params,
@@ -347,7 +347,9 @@ class CallReportRepository:
         if bot_mode:
             conditions.append("bot_mode = :bot_mode")
             params["bot_mode"] = bot_mode
-        if source and source != "all":
+        if source == "formal":
+            conditions.append(f"{_SOURCE_EXPRESSION} <> 'mock_call'")
+        elif source and source != "all":
             conditions.append(f"{_SOURCE_EXPRESSION} = :source")
             params["source"] = source
         if call_uuid:
@@ -356,7 +358,7 @@ class CallReportRepository:
         return " AND ".join(conditions or ["1 = 1"]), params
 
     def _daily_totals(self, ranges, start_at, end_at, robot_code, bot_mode):
-        where, params = self._where(start_at, end_at, robot_code, bot_mode, "all", None)
+        where, params = self._where(start_at, end_at, robot_code, bot_mode, "formal", None)
         cases = []
         for index, day in enumerate(ranges):
             start_key = f"day_{index}_start"

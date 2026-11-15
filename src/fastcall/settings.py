@@ -22,6 +22,8 @@ class Settings:
     adapter_token: str = ""
     agent_token: str = ""
     media_token: str = ""
+    mock_callback_url: str = ""
+    mock_callback_secret_ref: str = ""
 
     @classmethod
     def from_env(cls):
@@ -50,6 +52,8 @@ class Settings:
             adapter_token=os.getenv("FASTCALL_ADAPTER_TOKEN", "").strip(),
             agent_token=os.getenv("FASTCALL_AGENT_TOKEN", "").strip(),
             media_token=os.getenv("FASTCALL_MEDIA_TOKEN", "").strip(),
+            mock_callback_url=os.getenv("FASTCALL_MOCK_CALLBACK_URL", "").strip(),
+            mock_callback_secret_ref=os.getenv("FASTCALL_MOCK_CALLBACK_SECRET_REF", "").strip(),
         )
 
     def validate(self):

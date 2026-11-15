@@ -28,13 +28,17 @@ class _PendingMedia:
 
 
 class AdapterMediaRuntime:
-    def __init__(self, uow_factory, secret_codec, gateway, agent_ws_url, agent_token, clock=utcnow):
+    def __init__(
+        self, uow_factory, secret_codec, gateway, agent_ws_url, agent_token,
+        clock=utcnow, mock_calls=None,
+    ):
         self.uow_factory = uow_factory
         self.secret_codec = secret_codec
         self.gateway = gateway
         self.agent_ws_url = agent_ws_url
         self.agent_token = agent_token
         self.clock = clock
+        self.mock_calls = mock_calls
         self._pending = {}
         self._ready_futures = {}
         self._recovery_attempts = {}
@@ -59,6 +63,8 @@ class AdapterMediaRuntime:
             )
             pending.bridge = bridge
             future.set_result(bridge)
+            if self.mock_calls is not None:
+                await self.mock_calls.a_media_bound(call_id)
             if pending.ready_received:
                 await bridge.mark_ready()
         await bridge.finished.wait()
@@ -69,6 +75,11 @@ class AdapterMediaRuntime:
             return
         uow = self.uow_factory()
         try:
+            call = uow.calls.get(call_id)
+            is_mock = (
+                self.mock_calls is not None
+                and uow.tasks.get(call.task_id).origin == "mock_call"
+            )
             occurred = datetime.datetime.fromisoformat(event["occurred_at"].replace("Z", "+00:00"))
             occurred = occurred.astimezone(datetime.timezone.utc).replace(tzinfo=None)
             AgentSessionUseCase(uow, self.secret_codec, self.clock).handle(
@@ -76,6 +87,8 @@ class AdapterMediaRuntime:
                 occurred, event["event_id"], event.get("detail"),
             )
             pending = self._pending.get(call_id)
+            if action == "ready" and is_mock:
+                await self.mock_calls.wait_agent_ready(call_id)
             await pending.agent_ws.send(json.dumps({
                 "event": "ack", "event_id": event["event_id"]
             }))
@@ -84,6 +97,8 @@ class AdapterMediaRuntime:
                 self._recovery_attempts.pop(call_id, None)
                 if pending.bridge is not None:
                     await pending.bridge.mark_ready()
+                if is_mock:
+                    await self.mock_calls.mark_active(call_id)
             if action in ("failed", "completed"):
                 await self._hangup(call_id, 480)
         finally:
