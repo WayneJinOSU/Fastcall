@@ -46,6 +46,11 @@ src/collection_agents/
 | `WS /ws-v2` | 标准/实时电话 Bot；Fast-Call 也使用该入口 |
 | `WS /ws-ai-copilot` | Copilot 事件驱动交互 |
 | `GET /state/up` | 健康检查 |
+| `GET /internal/v1/call-records` | 统一 Call 的 Agent 记录列表；内部 Bearer 认证、只读 |
+| `GET /internal/v1/call-records/summary` | 全局区间汇总；内部 Bearer 认证、只读 |
+| `GET /internal/v1/call-records/daily` | 固定 Asia/Shanghai 自然日的指标聚合；内部 Bearer 认证、只读 |
+| `GET /internal/v1/call-records/facets` | 实际记录中的 Robot 和 Bot 模式；内部 Bearer 认证、只读 |
+| `GET /internal/v1/call-records/{record_id}` | 单条技术记录；内部 Bearer 认证、只读 |
 | `GET /`、`POST /` | 服务信息与 TwiML 响应 |
 
 Fast-Call 使用的 start payload 包含 `callUUID`、`claimGeneration`、`callee`、固定 `config`、`variables`、`robotVersionId` 和 `configHash`。只有带 `claimGeneration` 的请求启用 Fast-Call Session 协议；普通 `/ws-v2` 请求保持原流程。
@@ -101,11 +106,15 @@ WebSocket 音频 → Telephony Serializer → VAD/轮次与中断
 
 Agent 自有主要表：
 
-- `call_record`：技术指标、模型、时长和成本。
+- `call_record`：技术指标、模型、时长和成本；`call_source` 区分正式外呼、语音测试和普通 WebSocket，`claim_generation` 保留 Agent 代际，`technical_config.pricing` 保存价格版本、USD 币种和估算标记。Console 语音测试不写该表，测试 transcript、日志和事件仍可独立保留；普通 WebSocket 不得因来源未知而误删指标。
 - `call_transcript`：完整对话消息。
 - `call_analysis`：Agent 原有业务分析结构。
 
-三张表通过 `call_uuid` 关联。Fast-Call 使用独立的 `outbound_call_analysis.business_result`，不得复用或改写 Agent 旧 `call_analysis` 的结构。
+三张表通过 `call_uuid` 关联，但 `call_uuid` 不保证唯一；报表详情使用 `record_id`，统一 Call 页读取该 Call 的全部来源记录。Fast-Call 使用独立的 `outbound_call_analysis.business_result`，不得复用或改写 Agent 旧 `call_analysis` 的结构。
+
+既有 MySQL 需要执行 `deploy/migrations/20261115_call_record_reporting.sql` 增加来源、代际和查询索引；SQLite 启动时显式检查并补充列与索引。历史 NULL 来源在报表中归为未分类，`console-test-%` 归为语音测试，不能给 `call_uuid` 直接增加唯一约束。
+
+BI 按固定 Asia/Shanghai 自然日聚合，日界线由 `zoneinfo` 转为 UTC `[start,end)`。每日总量使用一次条件聚合；TTFB 每日独立采样最近最多 1000 条记录并计算平均/P50/P80/P95，禁止平均每通或每日分位数。语音信箱占比按非空 `call_uuid` 的逻辑 Call 去重，平均轮次只使用轮次非空记录；无分母时返回 NULL。
 
 完整对话、号码、变量和录音不得因为 Fast-Call 集成而进入客户 Webhook。
 

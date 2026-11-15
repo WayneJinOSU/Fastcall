@@ -20,11 +20,11 @@ def register_console_static(app: FastAPI, static_dir=None) -> None:
 
     @app.get("/", include_in_schema=False)
     async def root():
-        return RedirectResponse("/console/apps")
+        return RedirectResponse("/console/tasks")
 
     @app.get("/console", include_in_schema=False)
     async def console_root():
-        return RedirectResponse("/console/apps")
+        return RedirectResponse("/console/tasks")
 
     @app.get("/console/assets/{asset_path:path}", include_in_schema=False)
     async def asset(asset_path: str):

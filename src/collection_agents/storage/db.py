@@ -44,7 +44,7 @@ Session = sessionmaker(engine, expire_on_commit=False)
 # ---------------------------------------------------------------------------
 
 _CALL_RECORD_COLUMNS = (
-    "call_uuid", "bot_mode", "robot_code", "robot_version_id",
+    "call_uuid", "call_source", "claim_generation", "bot_mode", "robot_code", "robot_version_id",
     "task_duration_sec", "task_start_time", "task_end_time",
     "is_voicemail", "technical_config", "asr_cost", "llm_cost", "tts_cost",
     "total_cost", "asr_model_name", "asr_param_config", "asr_ttfb_list",
@@ -62,6 +62,8 @@ _SQLITE_DDL = [
     CREATE TABLE IF NOT EXISTS call_record (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         call_uuid TEXT,
+        call_source TEXT,
+        claim_generation INTEGER,
         bot_mode TEXT,
         robot_code TEXT,
         robot_version_id TEXT,
@@ -201,10 +203,27 @@ def _copy_context_log_rows(conn) -> int:
     return max(result.rowcount or 0, 0)
 
 
+def _migrate_sqlite_call_record(conn):
+    columns = _sqlite_table_columns(conn, "call_record")
+    if "call_source" not in columns:
+        conn.execute(text("ALTER TABLE call_record ADD COLUMN call_source TEXT"))
+    if "claim_generation" not in columns:
+        conn.execute(text("ALTER TABLE call_record ADD COLUMN claim_generation INTEGER"))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_call_record_start_id "
+        "ON call_record(task_start_time, id)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_call_record_source_start "
+        "ON call_record(call_source, task_start_time, id)"
+    ))
+
+
 def _init_sqlite_schema():
     with engine.begin() as conn:
         for ddl in _SQLITE_DDL:
             conn.execute(text(ddl))
+        _migrate_sqlite_call_record(conn)
         copied_records = _copy_process_record_rows(conn)
         copied_transcripts = _copy_context_log_rows(conn)
         if _asr_shadow_compare_enabled():

@@ -1,0 +1,70 @@
+.agent-reports-filterbar { display: flex; align-items: center; gap: 9px; margin-top: 18px; padding: 11px 12px; background: #fff; border: 1px solid var(--border); border-radius: 9px; }
+.agent-reports-filterbar .button { margin-left: auto; }
+.agent-reports-stats-strip { display: grid; grid-template-columns: repeat(6, 1fr); margin-top: 17px; padding: 17px 0; background: #fff; border: 1px solid var(--border); border-radius: 9px; }
+.agent-reports-stat { min-width: 0; padding: 0 17px; border-left: 1px solid #f0f2f5; }
+.agent-reports-stat:first-child { border-left: 0; }
+.agent-reports-stat-value { font-size: 22px; font-weight: 650; }
+.agent-reports-stat-label { margin-top: 4px; color: #667085; font-size: 10px; }
+.agent-reports-stat-caption { margin-top: 3px; overflow: hidden; color: var(--tertiary); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.agent-chart-stack { display: flex; flex-direction: column; gap: 16px; margin-top: 18px; }
+.agent-trend-latest { margin-left: auto; color: #475467; font-size: 10px; }
+.agent-trend-latest strong { margin-left: 5px; color: #1d2939; font-size: 11px; font-weight: 550; }
+.agent-trend-chart-body { padding: 10px 18px 4px; }
+.agent-trend-chart-body svg { display: block; width: 100%; height: 230px; }
+.agent-trend-note { display: flex; justify-content: space-between; gap: 12px; padding: 8px 17px 11px; color: var(--tertiary); font-size: 9px; }
+.agent-trend-legend { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; }
+.agent-trend-legend span { display: flex; align-items: center; gap: 5px; }
+.agent-trend-legend i { display: inline-block; width: 13px; height: 2px; }
+.agent-trend-truncated { padding: 8px 17px; color: var(--amber); background: var(--amber-soft); border-top: 1px solid #fef0c7; font-size: 9px; }
+.agent-daily-panel { margin-top: 18px; }
+.agent-daily-table th:nth-child(1) { width: 12%; }
+.agent-daily-table th:nth-child(2) { width: 13%; }
+.agent-daily-table th:nth-child(3) { width: 12%; }
+.agent-daily-table th:nth-child(4) { width: 14%; }
+.agent-daily-table th:nth-child(5) { width: 10%; }
+.agent-daily-table th:nth-child(6) { width: 12%; }
+.agent-daily-table th:nth-child(7) { width: 12%; }
+.agent-daily-group { border: 0; }
+.agent-daily-technical-row td { height: auto; padding: 0; background: #fafbfc; }
+.agent-daily-technical { padding: 10px 16px 13px; }
+.agent-daily-technical table { background: #fff; border: 1px solid #e9ecf1; }
+.agent-daily-technical td { height: 32px; font-size: 10px; }
+.agent-daily-technical th { height: 29px; font-size: 9px; }
+.block-note { display: block; margin-top: 3px; color: var(--tertiary); font-size: 8px; }
+.date-range { position: relative; }
+.date-button { min-width: 245px; height: 35px; padding: 0 11px; color: #475467; background: #fff; border: 1px solid var(--border); border-radius: 6px; font-size: 11px; text-align: left; }
+.calendar-backdrop { position: fixed; inset: 0; z-index: 30; background: rgba(16,24,40,.1); }
+.calendar-overlay { position: fixed; top: 164px; left: 300px; z-index: 31; }
+.calendar-popover { display: grid; grid-template-columns: 320px 250px; width: 592px; overflow: hidden; background: #fff; border: 1px solid #e4e7ec; border-radius: 12px; box-shadow: 0 18px 50px rgba(16,24,40,.16); }
+.calendar-left { padding: 16px; border-right: 1px solid #eef0f3; }
+.calendar-top { display: flex; align-items: center; justify-content: space-between; }
+.calendar-top strong { font-size: 12px; }
+.month-nav { display: flex; gap: 5px; }
+.month-nav button { display: grid; place-items: center; width: 25px; height: 25px; color: #667085; background: #fff; border: 1px solid var(--border); border-radius: 5px; }
+.shortcuts { display: flex; gap: 5px; margin: 11px 0 13px; }
+.shortcuts button { padding: 4px 7px; color: #667085; background: #f9fafb; border: 1px solid #e4e7ec; border-radius: 5px; font-size: 9px; }
+.week, .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; }
+.week { margin-bottom: 4px; color: var(--tertiary); font-size: 9px; }
+.week span { height: 24px; }
+.day { display: grid; place-items: center; height: 31px; color: #475467; background: #fff; border: 0; border-radius: 6px; font-size: 10px; }
+.day.outside { color: #d0d5dd; }
+.day.range { color: #175cd3; background: var(--blue-soft); border-radius: 0; }
+.day.selected { color: #fff; background: var(--blue); font-weight: 600; }
+.calendar-right { display: flex; flex-direction: column; padding: 16px; }
+.draft-status { padding: 7px 8px; color: #175cd3; background: var(--blue-soft); border-radius: 6px; font-size: 9px; line-height: 15px; }
+.date-fields { margin-top: 12px; }
+.field-label { display: block; margin: 9px 0 5px; color: #667085; font-size: 10px; }
+.date-fields input { width: 100%; height: 34px; padding: 0 8px; color: #344054; border: 1px solid var(--border); border-radius: 6px; font-size: 10px; }
+.range-explain { margin-top: 14px; color: var(--tertiary); font-size: 9px; line-height: 16px; }
+.calendar-error { min-height: 16px; margin-top: 7px; color: var(--red); font-size: 9px; }
+.calendar-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: auto; padding-top: 12px; }
+.calendar-note { margin-top: 10px; padding-top: 10px; color: var(--tertiary); border-top: 1px solid #f0f2f5; font-size: 8px; line-height: 14px; }
+@media (max-width: 1100px) { .agent-reports-stats-strip { grid-template-columns: repeat(3, 1fr); gap: 18px 0; } .agent-reports-stat:nth-child(4) { border-left: 0; } }
+@media (max-width: 800px) { .agent-reports-filterbar { flex-wrap: wrap; } .date-button { min-width: 100%; } .calendar-overlay { right: 20px; left: 20px; } .calendar-popover { grid-template-columns: 1fr; width: auto; max-height: 85vh; overflow-y: auto; } .calendar-left { border-right: 0; } .agent-reports-stats-strip { grid-template-columns: repeat(2, 1fr); } }
+
+.agent-trend-chart-body { position: relative; }
+.agent-trend-hover { position: absolute; top: 12px; z-index: 3; min-width: 160px; max-width: 270px; padding: 9px 11px; color: #667085; background: rgba(255,255,255,.98); border: 1px solid #e4e7ec; border-radius: 7px; box-shadow: 0 4px 14px rgba(16,24,40,.1); font-size: 10px; pointer-events: none; }
+.agent-trend-hover > div { display: flex; justify-content: space-between; gap: 16px; margin-top: 4px; }
+.agent-trend-hover > div strong { color: #344054; font-weight: 600; }
+.agent-trend-chart-body circle { cursor: pointer; }
+.agent-trend-chart-body circle:focus { outline: none; stroke-width: 3; }

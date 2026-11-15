@@ -10,6 +10,7 @@ from fastcall.api.routes import register_routes
 from fastcall.application.voice_test import VoiceTestSessionStore
 from fastcall.application.webhooks import result_changed_events_enabled
 from fastcall.capabilities.loader import load_catalog
+from fastcall.infrastructure.agent_report_client import AgentReportClient
 from fastcall.infrastructure.database import Database
 from fastcall.infrastructure.hangup_client import AdapterHangupClient
 from fastcall.infrastructure.review_client import AdapterReviewClient
@@ -29,7 +30,7 @@ def create_app(
     settings=None, database=None, uow_factory=None, validate_startup=True,
     console_static_dir=None, secret_codec=None, media_runtime=None,
     phone_hmac=None, freeswitch_gateway=None, dispatcher=None, verify_console_assets=True,
-    hangup_client=None, review_client=None,
+    hangup_client=None, review_client=None, agent_report_client=None,
 ):
     settings = settings or Settings.from_env()
 
@@ -70,6 +71,9 @@ def create_app(
     )
     app.state.review_client = review_client or AdapterReviewClient(
         settings.adapter_internal_url, settings.admin_token
+    )
+    app.state.agent_report_client = agent_report_client or AgentReportClient(
+        settings.collection_agent_http_url, settings.agent_token
     )
     app.state.uow_factory = uow_factory or partial(_default_uow_factory, app)
     register_error_handlers(app)

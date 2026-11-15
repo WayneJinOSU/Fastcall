@@ -77,6 +77,15 @@ def _count_meaningful_units(text: str) -> int:
     return cjk_count + word_count
 
 
+def call_source_from_payload(call_data):
+    data = call_data.get("data", {}) or {}
+    if data.get("claimGeneration") is not None:
+        return "fastcall_outbound"
+    if str(data.get("callUUID", "")).startswith("console-test-"):
+        return "console_voice_test"
+    return "generic_ws"
+
+
 class CallMetricsCollector:
     """Accumulates all metrics for a single call session."""
 
@@ -92,11 +101,21 @@ class CallMetricsCollector:
         bot_mode: str,
         robot_version_id: Optional[str] = None,
         pricing_config: Optional[dict] = None,
+        call_source: Optional[str] = None,
+        claim_generation: Optional[int] = None,
+        pricing_version: Optional[str] = None,
     ):
         self.call_uuid = call_uuid
         self.bot_mode = bot_mode
         self.robot_code = robot_code
         self.robot_version_id = robot_version_id or None
+        self.call_source = call_source or (
+            "console_voice_test" if call_uuid.startswith("console-test-") else "generic_ws"
+        )
+        self.claim_generation = claim_generation
+        self.pricing_version = pricing_version or (
+            "custom" if pricing_config else "2026-11-15.1"
+        )
         self.task_start_time = task_start_time
         self.task_end_time: Optional[datetime.datetime] = None
 
@@ -134,6 +153,11 @@ class CallMetricsCollector:
             "asr": self.asr_param_config,
             "llm": technical_info(llm_info),
             "tts": self.tts_param_config,
+            "pricing": {
+                "version": self.pricing_version,
+                "currency": "USD",
+                "estimated": True,
+            },
         }
 
         self._prompt_tokens: int = 0
@@ -254,6 +278,8 @@ class CallMetricsCollector:
         return {
             # Call basic
             "call_uuid": self.call_uuid,
+            "call_source": self.call_source,
+            "claim_generation": self.claim_generation,
             "task_duration_sec": self.task_duration_sec,
             "asr_cost": self.asr_cost,
             "llm_cost": self.llm_cost,
@@ -296,6 +322,9 @@ class CallMetricsCollector:
 
     def save_to_db(self):
         """Insert technical metrics into call_record after finalization."""
+        if self.call_source == "console_voice_test":
+            logging.info(f"skip test call_record for call_uuid={self.call_uuid}")
+            return
         try:
             d = self.to_dict()
             d["created_at"] = datetime.datetime.now(
@@ -311,7 +340,8 @@ class CallMetricsCollector:
 
             sql = text("""
                 INSERT INTO call_record (
-                    call_uuid, bot_mode, robot_code, robot_version_id,
+                    call_uuid, call_source, claim_generation,
+                    bot_mode, robot_code, robot_version_id,
                     task_duration_sec, task_start_time, task_end_time,
                     is_voicemail, technical_config,
                     asr_cost, llm_cost, tts_cost, total_cost,
@@ -325,7 +355,8 @@ class CallMetricsCollector:
                     tts_total_output_duration, tts_total_chars,
                     tts_reconnect_count, tts_connection_requests, created_at
                 ) VALUES (
-                    :call_uuid, :bot_mode, :robot_code, :robot_version_id,
+                    :call_uuid, :call_source, :claim_generation,
+                    :bot_mode, :robot_code, :robot_version_id,
                     :task_duration_sec, :task_start_time, :task_end_time,
                     :is_voicemail, :technical_config,
                     :asr_cost, :llm_cost, :tts_cost, :total_cost,

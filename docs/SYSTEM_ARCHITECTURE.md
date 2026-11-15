@@ -175,10 +175,12 @@ src/
 
 ## 9. 验证与当前证据
 
-截至 2026-11-14 的当前工作区：
+截至 2026-11-15 的当前工作区：
 
-- 全量单元测试 216 项，215 项通过；唯一错误为既有 Realtime `_observer`，不属于本次外呼改造。
+- 全量单元测试 236 项，235 项通过；唯一错误为既有 Realtime `_observer`，不属于本次 Console 改造。
+- Console 前端 49 项测试、TypeScript 检查和生产构建通过；纵轴刻度和节点悬浮提示已在实际页面验证。
 - 模拟 outbound e2e、架构边界、路由集合和 UOW 结构测试通过。
+- 真实浏览器已验收登录、任务列表/详情、联系人、Call、通话技术分析，以及任务启动、暂停、恢复、取消；Agent 不可用与恢复、取消后子表刷新、BI 空库/有数据、日历和每日指标展开也已验证。
 - Agent 当前另有 attached 等待 ACK 时断线可能残留 slot 的已知限制，详见 Collection Agent 分册；该场景不计入上述 loopback 的覆盖范围。
 - 真实 FreeSWITCH loopback 已验证当前源码：一个 Call 成功、Task 完成、两类 Webhook 各一次 204、无残留通道。
 - 语音验收包含真实 STT、LLM 和 TTS，Agent 通话指标及 transcript 独立落库。

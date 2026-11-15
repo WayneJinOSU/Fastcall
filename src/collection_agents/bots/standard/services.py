@@ -11,7 +11,7 @@ from collection_agents.bots.standard.grammar import (
     CONFIRMATION_GRAMMAR,
     CONFIRMATION_GRAMMAR_RELEASE_SEC,
 )
-from collection_agents.metrics.collector import CallMetricsCollector
+from collection_agents.metrics.collector import CallMetricsCollector, call_source_from_payload
 from collection_agents.services.audio_assets import (
     ensure_voicemail_audio_asset,
     normalize_text as normalize_audio_asset_text,
@@ -180,6 +180,8 @@ async def create_call_services(call_ctx, session_context, session, call_data):
             asr_info={**asr_config, "model": _asr_model, "sample_rate": 8000},
             llm_info=llm_config,
             tts_info={**tts_config, "sample_rate": 8000},
+            call_source=call_source_from_payload(call_data),
+            claim_generation=(call_data.get("data", {}) or {}).get("claimGeneration"),
         )
         attach_llm_retry_counter(llm_service, metrics_collector)
 

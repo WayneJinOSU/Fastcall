@@ -197,6 +197,8 @@ Console 使用 React SPA + 同源 FastAPI BFF，BFF 直接调用现有 Applicati
 
 主要同源接口覆盖 login/logout/session、capabilities、应用列表、草稿、启停、Validate、Publish、版本、Diff 和 Rollback；不向浏览器提供 Resolve 路由。
 
+Console 现已增加任务列表/详情、联系人、Call、启动/暂停/恢复/取消，以及 Agent 记录读取、全局汇总、按天聚合和 facet 的同源 BFF。任务与 Call 使用显式脱敏 DTO；Agent 数据由 `AgentReportClient` 通过 `COLLECTION_AGENT_HTTP_URL` 和 Agent 内部 Bearer 凭据读取，浏览器不接触内部 Token 或 Agent 数据库。主 Call 与 Agent 记录在页面独立加载，Agent 404、超时和不可用分别映射，不掩盖电话事实。
+
 ### 10.2 浏览器认证
 
 - 登录成功后设置带过期时间的 HttpOnly Session Cookie；`SameSite=Lax`，生产必须 `Secure`。
@@ -253,3 +255,202 @@ Robot 版本和配置审计只追加，不允许 UPDATE/DELETE；数据库 Trigg
 - `robot_config_alembic_version` 是已部署数据库中的历史版本表名，必须保留，不能仅为命名统一而修改。
 - Kubernetes 使用 `fastcall-api` 和 `fastcall-secret`。上线新名称前需创建对应 Secret，并确认原 `robot-config-service` 的 DNS/调用方已完成迁移；不得只修改 Manifest 名称而忽略外部依赖。
 - Console 仅接受 `fastcall_console_session`，旧 `robot_config_console_session` 不再用于认证。
+
+## 13. Console 前端技术规范与目录规划
+
+本节记录已经评审并实施的第一批 Console 能力及其目标结构。任务、Call、Agent 技术报表和任务控制已经实现；任务创建、名单导入、异常 Call、Webhook 和 transcript 属于后续范围。所有实现保持第 10 节的同源 BFF、认证和静态托管契约，不增加前端 Deployment。
+
+### 13.1 技术边界
+
+- 沿用 React 18、React Router、TypeScript strict、Vite、Vitest、Testing Library 和原生 CSS，不新增 UI、状态管理、图表、Tailwind、React Query 或 MSW 依赖。
+- 统一 Fastcall Console 和 AppShell，但不把任务、Call、Agent 报表融入 Robot 应用或做成全系统单页。Robot 是配置对象，任务、Call 和 Agent 记录是运行对象。
+- 页面使用本地 `useState/useEffect` 获取数据；共享 `api/client.ts` 继续负责同源 fetch、Session 失效和 CSRF，不建立全局 store。
+- 首期手动刷新，不增加 WebSocket 推送或实时大屏；不为少量路由增加 lazy-load。
+- 不预建通用 DataTable、hooks、services、constants 或格式工具集合。第二个真实调用点出现后再提取共享组件或工具，语义不同的统计卡不得为了复用强行统一。
+- 组件和 API 返回内容继续纯文本渲染，不使用 `dangerouslySetInnerHTML`，不在浏览器存储内部 Token、完整号码、变量、transcript 或录音。
+
+### 13.2 路由与导航
+
+SPA base 保持 `/console/`：
+
+| 目标路由 | 页面 | 说明 |
+|---|---|---|
+| `/tasks` | 外呼任务列表 | 默认首页；状态、Robot、搜索和分页可恢复 |
+| `/tasks/:taskId` | 任务详情 | 联系人、Call 记录、只读任务配置和状态操作 |
+| `/calls/:callId?record=:recordId&from=:source` | 统一 Call 详情 | 主 Call 与 Agent 记录独立加载；`record` 可选，`from=tasks|reports` 只用于导航上下文 |
+| `/reports/agent` | 通话技术分析 | 全局汇总、垂直趋势图和每日报表；不含记录明细或 Call 搜索 |
+| `/apps` | Robot 应用列表 | 保留现有能力 |
+| `/apps/:appId/edit` | Robot 配置编辑 | 保留现有能力，应用导航保持高亮 |
+
+- `/` 和未知路径默认跳转 `/tasks`，不改变 `/console/api/v1` 的 JSON 404。
+- AppShell 使用显式路由元数据统一维护导航项、当前高亮、页面标题和面包屑，替换固定 `active` 与固定标题写法。
+- Agent 报表不另建重复的记录详情页；点击记录进入统一 Call 页并通过 `record` 选中记录。
+- `record` 不存在、已不可用或请求失败时，主 Call 不受影响；默认选中首条可用记录并显示记录级错误。
+- 直接打开 Call 页时提供明确回退；从任务进入时可依据主 Call 的 `task_id` 返回任务，从报表进入时返回 `/reports/agent`。不得依赖不稳定的内存页面状态才能返回。
+
+### 13.3 前端目标目录
+
+```text
+src/fastcall/console/
+├── package.json
+├── vite.config.ts
+├── tsconfig.json
+└── src/
+    ├── App.tsx                       # Session、Routes、默认路由；不另建路由框架
+    ├── main.tsx
+    ├── api/
+    │   ├── client.ts                 # 同源 fetch、ApiError、CSRF、401 事件
+    │   ├── types.ts                  # 现有类型及少量真正跨 feature 的稳定 DTO
+    │   └── agentRecords.ts           # 报表与 Call 页真实复用的 Agent 记录 API
+    ├── components/
+    │   ├── AppShell.tsx              # 导航、面包屑、工作区与页面容器
+    │   ├── LoginPage.tsx
+    │   └── ui/                       # 不预建；仅在真实复用出现后提取
+    ├── features/
+    │   ├── apps/                     # 保留现有应用列表
+    │   ├── editor/                   # 保留现有编辑器与语音测试
+    │   ├── tasks/
+    │   │   ├── api.ts
+    │   │   ├── types.ts
+    │   │   ├── TaskListPage.tsx
+    │   │   ├── TaskDetailPage.tsx
+    │   │   ├── TaskActions.tsx
+    │   │   ├── TaskStatsStrip.tsx
+    │   │   ├── ContactTable.tsx
+    │   │   ├── TaskCallTable.tsx
+    │   │   ├── TaskConfigPanel.tsx
+    │   │   ├── tasks.css
+    │   │   └── *.test.tsx
+    │   ├── calls/
+    │   │   ├── api.ts
+    │   │   ├── types.ts
+    │   │   ├── CallDetailPage.tsx
+    │   │   ├── TelephonyFacts.tsx
+    │   │   ├── CallTimeline.tsx
+    │   │   ├── AgentRecordPanel.tsx
+    │   │   ├── calls.css
+    │   │   └── *.test.tsx
+    │   └── agent-reports/
+    │       ├── api.ts                # 只放报表专属查询封装；记录读取复用 api/agentRecords
+    │       ├── types.ts
+    │       ├── AgentReportsPage.tsx
+    │       ├── AgentReportFilters.tsx
+    │       ├── AgentReportSummary.tsx
+    │       ├── AgentTrendChart.tsx     # 通用垂直趋势面板，含 NULL 断线
+    │       ├── AgentDailyTable.tsx     # 每日指标与 Provider 行展开
+    │       ├── DateTimeRangePicker.tsx
+    │       ├── calendar.ts
+    │       ├── agent-reports.css
+    │       └── *.test.tsx
+    ├── utils/
+    │   ├── datetime.ts               # 仅放真实共享的 UTC/本地时间处理
+    │   └── numbers.ts                # 仅放真实共享的数字、时长和 USD 格式
+    ├── styles/
+    │   ├── tokens.css
+    │   └── global.css
+    └── test/
+        └── setup.ts
+```
+
+目录约束：
+
+- `agent-reports` 使用完整业务名称，不使用宽泛的 `reports`，避免未来混入业务分析或 Webhook 报表。
+- `AgentTechnicalRecordListItem`、`AgentTechnicalRecordDetail` 是报表和 Call 页共享的稳定契约，可放入 `api/types.ts`；任务和 Call 页面专属类型留在各自 feature。
+- `calls` 不得反向 import `agent-reports` 的页面组件或私有类型；共享记录读取由 `api/agentRecords.ts` 承担，不复制两份 DTO 和请求实现。
+- 单 feature 使用的格式化函数就近放置，不新建 `utils/format.ts` 杂物模块。
+- `components/ui` 不作为首批文件清单；EmptyState/ErrorState 等出现第二个真实调用点后再提取。
+
+### 13.4 页面组件与状态契约
+
+- `TaskListPage` 拥有筛选、列表、汇总和分页状态；当前页任务及聚合数据由 BFF 一次返回，前端不循环请求任务详情。
+- `TaskDetailPage` 拥有任务、联系人、Call 和配置 Tab 状态。Tab 只组织同一任务的对象，不承担全局导航。
+- `TaskActions` 根据服务端任务状态展示启动、暂停、恢复和取消；写操作携带当前 `expected_state_version` 和 CSRF，进行中禁用重复提交。
+- 状态冲突或请求超时后重新读取任务，不自动覆盖、不盲目重发。取消默认 `hangup_active=true`，危险操作二次确认。
+- `CallDetailPage` 分别维护主 Call 与 Agent 记录的 loading/success/empty/error 状态，不使用一个聚合 Promise 让任一侧失败拖垮整页。
+- `AgentRecordPanel` 按 `call_uuid=call_id` 读取全部来源的记录，支持同 Call 多 `record_id` 和 `claim_generation`；记录缺失只表示暂无或尚未落库。
+- `AgentReportsPage` 使用全局时间、Robot 和 Bot 模式筛选，不包含技术记录、精确 Call 或来源筛选。汇总带与垂直图表共享绝对时间边界，每日报表位于所有图之后。
+- 趋势图包含会话量、语音信箱占比、平均 Agent 会话、平均轮次、成本、重试重连，以及单张 ASR/LLM/TTS 平均/P50/P80/P95 TTFB 分布图；没有指标切换控件。
+- 所有空值显示 `—`，不得把缺失指标渲染成 0；成本显示 USD 估算和缺失计数，TTFB 显示有效轮次样本数、覆盖记录数和截断状态。
+
+### 13.5 请求、URL 与类型规范
+
+- feature API 使用共享 `api<T>()`，请求参数通过 `URLSearchParams` 构造；列表筛选进入 URL，筛选变化清除旧 cursor，分页和浏览器前进后退可恢复。
+- 每次请求使用 `AbortController` 或等效请求序号防止慢响应覆盖新筛选；组件卸载后不再更新状态。
+- API DTO 保持服务端 `snake_case` 和 UTC ISO 时间，不另建无收益的完整 ViewModel 映射；只有页面派生展示值才在组件内计算。
+- 时间由浏览器本地化并明确时区；任务呼叫窗口同时保留任务自身 timezone。数字、时长和成本显式带单位。
+- BI 看板使用绝对 UTC `[start,end)` 和固定 Asia/Shanghai 自然日，不提供用户时区选择。自定义日期时间最多 92 个自然日，结束时间不得晚于当前时间；手动刷新推进边界。
+- 报表与统一 Call 页共享记录 DTO，但 Call 页必须按 `source=all` 查询，避免默认正式外呼筛选隐藏历史记录。
+
+目标 Console BFF 接口：
+
+```text
+GET  /console/api/v1/outbound-tasks
+GET  /console/api/v1/outbound-tasks/{task_id}
+GET  /console/api/v1/outbound-tasks/{task_id}/contacts
+GET  /console/api/v1/outbound-tasks/{task_id}/calls
+POST /console/api/v1/outbound-tasks/{task_id}/start|pause|resume|cancel
+GET  /console/api/v1/calls/{call_id}
+GET  /console/api/v1/agent-call-records
+GET  /console/api/v1/agent-call-records/summary
+GET  /console/api/v1/agent-call-records/daily
+GET  /console/api/v1/agent-call-records/facets
+GET  /console/api/v1/agent-call-records/{record_id}
+```
+
+GET 使用 Console Session，写操作额外要求 CSRF。Agent 记录由 Fast-Call BFF 服务端调用 Agent 内部只读 API，浏览器不接触 Agent token、内部地址或 Agent 数据库。
+
+### 13.6 样式与视觉实现
+
+- `tokens.css` 继续维护页面、表面、文字、边框、主色和状态色；`global.css` 只放基础元素、共享布局与已有组件。
+- 新 feature 样式分别放入 `tasks.css`、`calls.css`、`agent-reports.css`，使用 `tasks-`、`calls-`、`agent-reports-` 前缀，避免继续向全局样式追加无前缀类名。现有 editor 样式不做无关重写。
+- 延续 Dify 式内容优先：浅灰背景、白色侧栏、淡蓝选中态、细边框、8–10px 圆角和低饱和状态色；不使用渐变、玻璃卡片、发光或深色大屏。
+- 页标题约 24px，区块标题 14px，正文 13px，辅助文字 11–12px，表格 12–13px；数字右对齐，ID 使用等宽字体。
+- 表格先使用语义化 HTML，不提前建立配置驱动的通用 DataTable。布局必须覆盖 1440px 桌面视口，窄屏沿用现有响应式策略，不为首期增加独立移动端应用。
+
+### 13.7 后端配套目录
+
+```text
+src/fastcall/
+├── api/console/
+│   ├── routes.py                   # 现有 Robot BFF
+│   ├── voice_test.py               # 现有语音测试 BFF
+│   ├── outbound.py                 # 新增任务、联系人、Call BFF
+│   └── agent_reports.py            # 新增 Agent 报表 BFF
+├── application/outbound_queries.py # 扩展任务列表与批量聚合查询
+└── infrastructure/agent_report_client.py
+
+src/collection_agents/
+├── server/report_routes.py         # 内部只读 GET，不写业务数据
+└── storage/reports.py              # Agent 自有 call_record 查询与字段白名单
+```
+
+`fastcall/api/routes.py` 只负责注册新增 BFF 路由；组合根显式装配 Agent HTTP 地址和 client。不得从 WebSocket URL 推导报表地址，不新增服务或跨库查询。Agent 新字段需要 SQLite/MySQL 显式增量迁移，不能依赖 `CREATE TABLE IF NOT EXISTS` 给旧表补列。
+
+### 13.8 测试与验收
+
+前端测试继续与组件同目录，使用 Vitest 和 Testing Library，mock feature API 或 fetch，不新增测试框架：
+
+- 路由：默认首页、应用导航高亮、URL 筛选恢复、非法 `record` 和返回来源。
+- 任务：筛选与 cursor、状态按钮、重复提交、409 刷新、取消语义和超时处理。
+- BI 报表：全局 Robot/模式、测试通话不落库、日历应用与取消、昨天边界、92 日限制、空库、空样本、样本截断、成本/轮次/重连缺失、NULL 断线和长范围刻度抽样。每日总量只执行一次条件聚合，TTFB 每日最多 1000 条采样记录。
+- Call：主 Call 成功/Agent 失败、主 Call 失败/Agent 成功、双侧空态及记录切换，验证两侧互不影响；使用 `source=all` 验证同一 `call_uuid` 的正式、测试和历史 NULL 来源记录均不会因报表默认过滤而消失。
+- 安全：渲染内容转义，页面和浏览器存储不出现内部 Token、完整号码、变量、transcript 或录音。
+
+每个实施阶段至少执行：
+
+```text
+cd src/fastcall/console
+npm test
+npm run build
+```
+
+后端同步运行 Console、Outbound、Agent 报表、路由集合和架构边界测试。最终通过真实 Fast-Call BFF 在浏览器验收“任务列表 → 任务详情 → Call 详情 → Agent 记录 → 返回来源”，并单独验证 Agent 404、超时和不可用降级；不能只以 import、编译或静态截图代替行为验收。
+
+### 13.9 实施状态与后续顺序
+
+1. 已实现：数据契约与增量迁移，包括来源、claim generation、价格元数据、绝对时间边界和白名单 DTO。
+2. 已实现：AppShell 路由元数据、任务只读列表/详情和批量聚合 BFF。
+3. 已实现：Agent 只读 API、报表页、统一 Call 页及双侧独立降级。
+4. 已实现：任务启动、暂停、恢复和取消；状态变更同时刷新联系人和 Call 子表。
+5. 已实现：全局通话技术分析、日期时间日历、七张垂直趋势图、合并 TTFB 分布和每日报表；测试通话不写技术指标。
+6. 后续：任务创建与名单导入；异常 Call、Webhook 和 transcript 不混入本次前端目录首批实施。

@@ -1,8 +1,18 @@
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 
-from fastcall_core.application.outbound_ports import OutboundCallRecord, TaskContactRecord
+from fastcall_core.application.outbound_ports import (
+    OutboundCallRecord,
+    OutboundTaskRecord,
+    TaskContactRecord,
+)
+from fastcall_core.domain.calls import ACTIVE_CALL_STATUSES, CallStatus
 from fastcall_core.domain.outbound_tasks import TERMINAL_CONTACT_STATUSES
-from fastcall_core.infrastructure.outbound_orm import OutboundCallModel, TaskContactModel
+from fastcall_core.infrastructure.orm import RobotAppModel
+from fastcall_core.infrastructure.outbound_orm import (
+    OutboundCallModel,
+    OutboundTaskModel,
+    TaskContactModel,
+)
 from fastcall_core.infrastructure.outbound_repositories import _to_record
 
 
@@ -23,6 +33,79 @@ class SqlAlchemyOutboundQueryRepository:
             )
         ).scalar()
         return (current or 0) + 1
+
+    def list_tasks(
+        self, *, status=None, robot_app_id=None, search=None, after=None, limit=50
+    ):
+        statement = select(OutboundTaskModel)
+        if status:
+            statement = statement.where(OutboundTaskModel.status == status)
+        if robot_app_id:
+            statement = statement.where(OutboundTaskModel.robot_app_id == robot_app_id)
+        if search:
+            statement = statement.where(or_(
+                OutboundTaskModel.name.contains(search, autoescape=True),
+                OutboundTaskModel.customer_task_id.contains(search, autoescape=True),
+            ))
+        if after:
+            created_at, task_id = after
+            statement = statement.where(or_(
+                OutboundTaskModel.created_at < created_at,
+                (OutboundTaskModel.created_at == created_at) & (OutboundTaskModel.id < task_id),
+            ))
+        models = self.session.execute(
+            statement.order_by(OutboundTaskModel.created_at.desc(), OutboundTaskModel.id.desc())
+            .limit(limit + 1)
+        ).scalars().all()
+        return [_to_record(OutboundTaskRecord, model) for model in models]
+
+    def robot_summaries(self, app_ids):
+        ids = [app_id for app_id in set(app_ids) if app_id]
+        if not ids:
+            return {}
+        models = self.session.execute(
+            select(RobotAppModel).where(RobotAppModel.id.in_(ids))
+        ).scalars().all()
+        return {
+            model.id: {"robot_code": model.app_code, "robot_name": model.name}
+            for model in models
+        }
+
+    def task_contact_counts(self, task_ids):
+        if not task_ids:
+            return {}
+        rows = self.session.execute(
+            select(TaskContactModel.task_id, TaskContactModel.status, func.count())
+            .where(TaskContactModel.task_id.in_(task_ids))
+            .group_by(TaskContactModel.task_id, TaskContactModel.status)
+        ).all()
+        result = {}
+        for task_id, status, count in rows:
+            result.setdefault(task_id, {})[status] = count
+        return result
+
+    def task_call_counts(self, task_ids):
+        if not task_ids:
+            return {}
+        active = [status.value for status in ACTIVE_CALL_STATUSES]
+        rows = self.session.execute(
+            select(
+                OutboundCallModel.task_id,
+                func.sum(case((OutboundCallModel.status.in_(active), 1), else_=0)),
+                func.sum(case((
+                    OutboundCallModel.status == CallStatus.UNKNOWN.value, 1
+                ), else_=0)),
+            )
+            .where(OutboundCallModel.task_id.in_(task_ids))
+            .group_by(OutboundCallModel.task_id)
+        ).all()
+        return {
+            task_id: {
+                "active_call_count": int(active_count or 0),
+                "unknown_call_count": int(unknown_count or 0),
+            }
+            for task_id, active_count, unknown_count in rows
+        }
 
     def list_contacts(self, task_id, *, status=None, result_code=None, after=None, limit=50):
         statement = select(TaskContactModel).where(TaskContactModel.task_id == task_id)

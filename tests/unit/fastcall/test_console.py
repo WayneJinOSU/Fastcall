@@ -115,7 +115,7 @@ class ConsoleStaticTests(unittest.TestCase):
 
     def test_spa_assets_cache_and_api_404(self):
         root = self.client.get("/", follow_redirects=False)
-        self.assertEqual(root.headers["location"], "/console/apps")
+        self.assertEqual(root.headers["location"], "/console/tasks")
         deep = self.client.get("/console/apps/app_1/edit")
         self.assertEqual(deep.status_code, 200)
         self.assertEqual(deep.headers["cache-control"], "no-cache")

@@ -75,7 +75,7 @@ from collection_agents.bots.realtime.utils import _is_effective_realtime_transcr
 from collection_agents.services.realtime_context import summarize_for_log as _summarize_for_log
 from collection_agents.notes.call_notes import persist_call_artifacts
 from collection_agents.metrics.collector import CallMetricsCollector
-from collection_agents.metrics.collector import RealtimeMetricsCollector
+from collection_agents.metrics.collector import RealtimeMetricsCollector, call_source_from_payload
 from collection_agents.transport.telephony_websocket import (
     TelephonyFrameSerializer,
     TelephonyEventRouter,
@@ -259,6 +259,8 @@ async def _setup_realtime_call(call_ctx, session_context, websocket_client, stre
                 "voice_id": realtime_voice,
                 "sample_rate": REALTIME_INPUT_SAMPLE_RATE,
             },
+            call_source=call_source_from_payload(call_ctx.get("call_data") or {}),
+            claim_generation=((call_ctx.get("call_data") or {}).get("data", {}) or {}).get("claimGeneration"),
         )
         metrics_collector.llm_model_name = realtime_model
 

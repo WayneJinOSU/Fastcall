@@ -23,6 +23,7 @@ from collection_agents.bots.realtime import run_realtime_bot
 from collection_agents.bots.standard import run_standard_bot
 from collection_agents.infra.logging import set_request_trace_code
 from collection_agents.infra.paths import PROJECT_ROOT
+from collection_agents.server.report_routes import router as report_router
 from collection_agents.session_lifecycle import SessionLifecycle
 from collection_agents.session_registry import SessionSlotError, SessionSlotRegistry
 
@@ -79,6 +80,8 @@ async def _run_v2_bot(websocket, app, call_data):
 def register_routes(app: FastAPI):
     if not hasattr(app.state, "session_slot_registry"):
         app.state.session_slot_registry = SessionSlotRegistry()
+    app.include_router(report_router)
+
     @app.get("/")
     async def index():
         return {"message": "server is running"}

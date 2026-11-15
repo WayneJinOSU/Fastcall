@@ -15,6 +15,7 @@ class Settings:
     console_admin_password_hash: str = ""
     console_session_secret: str = ""
     collection_agent_ws_url: str = "ws://127.0.0.1:8765/ws-v2"
+    collection_agent_http_url: str = "http://127.0.0.1:8765"
     adapter_internal_url: str = "http://127.0.0.1:8767"
     openapi_token: str = ""
     admin_token: str = ""
@@ -37,6 +38,9 @@ class Settings:
             console_session_secret=os.getenv("FASTCALL_CONSOLE_SESSION_SECRET", "").strip(),
             collection_agent_ws_url=(
                 os.getenv("COLLECTION_AGENT_WS_URL", "ws://127.0.0.1:8765/ws-v2").strip()
+            ),
+            collection_agent_http_url=(
+                os.getenv("COLLECTION_AGENT_HTTP_URL", "http://127.0.0.1:8765").strip()
             ),
             adapter_internal_url=(
                 os.getenv("FASTCALL_ADAPTER_INTERNAL_URL", "http://127.0.0.1:8767").strip()

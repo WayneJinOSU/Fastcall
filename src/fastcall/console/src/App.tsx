@@ -6,6 +6,10 @@ import AppShell from './components/AppShell';
 import LoginPage from './components/LoginPage';
 import AppListPage from './features/apps/AppListPage';
 import AppEditorPage from './features/editor/AppEditorPage';
+import TaskListPage from './features/tasks/TaskListPage';
+import TaskDetailPage from './features/tasks/TaskDetailPage';
+import CallDetailPage from './features/calls/CallDetailPage';
+import AgentReportsPage from './features/agent-reports/AgentReportsPage';
 
 export default function App() {
   const [session, setSession] = useState<ConsoleSession | null>(null);
@@ -35,13 +39,13 @@ export default function App() {
   if (loading) return <div className="page-loading">正在加载控制台…</div>;
   if (!session) return <LoginPage onLogin={login} />;
 
-  return (
-    <AppShell>
-      <Routes>
-        <Route path="/apps" element={<AppListPage />} />
-        <Route path="/apps/:appId/edit" element={<AppEditorPage />} />
-        <Route path="*" element={<Navigate to="/apps" replace />} />
-      </Routes>
-    </AppShell>
-  );
+  return <AppShell actorId={session.actor_id}><Routes>
+    <Route path="/tasks" element={<TaskListPage />} />
+    <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
+    <Route path="/calls/:callId" element={<CallDetailPage />} />
+    <Route path="/reports/agent" element={<AgentReportsPage />} />
+    <Route path="/apps" element={<AppListPage />} />
+    <Route path="/apps/:appId/edit" element={<AppEditorPage />} />
+    <Route path="*" element={<Navigate to="/tasks" replace />} />
+  </Routes></AppShell>;
 }
