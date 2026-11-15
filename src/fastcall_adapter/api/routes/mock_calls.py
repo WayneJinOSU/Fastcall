@@ -29,7 +29,8 @@ async def mock_call_browser(websocket: WebSocket, task_id: str):
 @router.websocket("/internal/media/{call_id}/browser")
 async def mock_call_freeswitch(websocket: WebSocket, call_id: str):
     expected = websocket.app.state.settings.media_token
-    provided = websocket.query_params.get("token", "")
+    authorization = websocket.headers.get("authorization", "")
+    provided = authorization[7:] if authorization.lower().startswith("bearer ") else ""
     if not expected or not hmac.compare_digest(provided, expected):
         await websocket.close(code=1008)
         return

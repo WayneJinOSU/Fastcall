@@ -151,6 +151,26 @@ class OutboundApiTests(unittest.TestCase):
         self.assertEqual(uow.contacts.get_by_customer_id(task["task_id"], "c1").status, "cancelled")
         uow.close()
 
+    def test_sip_disabled_rejects_task_start(self):
+        task = self._create_task()
+        self._import(task["task_id"], [
+            {"customer_contact_id": "c1", "phone": "+12025550101", "variables": {"user_name": "A"}},
+        ])
+        from dataclasses import replace
+        self.client.app.state.settings = replace(
+            self.client.app.state.settings, sip_enabled=False
+        )
+        response = self.client.post(
+            f"/openapi/v1/outbound-tasks/{task['task_id']}/start", headers=self.open,
+            json={"expected_state_version": 1},
+        )
+        self.assertEqual(response.status_code, 503, response.text)
+        self.assertIn("SIP_NOT_CONFIGURED", response.text)
+        current = self.client.get(
+            f"/openapi/v1/outbound-tasks/{task['task_id']}", headers=self.open
+        )
+        self.assertEqual(current.json()["status"], "draft")
+
     def test_keyset_cursor_binds_filters_and_authentication_is_separate(self):
         task = self._create_task()
         self._import(task["task_id"], [

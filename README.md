@@ -2,6 +2,18 @@
 
 语音外呼系统，包含 Fast-Call 控制面、独立 FreeSWITCH Adapter、共享外呼内核和 Collection Agent。
 
+## Compose 快速部署
+
+准备两个不同的本地/外部 MySQL 数据库，分别供 Fast-Call 和 Agent 使用；Compose 不使用 MySQL 容器，也禁止 Agent 使用 SQLite。Agent 使用已有稳定镜像，或设置 `FASTCALL_AGENT_EXTERNAL=true` 使用宿主机上已运行的 Agent。
+
+```bash
+cp deploy/compose.env.example deploy/.env.compose
+# 编辑 deploy/.env.compose 中的两个数据库 URL 和 Agent 镜像/地址
+./scripts/bootstrap_compose.sh
+```
+
+启动器生成缺失的凭据和内部 TLS 文件，执行 Fast-Call Alembic，并检查 Agent 当前 MySQL schema；只有明确允许的空库才执行初始化。本机 Console 可访问 `http://localhost:8080/console/`；`8443` 的内部 HTTPS 使用本地 CA。真实 SIP 需另行配置 gateway、external IP 和线路验收。
+
 ## 唯一维护的文档
 
 本项目只维护以下六份架构文档，不并行维护其他模块说明：

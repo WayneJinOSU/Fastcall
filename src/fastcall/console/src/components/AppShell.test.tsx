@@ -11,6 +11,12 @@ describe('AppShell', () => {
     expect(screen.getByText('admin')).toBeInTheDocument();
   });
 
+  it('hides the Mock Call entry when the capability is disabled', () => {
+    render(<MemoryRouter><AppShell actorId="admin" mockCallsEnabled={false}><div>内容</div></AppShell></MemoryRouter>);
+    expect(screen.queryByRole('link', { name: 'Mock Call' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '通话技术分析' })).toBeInTheDocument();
+  });
+
   it('keeps Robot navigation active on the editor route', () => {
     render(<MemoryRouter initialEntries={['/apps/app_1/edit']}><AppShell actorId="editor"><div>内容</div></AppShell></MemoryRouter>);
     expect(screen.getByRole('link', { name: 'Robot 应用' })).toHaveAttribute('aria-current', 'page');

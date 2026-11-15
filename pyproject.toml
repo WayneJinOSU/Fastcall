@@ -25,3 +25,7 @@ fastcall = [
     "console/dist/index.html",
     "console/dist/assets/*",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests/unit"]

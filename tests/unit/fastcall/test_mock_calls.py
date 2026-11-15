@@ -78,6 +78,19 @@ class MockCallPreparationTests(unittest.TestCase):
             )
         self.assertEqual(raised.exception.code, "MOCK_CALL_RELEASE_CHANGED")
 
+    def test_disabled_mock_capability_rejects_prepare_and_arm(self):
+        use_case = self.use_case()
+        use_case.enabled = False
+        with self.assertRaises(Exception) as raised:
+            use_case.prepare(
+                self.app["app_id"], self.version["robot_app_version_id"],
+                {"user_name": "Alice"}, "mock:disabled-feature", "tester",
+            )
+        self.assertEqual(raised.exception.code, "MOCK_CALL_DISABLED")
+        with self.assertRaises(Exception) as raised:
+            use_case.arm("task-1", "tester")
+        self.assertEqual(raised.exception.code, "MOCK_CALL_DISABLED")
+
     def test_disabled_robot_is_rejected_before_task_creation(self):
         RobotAppsUseCase(self.uow).set_enabled(self.app["app_id"], False, "tester")
         with self.assertRaises(Exception) as raised:

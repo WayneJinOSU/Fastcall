@@ -18,7 +18,7 @@ function breadcrumb(pathname: string) {
   return ['外呼运营', '外呼任务'];
 }
 
-export default function AppShell({ children, actorId }: { children: ReactNode; actorId: string }) {
+export default function AppShell({ children, actorId, mockCallsEnabled = true }: { children: ReactNode; actorId: string; mockCallsEnabled?: boolean }) {
   const location = useLocation();
   const crumbs = breadcrumb(location.pathname);
   const navClass = ({ isActive }: { isActive: boolean }) => `nav-item ${isActive ? 'active' : ''}`;
@@ -27,7 +27,7 @@ export default function AppShell({ children, actorId }: { children: ReactNode; a
       <Link to="/tasks" className="brand"><span className="brand-mark">F</span><span><span className="brand-name">Fastcall</span><span className="brand-subtitle">Console</span></span></Link>
       <nav className="nav">
         <div className="nav-section"><div className="nav-label">外呼运营</div><NavLink className={navClass} to="/tasks"><Icon name="tasks" />外呼任务</NavLink></div>
-        <div className="nav-section"><div className="nav-label">技术观测</div><NavLink className={navClass} to="/reports/agent"><Icon name="reports" />通话技术分析</NavLink><NavLink className={navClass} to="/mock-calls"><Icon name="mock" />Mock Call</NavLink></div>
+        <div className="nav-section"><div className="nav-label">技术观测</div><NavLink className={navClass} to="/reports/agent"><Icon name="reports" />通话技术分析</NavLink>{mockCallsEnabled && <NavLink className={navClass} to="/mock-calls"><Icon name="mock" />Mock Call</NavLink>}</div>
         <div className="nav-section"><div className="nav-label">机器人配置</div><NavLink className={navClass} to="/apps"><Icon name="apps" />Robot 应用</NavLink></div>
       </nav>
       <div className="sidebar-foot"><span className="avatar">{actorId.slice(0, 1).toUpperCase()}</span><div><div className="workspace-name">{actorId}</div><div className="workspace-role">Fastcall Workspace</div></div></div>

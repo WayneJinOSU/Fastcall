@@ -22,6 +22,7 @@ class DispatchService:
         self, uow_factory, gateway, secret_codec, phone_hmac, *,
         global_max_concurrent=50, global_calls_per_minute=60, clock=utcnow,
         adapter_boot_id=None, mock_calls=None,
+        sip_enabled=True, mock_calls_enabled=True,
     ):
         self.uow_factory = uow_factory
         self.gateway = gateway
@@ -32,6 +33,8 @@ class DispatchService:
         self.clock = clock
         self.adapter_boot_id = adapter_boot_id or uuid.uuid4().hex
         self.mock_calls = mock_calls
+        self.sip_enabled = sip_enabled
+        self.mock_calls_enabled = mock_calls_enabled
         self._contexts = {}
         self._contexts_lock = asyncio.Lock()
 
@@ -46,6 +49,15 @@ class DispatchService:
         )
         return self.phone_hmac.all_versions(phone)
 
+    async def _check_capability(self, capability):
+        try:
+            await asyncio.wait_for(self.gateway.health_check(capability), timeout=2)
+        except Exception as error:
+            code = "SIP_UNAVAILABLE" if capability == "sip" else "MOCK_UNAVAILABLE"
+            raise RobotConfigError(
+                code, f"{capability.upper()} capability is unavailable"
+            ) from error
+
     async def dispatch(self, call_id):
         context = await self._context(call_id)
         async with context.lock:
@@ -58,15 +70,19 @@ class DispatchService:
                     raise RobotConfigError("OUTBOUND_CALL_NOT_FOUND", "Outbound call not found")
                 if call.dial_requested_at is not None or call.status != "reserved":
                     return self._checking(uow, call_id)
-                await asyncio.wait_for(self.gateway.health_check(), timeout=2)
                 task = uow.tasks.get(call.task_id)
-                if (
-                    task.origin == "mock_call"
-                    and (self.mock_calls is None or not self.mock_calls.has_browser(task.id))
-                ):
-                    raise RobotConfigError(
-                        "MOCK_BROWSER_NOT_READY", "Mock Call browser transport is not connected"
-                    )
+                if task.origin == "mock_call":
+                    if not self.mock_calls_enabled:
+                        raise RobotConfigError("MOCK_CALL_DISABLED", "Mock Call is disabled")
+                    await self._check_capability("mock")
+                    if self.mock_calls is None or not self.mock_calls.has_browser(task.id):
+                        raise RobotConfigError(
+                            "MOCK_BROWSER_NOT_READY", "Mock Call browser transport is not connected"
+                        )
+                else:
+                    if not self.sip_enabled:
+                        raise RobotConfigError("SIP_NOT_CONFIGURED", "SIP is not configured")
+                    await self._check_capability("sip")
                 uow.dispatch.authorize(
                     call_id,
                     call.state_version,
@@ -119,7 +135,10 @@ class DispatchService:
         try:
             call = uow.calls.get(call_id)
             if call and call.status == "reserved" and call.dial_requested_at is None:
-                if error_code in ("CALL_BLACKLISTED", "ROBOT_DISABLED", "MOCK_BROWSER_NOT_READY"):
+                if error_code in (
+                    "CALL_BLACKLISTED", "ROBOT_DISABLED", "MOCK_BROWSER_NOT_READY",
+                    "MOCK_CALL_DISABLED",
+                ):
                     FinalizeCallUseCase(uow, self.clock).execute(
                         call_id, "failed", error_code, "failed",
                         failure_code=error_code, termination_reason="DIAL_PRECHECK_FAILED",

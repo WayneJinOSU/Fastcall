@@ -29,7 +29,7 @@ class FakeGateway:
         self.mock_calls = []
         self.answers = []
 
-    async def health_check(self):
+    async def health_check(self, capability=None):
         return True
 
     async def originate_mock(self, call_id, origination_uuid, task_id, contact_id):

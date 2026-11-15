@@ -92,6 +92,7 @@ export interface CapabilityCatalog {
 export interface ConsoleSession {
   actor_id: string;
   csrf_token: string;
+  mock_calls_enabled?: boolean;
 }
 
 export interface OutboundCall {

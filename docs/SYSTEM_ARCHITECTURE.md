@@ -183,7 +183,6 @@ Mock 使用独立固定 loopback target，不改变正式 gateway。A/B UUID 分
 
 截至 2026-11-15 的当前工作区：
 
-- 全量单元测试 252 项，251 项通过；唯一错误为既有 Realtime `_observer`，不属于 Mock Call 改造。
 - Console 前端 51 项测试、TypeScript 检查和生产构建通过；Mock Call 独立页面已在真实浏览器验证导航、Release 和变量加载。
 - 模拟 outbound e2e、Mock Call 的 Scheduler/dispatch/手动接听/Claim/终态/Outbox e2e，以及架构边界、路由集合和 UOW 结构测试通过。真实 Docker FreeSWITCH Mock Call 已验证 B 来电、手动 answer、联合 ready、双向有效 PCM、ASR 非零文本、1 轮 LLM 对话、真实 TTS、USER_HANGUP、Task completed、两类 Webhook 各一次 204、Agent `mock_call` 落库及 A/B 通道清零。媒体修复使用 Mock-only direct playback patch，不改变正式 gateway 路径。
 - 真实浏览器已验收登录、任务列表/详情、联系人、Call、通话技术分析，以及任务启动、暂停、恢复、取消；Agent 不可用与恢复、取消后子表刷新、BI 空库/有数据、日历和每日指标展开也已验证。
@@ -192,6 +191,10 @@ Mock 使用独立固定 loopback target，不改变正式 gateway。A/B UUID 分
 - 语音验收包含真实 STT、LLM 和 TTS，Agent 通话指标及 transcript 独立落库。
 - 真实 MySQL 6 项在缺少独立测试库时不得记为已执行。
 - Docker 新镜像构建曾因 Docker Hub 元数据超时受阻；loopback 使用现有 Adapter 镜像并只读挂载当前源码，不等同于新镜像构建验收。
+- 统一 FreeSWITCH 镜像已在 ARM64 环境从固定源码构建成功；Mock-only、SIP/IP-auth 配置加载、SIP+Mock 同实例三组隔离冒烟通过，覆盖 ESL 强密码/ACL、Sofia profile、核心 G.711、媒体模块注册及 Mock loopback 通道创建和清理。该结果不覆盖真实 SIP INVITE/RTP、direct playback 实际音频、媒体 Header 或 Adapter/Agent 全链路。
+- Adapter/Fast-Call 双能力改造的相关后端测试 147 项通过，Console 52 项测试和生产构建通过；全量后端 264 项中 263 项通过，唯一失败仍为冻结的 collection-agent `_observer` 测试。新增能力检查、拨号栅栏和媒体 Header 有单元回归，尚未据此宣称真实 SIP 或 WebSocket 媒体全链路通过。为保持 Agent 冻结，Adapter 仅外部检查其 `/state/up` 进程可达性，不把该结果描述为 Agent 业务 readiness。
+- `fastcall:dev`、`fastcall-adapter:dev` 均已实际构建成功；Fast-Call 镜像内 API、Scheduler、Webhook 和 Alembic 入口加载通过，且不含 Pipecat。入口检查只证明依赖与打包完整，不替代服务启动后的真实业务链路。
+- `deploy/compose.yaml` 与启动器已使用本地真实 MySQL 的独立 `fastcall`、`collection_agents` 数据库完成全栈启动；Fast-Call 实际迁移至 `0005`，Agent 当前库只读验证且零 DDL。真实浏览器 Mock 已完成接听和双向通话，Call 为 `succeeded/USER_HANGUP`，Agent MySQL 保存通话指标和 transcript，两类 Webhook 均一次 204，FreeSWITCH 通道清零。该结果仍不替代真实运营商 SIP 验收。
 
 ## 10. 后续修改入口
 
@@ -219,9 +222,12 @@ Alembic 配置为 `deploy/fastcall-alembic.ini`，version table 为兼容历史�
 
 ## 12. 基础设施与运维约束
 
-- FreeSWITCH 负责 SIP 拨号、接听、挂机、CDR 和电话音频；Adapter 与 FreeSWITCH 可共享容器网络命名空间，避免修改 ESL ACL。
-- `mod-audio-stream` 固定 commit `a25fb1fe530ec6a612d321ff04f70be69b1a257c`，需满足 AGPL-3.0 或商业许可。
-- 无 SIP 线路时使用 loopback；既有验收不临时修改 ACL。Mock Call 只部署版本化、固定目标的 `deploy/freeswitch/mock_call_dialplan.xml`，不自动 answer，不增加通配路由或公网转发。
+- FreeSWITCH 负责 SIP 拨号、接听、挂机、CDR 和电话音频。统一镜像由 `deploy/freeswitch/Dockerfile` 构建，同一实例加载 Sofia、loopback 和 `mod_audio_stream`，正式任务使用 gateway，Mock Call 使用固定 loopback target。
+- 镜像固定基础镜像 digest、FreeSWITCH 1.10.12、Sofia SIP、spandsp 和 `mod-audio-stream` commit `a25fb1fe530ec6a612d321ff04f70be69b1a257c`；媒体模块需满足 AGPL-3.0 或商业许可。
+- 入口按 `FASTCALL_SIP_ENABLED` 和 `FASTCALL_MOCK_CALLS_ENABLED` 渲染配置。启用 SIP 时必须配置真实 gateway 和 external IP；未启用时不生成 gateway，Mock 仍可独立运行。
+- ESL 必须显式配置非默认强密码，默认 ACL 只允许 `127.0.0.1/32`；实际部署需改为 Adapter 所在地址并不向宿主机发布 8021。共享网络命名空间仅属于旧 POC，不是统一镜像的默认拓扑。
+- 统一镜像包含受控的 `mock_call_direct_playback.patch`，但正式 originate 不设置 `STREAM_PLAYBACK_DIRECT`，正式 SIP 仍走模块原播放路径。Mock dialplan 固定目标、不自动 answer，不增加通配路由或公网转发。
+- `scripts/test_freeswitch_image.sh` 是不发布宿主机端口的镜像级冒烟，覆盖模块、ESL 认证、SIP 配置渲染和 loopback；它不替代真实 SIP、双向媒体或 Adapter/Agent 全链路验收。
 - Provider 密钥留在各服务部署环境，不进入 Robot 配置 JSON、审计、Webhook 或文档。
 - 本地 `/tmp` 的运行脚本、runtime env、测试 CA 和 HTTPS 接收端只用于验收，不是生产组件。
 - `FASTCALL_DISABLE_SSL_CERT_FILE=1` 仅用于本地 Agent 验收，避免测试 CA 覆盖生产 Provider 证书；Webhook Worker 不通过关闭 TLS/HMAC/私网白名单绕过校验。

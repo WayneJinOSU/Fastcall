@@ -64,7 +64,7 @@ class MockCallTicketStore:
 class PrepareMockCallUseCase:
     def __init__(
         self, uow, secret_codec, phone_hmac, *, callback_url, callback_secret_ref,
-        clock=utcnow,
+        clock=utcnow, enabled=True,
     ):
         self.uow = uow
         self.secret_codec = secret_codec
@@ -72,8 +72,11 @@ class PrepareMockCallUseCase:
         self.callback_url = callback_url
         self.callback_secret_ref = callback_secret_ref
         self.clock = clock
+        self.enabled = enabled
 
     def prepare(self, app_id, robot_version_id, variables, client_request_id, actor):
+        if not self.enabled:
+            raise RobotConfigError("MOCK_CALL_DISABLED", "Mock Call is disabled")
         if not self.callback_url or not self.callback_secret_ref:
             raise RobotConfigError(
                 "MOCK_CALL_NOT_CONFIGURED", "Mock Call receiver is not configured"
@@ -157,6 +160,8 @@ class PrepareMockCallUseCase:
             )
 
     def arm(self, task_id, actor):
+        if not self.enabled:
+            raise RobotConfigError("MOCK_CALL_DISABLED", "Mock Call is disabled")
         try:
             task = self.uow.tasks.get_for_update(task_id)
             if task is None or task.origin != MOCK_CALL_ORIGIN or task.created_by != actor:

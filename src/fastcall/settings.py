@@ -5,6 +5,18 @@ from dataclasses import dataclass
 SUPPORTED_ENVIRONMENTS = {"dev", "test", "prod"}
 
 
+def _env_bool(name, default):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise RuntimeError(f"{name} must be a boolean")
+
+
 @dataclass(frozen=True)
 class Settings:
     app_env: str
@@ -24,6 +36,8 @@ class Settings:
     media_token: str = ""
     mock_callback_url: str = ""
     mock_callback_secret_ref: str = ""
+    sip_enabled: bool = True
+    mock_calls_enabled: bool = True
 
     @classmethod
     def from_env(cls):
@@ -54,6 +68,8 @@ class Settings:
             media_token=os.getenv("FASTCALL_MEDIA_TOKEN", "").strip(),
             mock_callback_url=os.getenv("FASTCALL_MOCK_CALLBACK_URL", "").strip(),
             mock_callback_secret_ref=os.getenv("FASTCALL_MOCK_CALLBACK_SECRET_REF", "").strip(),
+            sip_enabled=_env_bool("FASTCALL_SIP_ENABLED", True),
+            mock_calls_enabled=_env_bool("FASTCALL_MOCK_CALLS_ENABLED", True),
         )
 
     def validate(self):
@@ -73,3 +89,5 @@ class Settings:
             raise RuntimeError("Console administrator identity and password hash are required")
         if len(self.console_session_secret) < 32:
             raise RuntimeError("Console session secret must contain at least 32 characters")
+        if not self.sip_enabled and not self.mock_calls_enabled:
+            raise RuntimeError("At least one of SIP or Mock Call must be enabled")

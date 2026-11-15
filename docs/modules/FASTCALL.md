@@ -66,7 +66,7 @@ src/fastcall/
 
 本地聚合使用同一事件循环；任一组件退出或失败时，后台组件被取消并回收，Uvicorn 通过 `should_exit` 正常关闭。不得与独立 Scheduler/Webhook Worker 双跑。
 
-生产 Scheduler/Webhook 使用 `FASTCALL_IMAGE`，Adapter 使用 `FASTCALL_ADAPTER_IMAGE`。生产不使用本地聚合入口。
+生产 Scheduler/Webhook 使用 `FASTCALL_IMAGE`，Adapter 使用 `FASTCALL_ADAPTER_IMAGE`。生产不使用本地聚合入口。Fast-Call 镜像使用 `requirements-fastcall.txt` 只安装控制面与 core 的实际依赖，不携带 Agent 专用 Provider、RNNoise 或 Pipecat 依赖。
 
 ## 4. 外部接口
 
@@ -136,7 +136,7 @@ GET  /openapi/v1/calls/{call_id}
 
 ## 7. 配置与数据所有权
 
-配置统一使用 `FASTCALL_*`（通用 `DATABASE_URL` 除外）。Adapter 地址使用 `FASTCALL_ADAPTER_INTERNAL_URL`，Agent 地址使用 `COLLECTION_AGENT_WS_URL`。
+配置统一使用 `FASTCALL_*`（通用 `DATABASE_URL` 除外）。Adapter 地址使用 `FASTCALL_ADAPTER_INTERNAL_URL`，Agent 地址使用 `COLLECTION_AGENT_WS_URL` 和 `COLLECTION_AGENT_HTTP_URL`。`FASTCALL_SIP_ENABLED=false` 时，正式任务 start/resume 返回 `SIP_NOT_CONFIGURED`；Mock Call 使用独立准备和激活流程，不经过该 SIP 栅栏。`FASTCALL_MOCK_CALLS_ENABLED=false` 时，Console 隐藏 Mock 入口，prepare/arm 返回 `MOCK_CALL_DISABLED`，浏览器 WebSocket 拒绝连接。
 
 控制面启动要求 MySQL PyMySQL URL、七种互不相同的 API/内部 token，以及 Console actor、密码哈希和至少 32 字符 session secret。还必须提供 `FASTCALL_ENCRYPTION_KEYS_JSON`、`FASTCALL_ENCRYPTION_ACTIVE_VERSION`、`FASTCALL_HMAC_KEYS_JSON`、`FASTCALL_HMAC_ACTIVE_VERSION`。仅配置外呼 Open API 凭据不足以启动完整控制面。
 

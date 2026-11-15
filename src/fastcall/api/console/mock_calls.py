@@ -22,6 +22,7 @@ def _use_case(request, uow):
         uow, get_secret_codec(request), request.app.state.phone_hmac,
         callback_url=settings.mock_callback_url,
         callback_secret_ref=settings.mock_callback_secret_ref,
+        enabled=getattr(settings, "mock_calls_enabled", True),
     )
 
 
@@ -110,6 +111,9 @@ async def _cancel_active_mock(request, task_id, actor):
 
 @router.websocket("/mock-calls/{task_id}/ws")
 async def mock_call_websocket(websocket: WebSocket, task_id: str, ticket: str = ""):
+    if not getattr(websocket.app.state.settings, "mock_calls_enabled", True):
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
     request = websocket.app
     adapter = None

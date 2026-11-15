@@ -53,7 +53,10 @@ class CancelRequest(StateVersionRequest):
 
 
 def _tasks(uow, codec, request: Request):
-    return OutboundTasksUseCase(uow, codec, request.app.state.phone_hmac)
+    return OutboundTasksUseCase(
+        uow, codec, request.app.state.phone_hmac,
+        sip_enabled=request.app.state.settings.sip_enabled,
+    )
 
 
 @router.put("/outbound-tasks/{customer_task_id}")

@@ -25,11 +25,14 @@ from tests.unit.fastcall.test_outbound_repositories import NOW, contact_record, 
 
 
 class FakeGateway:
-    def __init__(self, fail=False):
+    def __init__(self, fail=False, fail_capability=None):
         self.fail = fail
+        self.fail_capability = fail_capability
         self.originate_calls = []
 
-    async def health_check(self):
+    async def health_check(self, capability=None):
+        if capability == self.fail_capability:
+            raise TimeoutError("capability unavailable")
         return True
 
     async def channel_exists(self, channel_uuid):
@@ -128,6 +131,30 @@ class DispatchTests(unittest.TestCase):
             call = self.uow.calls.get("call_1")
             self.assertEqual(call.dial_requested_at, NOW)
             self.assertIsNotNone(call.dial_acknowledged_at)
+
+        asyncio.run(scenario())
+
+    def test_sip_disabled_rejects_formal_dispatch_before_originate(self):
+        async def scenario():
+            gateway = FakeGateway()
+            service = self._service(gateway)
+            service.sip_enabled = False
+            with self.assertRaises(RobotConfigError) as error:
+                await service.dispatch("call_1")
+            self.assertEqual(error.exception.code, "SIP_NOT_CONFIGURED")
+            self.assertEqual(gateway.originate_calls, [])
+            self.assertIsNone(self.uow.calls.get("call_1").dial_requested_at)
+
+        asyncio.run(scenario())
+
+    def test_dynamic_sip_failure_is_not_reported_as_success(self):
+        async def scenario():
+            gateway = FakeGateway(fail_capability="sip")
+            with self.assertRaises(RobotConfigError) as error:
+                await self._service(gateway).dispatch("call_1")
+            self.assertEqual(error.exception.code, "SIP_UNAVAILABLE")
+            self.assertEqual(gateway.originate_calls, [])
+            self.assertIsNone(self.uow.calls.get("call_1").dial_requested_at)
 
         asyncio.run(scenario())
 

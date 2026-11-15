@@ -1,0 +1,12 @@
+{
+	auto_https off
+}
+
+https://{$FASTCALL_DOMAIN} {
+	tls /etc/caddy/tls/server.crt /etc/caddy/tls/server.key
+	reverse_proxy fastcall-api:8766
+}
+
+http://localhost:8080 {
+	reverse_proxy fastcall-api:8766
+}

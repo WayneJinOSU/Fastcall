@@ -40,7 +40,7 @@ export default function App() {
   if (loading) return <div className="page-loading">正在加载控制台…</div>;
   if (!session) return <LoginPage onLogin={login} />;
 
-  return <AppShell actorId={session.actor_id}><Routes>
+  return <AppShell actorId={session.actor_id} mockCallsEnabled={session.mock_calls_enabled !== false}><Routes>
     <Route path="/tasks" element={<TaskListPage />} />
     <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
     <Route path="/calls/:callId" element={<CallDetailPage />} />

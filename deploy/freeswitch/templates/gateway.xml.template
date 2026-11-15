@@ -1,0 +1,11 @@
+<gateway name="{{GATEWAY_NAME}}">
+  <param name="proxy" value="{{SIP_HOST}}:{{SIP_PORT}}"/>
+  <param name="realm" value="{{SIP_HOST}}"/>
+  <param name="from-domain" value="{{SIP_HOST}}"/>
+{{SIP_FROM_USER}}
+{{SIP_CREDENTIALS}}
+  <param name="caller-id-in-from" value="{{SIP_CALLER_ID_IN_FROM}}"/>
+  <param name="register" value="{{SIP_REGISTER}}"/>
+  <param name="register-transport" value="{{SIP_TRANSPORT}}"/>
+  <param name="expire-seconds" value="300"/>
+</gateway>

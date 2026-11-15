@@ -10,12 +10,13 @@ FROM python:3.12-bullseye
 
 WORKDIR /app
 ENV PYTHONPATH=/app/src
-COPY requirements.txt ./
+COPY requirements-fastcall.txt ./
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements-fastcall.txt
 COPY src/fastcall ./src/fastcall
 COPY src/fastcall_core ./src/fastcall_core
 COPY deploy/fastcall-alembic.ini ./deploy/fastcall-alembic.ini
+COPY deploy/mysql/ ./deploy/mysql/
 COPY --from=console-builder /build/console/dist/ ./src/fastcall/console/dist/
 
 EXPOSE 8766

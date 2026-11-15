@@ -52,6 +52,37 @@ class AdapterApiTests(unittest.TestCase):
             event_path, headers={"Authorization": "Bearer adapter-token"}, json=payload,
         ).status_code, 401)
 
+    def test_mock_websocket_routes_are_not_registered_when_disabled(self):
+        from dataclasses import replace
+
+        app = create_app(
+            settings=replace(
+                self.client.app.state.settings, mock_calls_enabled=False
+            ),
+            validate_startup=False,
+        )
+        paths = {route.path for route in app.routes}
+        self.assertNotIn("/internal/v1/mock-calls/{task_id}/browser", paths)
+        self.assertNotIn("/internal/media/{call_id}/browser", paths)
+
+    def test_media_token_is_accepted_only_as_bearer_header(self):
+        from starlette.websockets import WebSocketDisconnect
+
+        cases = (
+            ("/internal/media/call-1?token=media-token", {}, 1008),
+            (
+                "/internal/media/call-1",
+                {"Authorization": "Bearer media-token"},
+                1011,
+            ),
+        )
+        for url, headers, expected_code in cases:
+            with self.subTest(expected_code=expected_code):
+                with self.assertRaises(WebSocketDisconnect) as error:
+                    with self.client.websocket_connect(url, headers=headers):
+                        pass
+                self.assertEqual(error.exception.code, expected_code)
+
 
 if __name__ == "__main__":
     unittest.main()

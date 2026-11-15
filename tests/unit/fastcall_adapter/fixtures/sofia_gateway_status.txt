@@ -1,0 +1,27 @@
+=================================================================================================
+Name    	smoke
+Profile 	external
+Scheme  	Digest
+Realm   	127.0.0.1
+Username	FreeSWITCH
+Password	no
+From    	<sip:FreeSWITCH@127.0.0.1>
+Contact 	<sip:gw+smoke@127.0.0.1:5080;transport=udp;gw=smoke>
+Exten   	FreeSWITCH
+To      	sip:FreeSWITCH@127.0.0.1:5060
+Proxy   	sip:127.0.0.1:5060
+Context 	public
+Expires 	300
+Freq    	300
+Ping    	0
+PingFreq	0
+PingTime	0.00
+PingState	0/0/0
+State   	NOREG
+Status  	UP
+Uptime  	4s
+CallsIN 	0
+CallsOUT	0
+FailedCallsIN	0
+FailedCallsOUT	0
+=================================================================================================

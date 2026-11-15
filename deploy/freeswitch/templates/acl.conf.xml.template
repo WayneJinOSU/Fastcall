@@ -1,0 +1,9 @@
+<configuration name="acl.conf" description="Fastcall network ACL">
+  <network-lists>
+    <list name="fastcall_esl" default="deny">
+      <node type="allow" cidr="127.0.0.0/8"/>
+      <node type="allow" cidr="::1/128"/>
+      <node type="allow" cidr="{{ESL_CIDR}}"/>
+    </list>
+  </network-lists>
+</configuration>

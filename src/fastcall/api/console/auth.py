@@ -105,7 +105,11 @@ def login_response(payload: LoginRequest, request: Request) -> JSONResponse:
     if not actor_valid or not password_valid:
         raise RobotConfigError("CONSOLE_UNAUTHORIZED", "Invalid console credentials")
     token, csrf = create_session_token(payload.actor_id, settings.console_session_secret)
-    response = JSONResponse({"actor_id": payload.actor_id, "csrf_token": csrf})
+    response = JSONResponse({
+        "actor_id": payload.actor_id,
+        "csrf_token": csrf,
+        "mock_calls_enabled": settings.mock_calls_enabled,
+    })
     response.set_cookie(
         COOKIE_NAME,
         token,

@@ -32,11 +32,12 @@ def _validate_callback(url):
 
 
 class OutboundTasksUseCase:
-    def __init__(self, uow, secret_codec, phone_hmac, clock=utcnow):
+    def __init__(self, uow, secret_codec, phone_hmac, clock=utcnow, sip_enabled=True):
         self.uow = uow
         self.secret_codec = secret_codec
         self.phone_hmac = phone_hmac
         self.clock = clock
+        self.sip_enabled = sip_enabled
 
     def create(self, customer_task_id, data, created_by="openapi"):
         now = self.clock()
@@ -148,6 +149,8 @@ class OutboundTasksUseCase:
         return {"accepted_contacts": accepted, "duplicate_contacts": duplicates}
 
     def start(self, task_id, expected_state_version):
+        if not self.sip_enabled:
+            raise RobotConfigError("SIP_NOT_CONFIGURED", "SIP is not configured")
         task = self.uow.tasks.get_for_update(task_id)
         if task is None:
             raise RobotConfigError("OUTBOUND_TASK_NOT_FOUND", "Outbound task not found")
@@ -185,6 +188,8 @@ class OutboundTasksUseCase:
         return task_view(task)
 
     def resume(self, task_id, expected_state_version):
+        if not self.sip_enabled:
+            raise RobotConfigError("SIP_NOT_CONFIGURED", "SIP is not configured")
         now = self.clock()
         task = self.uow.tasks.transition_status(
             task_id, TaskStatus.RUNNING.value, expected_state_version, now

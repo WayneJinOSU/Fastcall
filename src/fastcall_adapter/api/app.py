@@ -56,9 +56,12 @@ def create_app(
     app.state.dispatcher = dispatcher
     app.state.uow_factory = uow_factory or partial(_default_uow_factory, app)
     register_error_handlers(app)
-    for router in (
+    routers = [
         health.router, dispatch.router, sessions.router,
-        media.router, mock_calls.router, review.router, hangup.router,
-    ):
+        media.router, review.router, hangup.router,
+    ]
+    if settings.mock_calls_enabled:
+        routers.append(mock_calls.router)
+    for router in routers:
         app.include_router(router)
     return app

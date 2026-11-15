@@ -26,16 +26,22 @@ class FreeSwitchESLTests(unittest.TestCase):
         self.assertIn("loopback/12025550101 &park()", commands.calls[0])
         self.assertNotIn("sofia/gateway", commands.calls[0])
 
-    def test_media_path_is_built_before_query(self):
+    def test_media_uses_bearer_header_without_url_token(self):
         gateway = FreeSwitchESL(
             "localhost", 8021, "secret", "carrier",
-            "ws://adapter/internal/media?token=secret", dial_mode="loopback",
+            "ws://adapter/internal/media?token=legacy-secret", dial_mode="loopback",
+            media_token="media-secret",
         )
         commands = FakeCommands()
         gateway.commands = commands
         asyncio.run(gateway.start_media("channel-1", "call-1", 1))
-        self.assertIn("/internal/media/call-1?token=secret", commands.calls[0])
-        self.assertNotIn("?token=secret/call-1", commands.calls[0])
+        self.assertEqual(len(commands.calls), 2)
+        self.assertIn(
+            'STREAM_EXTRA_HEADERS {"Authorization":"Bearer media-secret"}',
+            commands.calls[0],
+        )
+        self.assertIn("/internal/media/call-1 ", commands.calls[1])
+        self.assertNotIn("token=", commands.calls[1])
 
     def test_api_response_body_is_normalized(self):
         connection = ESLConnection("localhost", 8021, "secret")
@@ -138,6 +144,37 @@ class FreeSwitchESLTests(unittest.TestCase):
             events.close.assert_awaited_once()
 
         asyncio.run(scenario())
+
+    def test_sip_and_mock_capability_health(self):
+        from pathlib import Path
+
+        fixture = (
+            Path(__file__).parent / "fixtures/sofia_gateway_status.txt"
+        ).read_text()
+        gateway = FreeSwitchESL(
+            "localhost", 8021, "secret", "carrier", "ws://adapter/media"
+        )
+        commands = FakeCommands()
+        commands.state = "REGED"
+
+        async def command(value):
+            commands.calls.append(value)
+            if value == "api status":
+                return {"_body": "up"}
+            if value.startswith("api module_exists"):
+                return {"Reply-Text": "true"}
+            return {"Reply-Text": fixture.replace("NOREG", commands.state)}
+
+        commands.command = command
+        gateway.commands = commands
+        asyncio.run(gateway.health_check("sip"))
+        asyncio.run(gateway.health_check("mock"))
+        self.assertIn("api sofia status gateway carrier", commands.calls)
+        self.assertIn("api module_exists mod_loopback", commands.calls)
+        for state in ("NOREG", "FAIL"):
+            commands.state = state
+            with self.assertRaises(ESLError):
+                asyncio.run(gateway.health_check("sip"))
 
     def test_default_mode_keeps_sip_gateway_behavior(self):
         gateway = FreeSwitchESL("localhost", 8021, "secret", "carrier", "ws://adapter/media")

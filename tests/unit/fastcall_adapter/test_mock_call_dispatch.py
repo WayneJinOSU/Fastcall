@@ -30,15 +30,18 @@ class MockCallESLTests(unittest.TestCase):
     def test_answer_and_mock_media_use_browser_leg(self):
         gateway = FreeSwitchESL(
             "localhost", 8021, "secret", "carrier",
-            "ws://adapter/internal/media?token=secret", mock_target="mock-call",
+            "ws://adapter/internal/media?token=legacy-secret", mock_target="mock-call",
+            media_token="media-secret",
         )
         commands = FakeCommands()
         gateway.commands = commands
         asyncio.run(gateway.answer_channel("browser-uuid"))
         asyncio.run(gateway.start_mock_media("browser-uuid", "call-1"))
         self.assertIn("api uuid_answer browser-uuid", commands.calls[0])
-        self.assertIn("browser-uuid start", commands.calls[1])
-        self.assertIn("/call-1/browser?token=secret", commands.calls[1])
+        self.assertIn("STREAM_EXTRA_HEADERS", commands.calls[1])
+        self.assertIn("browser-uuid start", commands.calls[2])
+        self.assertIn("/call-1/browser ", commands.calls[2])
+        self.assertNotIn("token=", commands.calls[2])
 
 
 if __name__ == "__main__":

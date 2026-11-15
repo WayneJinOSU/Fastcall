@@ -91,19 +91,44 @@ class ESLConnection:
 class FreeSwitchESL:
     def __init__(
         self, host, port, password, gateway, media_ws_url, dial_mode="gateway",
-        mock_target="mock-call",
+        mock_target="mock-call", media_token="", sip_register=True,
     ):
         self.commands = ESLConnection(host, port, password)
         self.gateway = gateway
         self.media_ws_url = media_ws_url
         self.dial_mode = dial_mode
         self.mock_target = mock_target
+        self.media_token = media_token
+        self.sip_register = sip_register
 
-    async def health_check(self):
+    async def health_check(self, capability=None):
         response = await self.commands.command("api status")
         if "_body" not in response:
             raise ESLError("FreeSWITCH status response was empty")
+        await self._require_module("mod_audio_stream")
+        if capability == "sip":
+            await self._sip_health()
+        elif capability == "mock":
+            await self._require_module("mod_loopback")
+        elif capability is not None:
+            raise ValueError(f"Unknown FreeSWITCH capability: {capability}")
         return True
+
+    async def _require_module(self, module):
+        response = await self.commands.command(f"api module_exists {module}")
+        if response.get("Reply-Text", "").strip().lower() != "true":
+            raise ESLError(f"FreeSWITCH module is unavailable: {module}")
+
+    async def _sip_health(self):
+        await self._require_module("mod_sofia")
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", self.gateway):
+            raise ESLError("FreeSWITCH SIP gateway name is invalid")
+        response = await self.commands.command(f"api sofia status gateway {self.gateway}")
+        reply = response.get("Reply-Text", "")
+        if "Proxy" not in reply:
+            raise ESLError("FreeSWITCH SIP gateway is unavailable")
+        if self.sip_register and not re.search(r"(?im)^\s*State(?:\s*:|\s)\s*REGED\s*$", reply):
+            raise ESLError("FreeSWITCH SIP gateway is not registered")
 
     async def originate(self, call_id, origination_uuid, callee, task_id, contact_id):
         return await self._originate(call_id, origination_uuid, callee, task_id, contact_id)
@@ -149,6 +174,16 @@ class FreeSwitchESL:
         await self._start_audio_stream(channel_uuid, call_id, "mock_browser")
 
     async def _start_audio_stream(self, channel_uuid, call_id, direction, generation=None):
+        if not self.media_token or any(char.isspace() for char in self.media_token):
+            raise ESLError("A valid FreeSWITCH media token is required")
+        headers = json.dumps(
+            {"Authorization": f"Bearer {self.media_token}"}, separators=(",", ":")
+        )
+        header_response = await self.commands.command(
+            f"api uuid_setvar {channel_uuid} STREAM_EXTRA_HEADERS {headers}"
+        )
+        if not header_response.get("Reply-Text", "").startswith("+OK"):
+            raise ESLError("Unable to set FreeSWITCH media authentication")
         metadata = json.dumps({
             "call_id": call_id,
             "claim_generation": generation,
@@ -158,7 +193,7 @@ class FreeSwitchESL:
         suffix = f"/{call_id}/browser" if direction == "mock_browser" else f"/{call_id}"
         url = urlunsplit((
             parsed.scheme, parsed.netloc, f"{parsed.path.rstrip('/')}{suffix}",
-            parsed.query, "",
+            "", "",
         ))
         response = await self.commands.command(
             f"api uuid_audio_stream {channel_uuid} start {url} mono 8k {metadata}"

@@ -31,6 +31,18 @@ class MockCallApiTests(unittest.TestCase):
         claimed = app.state.mock_call_tickets.claim("task-1", ticket.ticket, "tester")
         self.assertEqual(claimed.task_id, "task-1")
 
+    def test_disabled_capability_closes_browser_websocket(self):
+        from starlette.websockets import WebSocketDisconnect
+
+        app = FastAPI()
+        app.state.settings = SimpleNamespace(mock_calls_enabled=False)
+        app.include_router(router)
+        client = TestClient(app)
+        with self.assertRaises(WebSocketDisconnect) as error:
+            with client.websocket_connect("/console/api/v1/mock-calls/task-1/ws"):
+                pass
+        self.assertEqual(error.exception.code, 1008)
+
 
 if __name__ == "__main__":
     unittest.main()

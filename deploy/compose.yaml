@@ -1,0 +1,265 @@
+x-host-access: &host-access
+  extra_hosts:
+    - host.docker.internal:host-gateway
+
+x-fastcall-environment: &fastcall-environment
+  APP_ENV: ${APP_ENV}
+  FASTCALL_DATABASE_URL: ${FASTCALL_DATABASE_URL}
+  FASTCALL_MANAGEMENT_TOKEN: ${FASTCALL_MANAGEMENT_TOKEN}
+  FASTCALL_RESOLVE_TOKEN: ${FASTCALL_RESOLVE_TOKEN}
+  FASTCALL_OPENAPI_TOKEN: ${FASTCALL_OPENAPI_TOKEN}
+  FASTCALL_ADMIN_TOKEN: ${FASTCALL_ADMIN_TOKEN}
+  FASTCALL_ADAPTER_TOKEN: ${FASTCALL_ADAPTER_TOKEN}
+  FASTCALL_AGENT_TOKEN: ${FASTCALL_AGENT_TOKEN}
+  FASTCALL_MEDIA_TOKEN: ${FASTCALL_MEDIA_TOKEN}
+  FASTCALL_CONSOLE_ADMIN_ACTOR_ID: ${FASTCALL_CONSOLE_ADMIN_ACTOR_ID}
+  FASTCALL_CONSOLE_ADMIN_PASSWORD_HASH: ${FASTCALL_CONSOLE_ADMIN_PASSWORD_HASH}
+  FASTCALL_CONSOLE_SESSION_SECRET: ${FASTCALL_CONSOLE_SESSION_SECRET}
+  FASTCALL_ENCRYPTION_KEYS_JSON: ${FASTCALL_ENCRYPTION_KEYS_JSON}
+  FASTCALL_ENCRYPTION_ACTIVE_VERSION: v1
+  FASTCALL_HMAC_KEYS_JSON: ${FASTCALL_HMAC_KEYS_JSON}
+  FASTCALL_HMAC_ACTIVE_VERSION: v1
+  FASTCALL_SIP_ENABLED: ${FASTCALL_SIP_ENABLED}
+  FASTCALL_MOCK_CALLS_ENABLED: ${FASTCALL_MOCK_CALLS_ENABLED}
+
+services:
+  fastcall-migrate:
+    image: ${FASTCALL_IMAGE}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile-fastcall
+    command: ["alembic", "-c", "deploy/fastcall-alembic.ini", "upgrade", "head"]
+    environment:
+      FASTCALL_DATABASE_URL: ${FASTCALL_DATABASE_URL}
+    <<: *host-access
+    networks: [fastcall-net]
+    restart: "no"
+
+  agent-init:
+    image: ${FASTCALL_IMAGE}
+    command: ["python", "/app/deploy/mysql/init_agent.py"]
+    environment:
+      AGENT_DATABASE_URL: ${AGENT_DATABASE_URL}
+      AGENT_INIT_SCHEMA: ${AGENT_INIT_SCHEMA:-true}
+    <<: *host-access
+    networks: [fastcall-net]
+    restart: "no"
+
+  freeswitch:
+    image: ${FREESWITCH_IMAGE}
+    build:
+      context: ..
+      dockerfile: deploy/freeswitch/Dockerfile
+      args:
+        DEBIAN_MIRROR: ${FASTCALL_DEBIAN_MIRROR:-http://deb.debian.org/debian}
+        DEBIAN_SECURITY_MIRROR: ${FASTCALL_DEBIAN_SECURITY_MIRROR:-http://deb.debian.org/debian-security}
+    environment:
+      FASTCALL_SIP_ENABLED: ${FASTCALL_SIP_ENABLED}
+      FASTCALL_MOCK_CALLS_ENABLED: ${FASTCALL_MOCK_CALLS_ENABLED}
+      FREESWITCH_ESL_PASSWORD: ${FREESWITCH_ESL_PASSWORD}
+      FREESWITCH_ESL_ALLOWED_CIDR: 172.29.0.10/32
+      FREESWITCH_EXTERNAL_IP: ${FREESWITCH_EXTERNAL_IP:-}
+      FREESWITCH_SIP_GATEWAY: ${FREESWITCH_SIP_GATEWAY:-}
+      FREESWITCH_SIP_HOST: ${FREESWITCH_SIP_HOST:-}
+      FREESWITCH_SIP_PORT: ${FREESWITCH_SIP_PORT:-5060}
+      FREESWITCH_SIP_REGISTER: ${FREESWITCH_SIP_REGISTER:-true}
+      FREESWITCH_SIP_USERNAME: ${FREESWITCH_SIP_USERNAME:-}
+      FREESWITCH_SIP_PASSWORD: ${FREESWITCH_SIP_PASSWORD:-}
+      FREESWITCH_SIP_FROM_USER: ${FREESWITCH_SIP_FROM_USER:-}
+      FREESWITCH_SIP_CALLER_ID_IN_FROM: ${FREESWITCH_SIP_CALLER_ID_IN_FROM:-false}
+      FREESWITCH_SIP_TRANSPORT: ${FREESWITCH_SIP_TRANSPORT:-udp}
+      FREESWITCH_RTP_START_PORT: ${FREESWITCH_RTP_START_PORT:-16384}
+      FREESWITCH_RTP_END_PORT: ${FREESWITCH_RTP_END_PORT:-16483}
+    ports:
+      - "${FREESWITCH_LOCAL_SIP_PORT:-5080}:5080/tcp"
+      - "${FREESWITCH_LOCAL_SIP_PORT:-5080}:5080/udp"
+      - "${FREESWITCH_RTP_START_PORT:-16384}-${FREESWITCH_RTP_END_PORT:-16483}:${FREESWITCH_RTP_START_PORT:-16384}-${FREESWITCH_RTP_END_PORT:-16483}/udp"
+    volumes:
+      - freeswitch-logs:/usr/local/freeswitch/log
+      - freeswitch-db:/usr/local/freeswitch/db
+    <<: *host-access
+    networks: [fastcall-net]
+    restart: unless-stopped
+
+  agent:
+    profiles: [internal-agent]
+    image: ${COLLECTION_AGENT_IMAGE}
+    depends_on:
+      agent-init:
+        condition: service_completed_successfully
+    environment:
+      APP_ENV: ${APP_ENV}
+      MODE: ${MODE:-prod}
+      DATABASE_URL: ${AGENT_DATABASE_URL}
+      FASTCALL_AGENT_TOKEN: ${FASTCALL_AGENT_TOKEN}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+      CARTESIA_API_KEY: ${CARTESIA_API_KEY:-}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      ELEVENLABS_VOICE_ID: ${ELEVENLABS_VOICE_ID:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      AZURE_LLM_ENDPOINT: ${AZURE_LLM_ENDPOINT:-}
+      AZURE_LLM_API_KEY: ${AZURE_LLM_API_KEY:-}
+      AZURE_LLM_DEPLOYMENT: ${AZURE_LLM_DEPLOYMENT:-}
+      AZURE_LLM_API_VERSION: ${AZURE_LLM_API_VERSION:-2025-04-01-preview}
+      AZURE_REALTIME_ENDPOINT: ${AZURE_REALTIME_ENDPOINT:-}
+      AZURE_REALTIME_MODEL: ${AZURE_REALTIME_MODEL:-}
+      AZURE_REALTIME_TRANSCRIPTION_MODEL: ${AZURE_REALTIME_TRANSCRIPTION_MODEL:-}
+      AZURE_REALTIME_API_KEY: ${AZURE_REALTIME_API_KEY:-}
+      VOSK_MODEL_PATH: ${VOSK_MODEL_PATH:-/mnt/data/vosk-model-small-es-0.42}
+    volumes:
+      - agent-models:/mnt/data
+    <<: *host-access
+    networks: [fastcall-net]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/state/up', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  adapter:
+    image: ${FASTCALL_ADAPTER_IMAGE}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile-fastcall-adapter
+    depends_on:
+      fastcall-migrate:
+        condition: service_completed_successfully
+      agent-init:
+        condition: service_completed_successfully
+      freeswitch:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV}
+      FASTCALL_DATABASE_URL: ${FASTCALL_DATABASE_URL}
+      FASTCALL_ADMIN_TOKEN: ${FASTCALL_ADMIN_TOKEN}
+      FASTCALL_ADAPTER_TOKEN: ${FASTCALL_ADAPTER_TOKEN}
+      FASTCALL_AGENT_TOKEN: ${FASTCALL_AGENT_TOKEN}
+      FASTCALL_MEDIA_TOKEN: ${FASTCALL_MEDIA_TOKEN}
+      FASTCALL_ENCRYPTION_KEYS_JSON: ${FASTCALL_ENCRYPTION_KEYS_JSON}
+      FASTCALL_ENCRYPTION_ACTIVE_VERSION: v1
+      FASTCALL_HMAC_KEYS_JSON: ${FASTCALL_HMAC_KEYS_JSON}
+      FASTCALL_HMAC_ACTIVE_VERSION: v1
+      COLLECTION_AGENT_WS_URL: ${COLLECTION_AGENT_WS_URL}
+      COLLECTION_AGENT_HTTP_URL: ${COLLECTION_AGENT_HTTP_URL}
+      FREESWITCH_HOST: freeswitch
+      FREESWITCH_ESL_PORT: 8021
+      FREESWITCH_ESL_PASSWORD: ${FREESWITCH_ESL_PASSWORD}
+      FREESWITCH_SIP_GATEWAY: ${FREESWITCH_SIP_GATEWAY:-}
+      FREESWITCH_SIP_REGISTER: ${FREESWITCH_SIP_REGISTER:-true}
+      FREESWITCH_DIAL_MODE: gateway
+      FASTCALL_MOCK_LOOPBACK_TARGET: mock-call
+      FASTCALL_MEDIA_WS_URL: ws://adapter:8767/internal/media
+      FASTCALL_SIP_ENABLED: ${FASTCALL_SIP_ENABLED}
+      FASTCALL_MOCK_CALLS_ENABLED: ${FASTCALL_MOCK_CALLS_ENABLED}
+      FASTCALL_GLOBAL_MAX_CONCURRENT: ${FASTCALL_GLOBAL_MAX_CONCURRENT:-50}
+      FASTCALL_GLOBAL_CALLS_PER_MINUTE: ${FASTCALL_GLOBAL_CALLS_PER_MINUTE:-60}
+    <<: *host-access
+    networks:
+      fastcall-net:
+        ipv4_address: 172.29.0.10
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8767/ready', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 12
+      start_period: 10s
+
+  fastcall-api:
+    image: ${FASTCALL_IMAGE}
+    depends_on:
+      fastcall-migrate:
+        condition: service_completed_successfully
+      agent-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *fastcall-environment
+      COLLECTION_AGENT_WS_URL: ${COLLECTION_AGENT_WS_URL}
+      COLLECTION_AGENT_HTTP_URL: ${COLLECTION_AGENT_HTTP_URL}
+      FASTCALL_ADAPTER_INTERNAL_URL: http://adapter:8767
+      FASTCALL_MOCK_CALLBACK_URL: https://fastcall.internal/internal/mock-webhook
+      FASTCALL_MOCK_CALLBACK_SECRET_REF: mock
+      FASTCALL_WEBHOOK_SECRETS_JSON: ${FASTCALL_WEBHOOK_SECRETS_JSON}
+    <<: *host-access
+    networks: [fastcall-net]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8766/state/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  fastcall-scheduler:
+    image: ${FASTCALL_IMAGE}
+    command: ["python", "-m", "fastcall.scheduler_main"]
+    depends_on:
+      fastcall-migrate:
+        condition: service_completed_successfully
+      adapter:
+        condition: service_healthy
+    environment:
+      <<: *fastcall-environment
+      FASTCALL_ADAPTER_INTERNAL_URL: http://adapter:8767
+      FASTCALL_GLOBAL_MAX_CONCURRENT: ${FASTCALL_GLOBAL_MAX_CONCURRENT:-50}
+      FASTCALL_GLOBAL_CALLS_PER_MINUTE: ${FASTCALL_GLOBAL_CALLS_PER_MINUTE:-60}
+    <<: *host-access
+    networks: [fastcall-net]
+    restart: unless-stopped
+
+  fastcall-webhook:
+    image: ${FASTCALL_IMAGE}
+    command: ["python", "-m", "fastcall.webhook_main"]
+    depends_on:
+      fastcall-migrate:
+        condition: service_completed_successfully
+      fastcall-api:
+        condition: service_healthy
+    environment:
+      <<: *fastcall-environment
+      FASTCALL_CALLBACK_ALLOWED_HOSTNAMES: fastcall.internal
+      FASTCALL_WEBHOOK_SECRETS_JSON: ${FASTCALL_WEBHOOK_SECRETS_JSON}
+      SSL_CERT_FILE: /run/fastcall-ca/ca.crt
+    volumes:
+      - ./runtime/tls/ca.crt:/run/fastcall-ca/ca.crt:ro
+    <<: *host-access
+    networks: [fastcall-net]
+    restart: unless-stopped
+
+  proxy:
+    image: caddy:2.10.2-alpine
+    depends_on:
+      fastcall-api:
+        condition: service_healthy
+    environment:
+      FASTCALL_DOMAIN: fastcall.internal
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./runtime/tls/server.crt:/etc/caddy/tls/server.crt:ro
+      - ./runtime/tls/server.key:/etc/caddy/tls/server.key:ro
+      - caddy-data:/data
+    ports:
+      - "${FASTCALL_HTTPS_PORT:-8443}:443"
+      - "127.0.0.1:${FASTCALL_HTTP_PORT:-8080}:8080"
+    networks:
+      fastcall-net:
+        aliases: [fastcall.internal]
+    restart: unless-stopped
+
+volumes:
+  agent-models:
+  freeswitch-logs:
+  freeswitch-db:
+  caddy-data:
+
+networks:
+  fastcall-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24
