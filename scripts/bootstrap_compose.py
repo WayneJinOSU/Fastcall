@@ -133,6 +133,7 @@ def main():
         "FREESWITCH_SIP_GATEWAY": source.get("FREESWITCH_SIP_GATEWAY", ""),
         "FREESWITCH_EXTERNAL_IP": source.get("FREESWITCH_EXTERNAL_IP", ""),
         "FASTCALL_HTTPS_PORT": source.get("FASTCALL_HTTPS_PORT", "8443"),
+        "FASTCALL_HTTP_PORT": source.get("FASTCALL_HTTP_PORT", "8080"),
         "FASTCALL_DEBIAN_MIRROR": source.get("FASTCALL_DEBIAN_MIRROR", "http://deb.debian.org/debian"),
         "FASTCALL_DEBIAN_SECURITY_MIRROR": source.get(
             "FASTCALL_DEBIAN_SECURITY_MIRROR", "http://deb.debian.org/debian-security"
@@ -211,7 +212,9 @@ def main():
         print(f"Generated Console password for {result['FASTCALL_CONSOLE_ADMIN_ACTOR_ID']}: {generated_password}", flush=True)
     subprocess.run(command, cwd=ROOT, check=True)
 
-    print(f"Console: https://localhost:{result['FASTCALL_HTTPS_PORT']}/console/")
+    print(f"Console (local): http://localhost:{result['FASTCALL_HTTP_PORT']}/console/")
+    print(f"Console (HTTPS): https://fastcall.internal:{result['FASTCALL_HTTPS_PORT']}/console/")
+    print("For HTTPS, map fastcall.internal to 127.0.0.1 in your hosts file.")
     print("The local TLS CA is deploy/runtime/tls/ca.crt; install it only if you want to trust the local Console certificate.")
 
 
