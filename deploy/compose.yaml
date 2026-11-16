@@ -61,7 +61,11 @@ services:
 
   agent:
     profiles: [internal-agent]
+    platform: linux/amd64
     image: ${COLLECTION_AGENT_IMAGE}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile-collection-agent
     environment:
       APP_ENV: ${APP_ENV}
       MODE: ${MODE:-prod}

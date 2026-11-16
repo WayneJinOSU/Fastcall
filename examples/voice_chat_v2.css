@@ -781,10 +781,6 @@ textarea {
     line-height: 1.55;
 }
 
-#apiKey {
-    min-height: 65px !important;
-}
-
 .log-dock {
     border-top: 1px solid var(--line);
     background: #05090b;

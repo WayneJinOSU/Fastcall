@@ -66,10 +66,10 @@ Collection Agent 不只是把 STT、LLM、TTS 三个 API 串起来。它基于 P
 
 - Docker 与 Docker Compose。
 - 两个不同的 **MySQL 8** 数据库：`fastcall` 和 `collection_agents`。
-- Collection Agent 的已有稳定镜像，或宿主机上运行的外部 Agent。
+- Collection Agent 默认随 Compose 自动构建；也可以使用宿主机上运行的外部 Agent。
 - 实际使用的 STT、LLM、TTS Provider 凭据。
 
-Compose 不启动 MySQL，也不允许 Agent 使用 SQLite。
+Compose 不启动 MySQL，也不允许 Agent 使用 SQLite。内部 Agent 固定构建为 `linux/amd64`，以复用现有 RNNoise 的 x86_64 依赖；Apple Silicon 等 ARM Docker 主机需要通过 Docker emulation 运行，外部 Agent 不受此限制。
 
 ### 2. 全新数据库导入 SQL
 
@@ -91,7 +91,7 @@ cp deploy/compose.env.example deploy/.env.compose
 编辑 `deploy/.env.compose`：
 
 - 分别设置 `FASTCALL_DATABASE_URL` 和 `AGENT_DATABASE_URL`，不能使用同一个数据库。
-- 设置 `COLLECTION_AGENT_IMAGE` 为已有稳定 Agent 镜像；或者设置 `FASTCALL_AGENT_EXTERNAL=true`，使用宿主机 Agent。
+- 默认内部 Agent 会随启动器自动构建，`COLLECTION_AGENT_IMAGE` 只需作为镜像标签；或者设置 `FASTCALL_AGENT_EXTERNAL=true`，使用宿主机 Agent。
 - 配置实际 Provider 密钥。
 - 外部 Agent 必须与 Compose 使用相同的 `FASTCALL_AGENT_TOKEN`。
 - 初始保持 `FASTCALL_SIP_ENABLED=false`、`FASTCALL_MOCK_CALLS_ENABLED=true`。
@@ -163,7 +163,7 @@ OPENAI_API_KEY=<openai-key>
 | `FASTCALL_IMAGE` | `fastcall:dev` | API、Scheduler 和 Webhook 共用镜像 |
 | `FASTCALL_ADAPTER_IMAGE` | `fastcall-adapter:dev` | FreeSWITCH Adapter 镜像 |
 | `FREESWITCH_IMAGE` | `fastcall-freeswitch:dev` | 同时承载 SIP 与 Mock 的统一镜像 |
-| `COLLECTION_AGENT_IMAGE` | `collection-agent:stable` | 内部 Agent 使用的既有稳定镜像 |
+| `COLLECTION_AGENT_IMAGE` | `collection-agent:stable` | 内部 Agent 使用的由 Compose 构建的镜像 |
 | `FASTCALL_AGENT_EXTERNAL` | `false` | 设为 `true` 时使用宿主机 `8765` 端口的 Agent，不启动 Compose 内部 Agent |
 | `COLLECTION_AGENT_WS_URL` / `COLLECTION_AGENT_HTTP_URL` | 启动器派生 | Adapter 与 API 使用的 Agent 地址；根据是否使用外部 Agent 自动生成，通常无需填写 |
 | `FASTCALL_SIP_ENABLED` | `false` | 是否启用正式 Sofia gateway 与 SIP 拨号 |
@@ -250,7 +250,7 @@ Mock 通过不等于 PSTN 可用；正式任务前应使用真实测试号码完
 - 当前目标是单副本、可控并发的小规模部署，不包含多租户、预测式外呼、多 Adapter ownership 或多活高可用。
 - Console 已覆盖任务查看与控制、Call/Agent 分析和 Mock；任务创建及名单导入目前主要通过 Open API。
 - 仅支持全新数据库或已处于当前结构的数据库，不提供历史自动迁移。
-- Collection Agent 使用既有稳定镜像或外部实例；Provider 的实际可用性仍需在目标环境验证。
+- Collection Agent 使用由 Compose 构建的镜像或外部实例；Provider 的实际可用性仍需在目标环境验证。
 
 ## 许可证
 
