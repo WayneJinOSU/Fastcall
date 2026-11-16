@@ -62,18 +62,7 @@ class FakeDialect:
     name = "mysql"
 
 
-class FakeResult:
-    def __init__(self, value):
-        self.value = value
-
-    def scalar(self):
-        return self.value
-
-
 class FakeConnection:
-    def __init__(self, revision="0005"):
-        self.revision = revision
-
     def __enter__(self):
         return self
 
@@ -81,17 +70,14 @@ class FakeConnection:
         return None
 
     def execute(self, statement):
-        return FakeResult(self.revision)
+        return None
 
 
 class FakeEngine:
     dialect = FakeDialect()
 
-    def __init__(self, revision="0005"):
-        self.revision = revision
-
     def connect(self):
-        return FakeConnection(self.revision)
+        return FakeConnection()
 
 
 class SchemaStartupTests(unittest.TestCase):
@@ -102,17 +88,18 @@ class SchemaStartupTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "schema is missing"):
                 database.verify()
 
-    def test_wrong_alembic_revision_is_rejected(self):
-        database = Database(FakeEngine(revision="old"), None)
+    def test_missing_required_columns_are_rejected(self):
+        database = Database(FakeEngine(), None)
         tables = [
             "robot_app", "robot_app_version", "robot_release",
             "robot_config_audit_log", "outbound_task", "task_contact",
             "outbound_call", "call_event", "call_blacklist", "webhook_delivery",
-            "scheduler_state", "outbound_call_analysis", "robot_config_alembic_version",
+            "scheduler_state", "outbound_call_analysis",
         ]
         with patch("fastcall.infrastructure.database.inspect") as inspector:
             inspector.return_value.get_table_names.return_value = tables
-            with self.assertRaisesRegex(RuntimeError, "revision"):
+            inspector.return_value.get_columns.return_value = []
+            with self.assertRaisesRegex(RuntimeError, "missing columns"):
                 database.verify()
 
     def test_complete_mysql_schema_is_accepted(self):
@@ -121,10 +108,17 @@ class SchemaStartupTests(unittest.TestCase):
             "robot_app", "robot_app_version", "robot_release",
             "robot_config_audit_log", "outbound_task", "task_contact",
             "outbound_call", "call_event", "call_blacklist", "webhook_delivery",
-            "scheduler_state", "outbound_call_analysis", "robot_config_alembic_version",
+            "scheduler_state", "outbound_call_analysis",
         ]
+        columns = {
+            "origin", "mock_browser_uuid", "claim_generation", "dial_phase",
+            "business_result",
+        }
         with patch("fastcall.infrastructure.database.inspect") as inspector:
             inspector.return_value.get_table_names.return_value = tables
+            inspector.return_value.get_columns.side_effect = lambda table: [
+                {"name": name} for name in columns
+            ]
             database.verify()
 
 

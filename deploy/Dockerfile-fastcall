@@ -15,8 +15,6 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r requirements-fastcall.txt
 COPY src/fastcall ./src/fastcall
 COPY src/fastcall_core ./src/fastcall_core
-COPY deploy/fastcall-alembic.ini ./deploy/fastcall-alembic.ini
-COPY deploy/mysql/ ./deploy/mysql/
 COPY --from=console-builder /build/console/dist/ ./src/fastcall/console/dist/
 
 EXPOSE 8766

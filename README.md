@@ -12,7 +12,16 @@ cp deploy/compose.env.example deploy/.env.compose
 ./scripts/bootstrap_compose.sh
 ```
 
-启动器生成缺失的凭据和内部 TLS 文件，执行 Fast-Call Alembic，并检查 Agent 当前 MySQL schema；只有明确允许的空库才执行初始化。本机 Console 可访问 `http://localhost:8080/console/`；`8443` 的内部 HTTPS 使用本地 CA。真实 SIP 需另行配置 gateway、external IP 和线路验收。
+启动器只生成缺失的凭据和内部 TLS 文件，不执行数据库迁移。Fast-Call 与 Agent 都使用各自目录中的当前 SQL 快照；全新空库在启动前导入：
+
+```bash
+mysql -h 127.0.0.1 -u fastcall -p fastcall < deploy/mysql/fastcall_current_schema.sql
+mysql -h 127.0.0.1 -u agent -p collection_agents < deploy/mysql/agent_current_schema.sql
+```
+
+只支持全新安装或已经处于当前结构的数据库；旧库需在项目外备份并自行完成结构升级，仓库不保留历史增量 SQL。
+
+本机 Console 可访问 `http://localhost:8080/console/`；`8443` 的内部 HTTPS 使用本地 CA。真实 SIP 需另行配置 gateway、external IP 和线路验收。
 
 ## 唯一维护的文档
 

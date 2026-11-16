@@ -17,8 +17,11 @@ REQUIRED_TABLES = {
     "scheduler_state",
     "outbound_call_analysis",
 }
-ALEMBIC_TABLE = "robot_config_alembic_version"
-EXPECTED_REVISION = "0005"
+REQUIRED_COLUMNS = {
+    "outbound_task": {"origin"},
+    "outbound_call": {"mock_browser_uuid", "claim_generation", "dial_phase"},
+    "outbound_call_analysis": {"business_result"},
+}
 
 
 class Database(CoreDatabase):
@@ -27,14 +30,15 @@ class Database(CoreDatabase):
             raise RuntimeError("Fast-Call only supports MySQL")
         with self.engine.connect() as connection:
             connection.execute(text("SELECT 1"))
-            table_names = set(inspect(connection).get_table_names())
-            missing = (REQUIRED_TABLES | {ALEMBIC_TABLE}) - table_names
+            inspector = inspect(connection)
+            missing = REQUIRED_TABLES - set(inspector.get_table_names())
             if missing:
                 raise RuntimeError(f"Fast-Call schema is missing: {sorted(missing)}")
-            revision = connection.execute(
-                text(f"SELECT version_num FROM {ALEMBIC_TABLE}")
-            ).scalar()
-            if revision != EXPECTED_REVISION:
-                raise RuntimeError(
-                    f"Fast-Call schema revision must be {EXPECTED_REVISION}"
-                )
+            for table, required in REQUIRED_COLUMNS.items():
+                missing_columns = required - {
+                    column["name"] for column in inspector.get_columns(table)
+                }
+                if missing_columns:
+                    raise RuntimeError(
+                        f"Fast-Call schema is missing columns in {table}: {sorted(missing_columns)}"
+                    )

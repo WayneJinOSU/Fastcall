@@ -1,5 +1,5 @@
 import { AgentFacets } from '../../api/types';
-import DateTimeRangePicker, { AppliedDateRange } from './DateTimeRangePicker';
+import DateTimeRangePicker from './DateTimeRangePicker';
 
 interface Props {
   range: string;

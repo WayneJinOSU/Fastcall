@@ -23,28 +23,6 @@ x-fastcall-environment: &fastcall-environment
   FASTCALL_MOCK_CALLS_ENABLED: ${FASTCALL_MOCK_CALLS_ENABLED}
 
 services:
-  fastcall-migrate:
-    image: ${FASTCALL_IMAGE}
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile-fastcall
-    command: ["alembic", "-c", "deploy/fastcall-alembic.ini", "upgrade", "head"]
-    environment:
-      FASTCALL_DATABASE_URL: ${FASTCALL_DATABASE_URL}
-    <<: *host-access
-    networks: [fastcall-net]
-    restart: "no"
-
-  agent-init:
-    image: ${FASTCALL_IMAGE}
-    command: ["python", "/app/deploy/mysql/init_agent.py"]
-    environment:
-      AGENT_DATABASE_URL: ${AGENT_DATABASE_URL}
-      AGENT_INIT_SCHEMA: ${AGENT_INIT_SCHEMA:-true}
-    <<: *host-access
-    networks: [fastcall-net]
-    restart: "no"
-
   freeswitch:
     image: ${FREESWITCH_IMAGE}
     build:
@@ -84,9 +62,6 @@ services:
   agent:
     profiles: [internal-agent]
     image: ${COLLECTION_AGENT_IMAGE}
-    depends_on:
-      agent-init:
-        condition: service_completed_successfully
     environment:
       APP_ENV: ${APP_ENV}
       MODE: ${MODE:-prod}
@@ -127,10 +102,6 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile-fastcall-adapter
     depends_on:
-      fastcall-migrate:
-        condition: service_completed_successfully
-      agent-init:
-        condition: service_completed_successfully
       freeswitch:
         condition: service_healthy
     environment:
@@ -172,11 +143,9 @@ services:
 
   fastcall-api:
     image: ${FASTCALL_IMAGE}
-    depends_on:
-      fastcall-migrate:
-        condition: service_completed_successfully
-      agent-init:
-        condition: service_completed_successfully
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile-fastcall
     environment:
       <<: *fastcall-environment
       COLLECTION_AGENT_WS_URL: ${COLLECTION_AGENT_WS_URL}
@@ -199,8 +168,6 @@ services:
     image: ${FASTCALL_IMAGE}
     command: ["python", "-m", "fastcall.scheduler_main"]
     depends_on:
-      fastcall-migrate:
-        condition: service_completed_successfully
       adapter:
         condition: service_healthy
     environment:
@@ -216,8 +183,6 @@ services:
     image: ${FASTCALL_IMAGE}
     command: ["python", "-m", "fastcall.webhook_main"]
     depends_on:
-      fastcall-migrate:
-        condition: service_completed_successfully
       fastcall-api:
         condition: service_healthy
     environment:

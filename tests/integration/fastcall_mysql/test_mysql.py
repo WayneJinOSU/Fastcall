@@ -1,11 +1,11 @@
 import os
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import patch
+from urllib.parse import unquote, urlsplit
 
-from alembic import command
-from alembic.config import Config
-from sqlalchemy import create_engine, inspect, select, text
+import pymysql
+from pymysql.constants import CLIENT
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import sessionmaker
 
 from fastcall.application.publication import PublicationUseCase
@@ -41,9 +41,7 @@ class MySQLIntegrationTests(unittest.TestCase):
         self.engine = create_engine(self.database_url)
         self.sessions = sessionmaker(self.engine, expire_on_commit=False)
         self._drop_schema()
-        config = Config("deploy/fastcall-alembic.ini")
-        with patch.dict(os.environ, {"FASTCALL_DATABASE_URL": self.database_url}):
-            command.upgrade(config, "head")
+        self._initialize_schema()
         self.uow = SqlAlchemyUnitOfWork(self.sessions())
         self.validator = ValidateConfigUseCase(load_catalog())
         self.apps = RobotAppsUseCase(self.uow)
@@ -58,6 +56,21 @@ class MySQLIntegrationTests(unittest.TestCase):
             self._drop_schema()
             self.engine.dispose()
 
+    def _initialize_schema(self):
+        from tests.integration.fastcall_mysql.sql_snapshot import execute_sql_file
+
+        parsed = urlsplit(self.database_url)
+        connection = pymysql.connect(
+            host=parsed.hostname, port=parsed.port or 3306,
+            user=unquote(parsed.username or ""), password=unquote(parsed.password or ""),
+            database=parsed.path.lstrip("/"), autocommit=True,
+            client_flag=CLIENT.MULTI_STATEMENTS,
+        )
+        try:
+            execute_sql_file(connection, "deploy/mysql/fastcall_current_schema.sql")
+        finally:
+            connection.close()
+
     def _drop_schema(self):
         with self.engine.begin() as connection:
             for table in ("robot_app_version", "robot_config_audit_log"):
@@ -68,7 +81,7 @@ class MySQLIntegrationTests(unittest.TestCase):
                 "webhook_delivery", "call_blacklist", "call_event",
                 "outbound_call", "task_contact", "outbound_task",
                 "robot_config_audit_log", "robot_release", "robot_app_version",
-                "robot_app", "robot_config_alembic_version",
+                "robot_app",
             ):
                 connection.execute(text(f"DROP TABLE IF EXISTS {table}"))
 
@@ -195,23 +208,6 @@ class MySQLIntegrationTests(unittest.TestCase):
         paused = use_case.pause(task["task_id"], started["state_version"])
         self.assertEqual(paused["status"], "paused")
         self.assertEqual(use_case.resume(task["task_id"], paused["state_version"])["status"], "running")
-
-    def test_outbound_migration_downgrade_and_upgrade(self):
-        self.uow.session.execute(text(
-            "CREATE TABLE call_analysis ("
-            "id BIGINT PRIMARY KEY AUTO_INCREMENT, call_uuid VARCHAR(128), "
-            "analysis_type VARCHAR(64), result_json LONGTEXT)"
-        ))
-        self.uow.commit()
-        config = Config("deploy/fastcall-alembic.ini")
-        with patch.dict(os.environ, {"FASTCALL_DATABASE_URL": self.database_url}):
-            command.downgrade(config, "0002")
-            command.upgrade(config, "head")
-        self.uow.session.rollback()
-        self.assertEqual(self.uow.session.query(RobotAppVersionModel).count(), 0)
-        tables = set(inspect(self.engine).get_table_names())
-        self.assertIn("call_analysis", tables)
-        self.assertIn("outbound_call_analysis", tables)
 
 
 if __name__ == "__main__":

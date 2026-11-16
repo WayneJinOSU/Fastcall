@@ -112,7 +112,7 @@ Agent 自有主要表：
 
 三张表通过 `call_uuid` 关联，但 `call_uuid` 不保证唯一；报表详情使用 `record_id`，统一 Call 页读取该 Call 的全部来源记录。Fast-Call 使用独立的 `outbound_call_analysis.business_result`，不得复用或改写 Agent 旧 `call_analysis` 的结构。
 
-既有 MySQL 需要执行 `deploy/migrations/20261115_call_record_reporting.sql` 增加来源、代际和查询索引；SQLite 启动时显式检查并补充列与索引。历史 NULL 来源在报表中归为未分类，`console-test-%` 归为语音测试，不能给 `call_uuid` 直接增加唯一约束。
+当前 MySQL 结构以 `deploy/mysql/agent_current_schema.sql` 为准；项目不保留历史增量 SQL，旧库需在项目外备份并自行升级到该结构。SQLite 启动时显式检查并补充列与索引。历史 NULL 来源在报表中归为未分类，`console-test-%` 归为语音测试，不能给 `call_uuid` 直接增加唯一约束。
 
 BI 按固定 Asia/Shanghai 自然日聚合，日界线由 `zoneinfo` 转为 UTC `[start,end)`。每日总量使用一次条件聚合；TTFB 每日独立采样最近最多 1000 条记录并计算平均/P50/P80/P95，禁止平均每通或每日分位数。语音信箱占比按非空 `call_uuid` 的逻辑 Call 去重，平均轮次只使用轮次非空记录；无分母时返回 NULL。
 

@@ -2,7 +2,7 @@ import datetime
 from urllib.parse import urlsplit
 
 from fastcall_core.application.call_results import CompleteTaskUseCase
-from fastcall_core.application.dto import isoformat, new_id, utcnow
+from fastcall_core.application.dto import new_id, utcnow
 from fastcall_core.application.outbound_ports import OutboundTaskRecord, TaskContactRecord
 from fastcall_core.application.views import contact_view, task_view
 from fastcall.application.resolve import ResolveUseCase

@@ -33,12 +33,6 @@ class PCMFrameReassembler:
         return frames
 
 
-def _drop_oldest_put(queue, frame):
-    if queue.full():
-        queue.get_nowait()
-    queue.put_nowait(frame)
-
-
 class MediaBridge:
     def __init__(
         self, freeswitch_ws, agent_ws, call_id, on_hangup=None, on_agent_event=None,

@@ -140,7 +140,7 @@ GET  /openapi/v1/calls/{call_id}
 
 控制面启动要求 MySQL PyMySQL URL、七种互不相同的 API/内部 token，以及 Console actor、密码哈希和至少 32 字符 session secret。还必须提供 `FASTCALL_ENCRYPTION_KEYS_JSON`、`FASTCALL_ENCRYPTION_ACTIVE_VERSION`、`FASTCALL_HMAC_KEYS_JSON`、`FASTCALL_HMAC_ACTIVE_VERSION`。仅配置外呼 Open API 凭据不足以启动完整控制面。
 
-Fast-Call 拥有 Alembic 迁移和完整 schema 校验。当前基线为 `0005`，version table 继续使用兼容历史数据库的 `robot_config_alembic_version` 名称。不得在业务测试中使用非独立业务库重建 schema。
+Fast-Call 当前 schema 由 `deploy/mysql/fastcall_current_schema.sql` 提供，包含全部业务表、索引、约束和审计触发器。全新数据库直接导入该文件；启动时检查实际必需表和关键字段，不再依赖 Alembic 或版本表。当前不提供老库自动升级，业务测试仍必须使用独立数据库。
 
 ## 8. 测试与修改指引
 
@@ -249,10 +249,10 @@ Robot 版本和配置审计只追加，不允许 UPDATE/DELETE；数据库 Trigg
 
 ## 12. 命名与兼容约定
 
-- 控制面镜像为 `deploy/Dockerfile-fastcall`，控制面部署为 `deploy/fastcall-api-deploy.yaml`，Alembic 配置为 `deploy/fastcall-alembic.ini`。
+- 控制面镜像为 `deploy/Dockerfile-fastcall`，控制面部署为 `deploy/fastcall-api-deploy.yaml`；当前 schema 快照为 `deploy/mysql/fastcall_current_schema.sql`。
 - `FASTCALL_IMAGE`、`FASTCALL_ADAPTER_IMAGE` 和 `COLLECTION_AGENT_IMAGE` 分别对应三个独立镜像。
 - 配置统一使用 `FASTCALL_*`（通用 `DATABASE_URL` 除外），不再读取旧 `ROBOT_CONFIG_*` 环境变量。
-- `robot_config_alembic_version` 是已部署数据库中的历史版本表名，必须保留，不能仅为命名统一而修改。
+- 不再要求或维护 `robot_config_alembic_version`；既有库若含该历史表，不影响运行，也不再参与启动校验。
 - Kubernetes 使用 `fastcall-api` 和 `fastcall-secret`。上线新名称前需创建对应 Secret，并确认原 `robot-config-service` 的 DNS/调用方已完成迁移；不得只修改 Manifest 名称而忽略外部依赖。
 - Console 仅接受 `fastcall_console_session`，旧 `robot_config_console_session` 不再用于认证。
 
@@ -424,7 +424,7 @@ src/collection_agents/
 └── storage/reports.py              # Agent 自有 call_record 查询与字段白名单
 ```
 
-`fastcall/api/routes.py` 只负责注册新增 BFF 路由；组合根显式装配 Agent HTTP 地址和 client。不得从 WebSocket URL 推导报表地址，不新增服务或跨库查询。Agent 新字段需要 SQLite/MySQL 显式增量迁移，不能依赖 `CREATE TABLE IF NOT EXISTS` 给旧表补列。
+`fastcall/api/routes.py` 只负责注册新增 BFF 路由；组合根显式装配 Agent HTTP 地址和 client。不得从 WebSocket URL 推导报表地址，不新增服务或跨库查询。Agent 新字段需要同步更新当前 MySQL 快照；旧库在项目外备份并自行升级，不能依赖 `CREATE TABLE IF NOT EXISTS` 给旧表补列。
 
 ### 13.8 测试与验收
 
@@ -448,7 +448,7 @@ npm run build
 
 ### 13.9 实施状态与后续顺序
 
-1. 已实现：数据契约与增量迁移，包括来源、claim generation、价格元数据、绝对时间边界和白名单 DTO。
+1. 已实现：数据契约与当前 schema 快照，包括来源、claim generation、价格元数据、绝对时间边界和白名单 DTO。
 2. 已实现：AppShell 路由元数据、任务只读列表/详情和批量聚合 BFF。
 3. 已实现：Agent 只读 API、报表页、统一 Call 页及双侧独立降级。
 4. 已实现：任务启动、暂停、恢复和取消；状态变更同时刷新联系人和 Call 子表。

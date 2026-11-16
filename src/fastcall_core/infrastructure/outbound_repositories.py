@@ -13,8 +13,6 @@ from fastcall_core.application.outbound_ports import (
 from fastcall_core.domain.calls import (
     ACTIVE_CALL_STATUSES,
     CallStatus,
-    DialPhase,
-    SessionState,
 )
 from fastcall_core.domain.errors import RobotConfigError
 from fastcall_core.domain.outbound_tasks import (

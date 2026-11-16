@@ -54,7 +54,6 @@ src/
 │   ├── application/            # 任务、调度、查询、Webhook、Robot 用例
 │   ├── domain/                 # Robot Config 与输入校验规则
 │   ├── infrastructure/         # 控制面 DAO、HTTP clients、UOW、Webhook 安全
-│   ├── migrations/             # Robot Config/Outbound Alembic
 │   ├── main.py                 # FastAPI 应用工厂与组合根
 │   ├── local_main.py           # 本地 API + Scheduler + Webhook Worker
 │   ├── scheduler_main.py
@@ -167,7 +166,7 @@ Mock 使用独立固定 loopback target，不改变正式 gateway。A/B UUID 分
 - core 不读环境变量、不包含 FastAPI/ESL/Scheduler/Webhook 工作流。
 - 新增共享代码必须证明双方真实复用，不为假想需求建立通用框架。
 
-当前 Alembic 基线为 `0005`。Fast-Call 的 `outbound_call_analysis` 与 Agent 旧 `call_analysis` 物理分离，不改旧表结构。
+Fast-Call 当前结构由 `deploy/mysql/fastcall_current_schema.sql` 唯一描述，不再维护 Alembic 基线或版本表。Fast-Call 的 `outbound_call_analysis` 与 Agent 旧 `call_analysis` 物理分离，不改旧表结构。
 
 ## 8. 安全约束
 
@@ -193,8 +192,8 @@ Mock 使用独立固定 loopback target，不改变正式 gateway。A/B UUID 分
 - Docker 新镜像构建曾因 Docker Hub 元数据超时受阻；loopback 使用现有 Adapter 镜像并只读挂载当前源码，不等同于新镜像构建验收。
 - 统一 FreeSWITCH 镜像已在 ARM64 环境从固定源码构建成功；Mock-only、SIP/IP-auth 配置加载、SIP+Mock 同实例三组隔离冒烟通过，覆盖 ESL 强密码/ACL、Sofia profile、核心 G.711、媒体模块注册及 Mock loopback 通道创建和清理。该结果不覆盖真实 SIP INVITE/RTP、direct playback 实际音频、媒体 Header 或 Adapter/Agent 全链路。
 - Adapter/Fast-Call 双能力改造的相关后端测试 147 项通过，Console 52 项测试和生产构建通过；全量后端 264 项中 263 项通过，唯一失败仍为冻结的 collection-agent `_observer` 测试。新增能力检查、拨号栅栏和媒体 Header 有单元回归，尚未据此宣称真实 SIP 或 WebSocket 媒体全链路通过。为保持 Agent 冻结，Adapter 仅外部检查其 `/state/up` 进程可达性，不把该结果描述为 Agent 业务 readiness。
-- `fastcall:dev`、`fastcall-adapter:dev` 均已实际构建成功；Fast-Call 镜像内 API、Scheduler、Webhook 和 Alembic 入口加载通过，且不含 Pipecat。入口检查只证明依赖与打包完整，不替代服务启动后的真实业务链路。
-- `deploy/compose.yaml` 与启动器已使用本地真实 MySQL 的独立 `fastcall`、`collection_agents` 数据库完成全栈启动；Fast-Call 实际迁移至 `0005`，Agent 当前库只读验证且零 DDL。真实浏览器 Mock 已完成接听和双向通话，Call 为 `succeeded/USER_HANGUP`，Agent MySQL 保存通话指标和 transcript，两类 Webhook 均一次 204，FreeSWITCH 通道清零。该结果仍不替代真实运营商 SIP 验收。
+- `fastcall:dev`、`fastcall-adapter:dev` 均已实际构建成功；Fast-Call 镜像内 API、Scheduler 和 Webhook 入口加载通过，且不含 Pipecat。入口检查只证明依赖与打包完整，不替代服务启动后的真实业务链路。
+- `deploy/compose.yaml` 与启动器已使用本地真实 MySQL 的独立 `fastcall`、`collection_agents` 数据库完成全栈启动；Fast-Call 在当时的 Alembic 管理下曾迁移至 `0005`，当前已改为纯 SQL 快照。真实浏览器 Mock 已完成接听和双向通话，Call 为 `succeeded/USER_HANGUP`，Agent MySQL 保存通话指标和 transcript，两类 Webhook 均一次 204，FreeSWITCH 通道清零。该结果仍不替代真实运营商 SIP 验收。
 
 ## 10. 后续修改入口
 
@@ -218,7 +217,7 @@ Mock 使用独立固定 loopback target，不改变正式 gateway。A/B UUID 分
 | Agent 通话与分析 | `collection_agents` | call_record、call_transcript、call_analysis、Provider 指标 |
 | 业务分析 | `fastcall_core` | `outbound_call_analysis.business_result`，不改变电话技术结果 |
 
-Alembic 配置为 `deploy/fastcall-alembic.ini`，version table 为兼容历史数据库的 `robot_config_alembic_version`。它与 Agent 自有迁移相互独立。`outbound_call_analysis` 不覆盖 Agent 旧 `call_analysis`。
+Fast-Call 与 Agent 分别使用 `deploy/mysql/fastcall_current_schema.sql` 和 `agent_current_schema.sql` 描述当前结构，不共享版本表或自动迁移。`outbound_call_analysis` 不覆盖 Agent 旧 `call_analysis`。
 
 ## 12. 基础设施与运维约束
 
@@ -228,6 +227,7 @@ Alembic 配置为 `deploy/fastcall-alembic.ini`，version table 为兼容历史�
 - ESL 必须显式配置非默认强密码，默认 ACL 只允许 `127.0.0.1/32`；实际部署需改为 Adapter 所在地址并不向宿主机发布 8021。共享网络命名空间仅属于旧 POC，不是统一镜像的默认拓扑。
 - 统一镜像包含受控的 `mock_call_direct_playback.patch`，但正式 originate 不设置 `STREAM_PLAYBACK_DIRECT`，正式 SIP 仍走模块原播放路径。Mock dialplan 固定目标、不自动 answer，不增加通配路由或公网转发。
 - `scripts/test_freeswitch_image.sh` 是不发布宿主机端口的镜像级冒烟，覆盖模块、ESL 认证、SIP 配置渲染和 loopback；它不替代真实 SIP、双向媒体或 Adapter/Agent 全链路验收。
+- Fast-Call 与 Agent schema 均只由 SQL 文件管理：全新空库分别使用 `deploy/mysql/fastcall_current_schema.sql` 和 `agent_current_schema.sql`。Compose 不注册 `fastcall-migrate` 或 `agent-init`，不在服务启动时自动迁移。项目只保留当前 SQL 快照，旧库需在项目外备份并自行完成结构升级。
 - Provider 密钥留在各服务部署环境，不进入 Robot 配置 JSON、审计、Webhook 或文档。
 - 本地 `/tmp` 的运行脚本、runtime env、测试 CA 和 HTTPS 接收端只用于验收，不是生产组件。
 - `FASTCALL_DISABLE_SSL_CERT_FILE=1` 仅用于本地 Agent 验收，避免测试 CA 覆盖生产 Provider 证书；Webhook Worker 不通过关闭 TLS/HMAC/私网白名单绕过校验。

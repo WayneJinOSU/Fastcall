@@ -3,8 +3,6 @@ from fastcall_core.domain.errors import RobotConfigError
 from fastcall_core.domain.outbound_tasks import TaskStatus
 from fastcall_core.infrastructure.outbound_orm import (
     OutboundCallModel,
-    OutboundTaskModel,
-    TaskContactModel,
 )
 from fastcall_core.infrastructure.outbound_repositories import (
     SqlAlchemyCallEventRepository,
@@ -12,7 +10,6 @@ from fastcall_core.infrastructure.outbound_repositories import (
     SqlAlchemyOutboundTaskRepository,
     SqlAlchemyTaskContactRepository,
     _compare_and_set,
-    _to_record,
 )
 
 
