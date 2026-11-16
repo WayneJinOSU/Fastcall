@@ -191,7 +191,7 @@ OPENAI_API_KEY=<openai-key>
 | `CARTESIA_API_KEY` | Cartesia TTS |
 | `OPENAI_API_KEY` / `OPENAI_BASE_URL` | OpenAI 或兼容接口的凭据与地址 |
 | `OPENROUTER_API_KEY` / `DEEPSEEK_API_KEY` | 对应 LLM Provider 凭据 |
-| `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID` | ElevenLabs TTS 凭据与音色 |
+| `ELEVENLABS_API_KEY` | ElevenLabs TTS 凭据（音色由机器人 `tts.voice_id` 下发） |
 | `AZURE_LLM_*` / `AZURE_REALTIME_*` | Azure LLM、Realtime 与转写配置，完整变量名见 `scripts/bootstrap_compose.py` 的 `PROVIDER_KEYS` |
 | `VOSK_MODEL_PATH` | Agent 容器内 Vosk 模型路径，默认为 `/mnt/data/vosk-model-small-es-0.42`；模型需位于镜像或 `agent-models` 卷中 |
 

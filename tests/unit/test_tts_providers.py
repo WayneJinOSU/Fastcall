@@ -107,22 +107,6 @@ class ElevenLabsTTSFactoryTests(unittest.TestCase):
         self.assertEqual(kwargs["params"].language, Language.ES)
         self.assertEqual(kwargs["params"].speed, 0.9)
 
-    @patch("collection_agents.services.providers.ElevenLabsTTSService")
-    def test_uses_environment_voice_and_default_model(self, factory):
-        with patch.dict(
-            os.environ,
-            {
-                "ELEVENLABS_API_KEY": "test-key",
-                "ELEVENLABS_VOICE_ID": "env-voice",
-            },
-            clear=True,
-        ):
-            create_tts_service({"provider": "elevenlabs"})
-
-        kwargs = factory.call_args.kwargs
-        self.assertEqual(kwargs["voice_id"], "env-voice")
-        self.assertEqual(kwargs["model"], "eleven_flash_v2_5")
-
     def test_requires_api_key(self):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(ValueError, "ELEVENLABS_API_KEY"):

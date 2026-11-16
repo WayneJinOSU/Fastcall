@@ -24,9 +24,7 @@ load_dotenv(PROJECT_ROOT / ".env", override=False)
 
 RUN_INTEGRATION = os.getenv("RUN_ELEVENLABS_INTEGRATION", "").strip() == "1"
 INTEGRATION_READY = bool(
-    RUN_INTEGRATION
-    and os.getenv("ELEVENLABS_API_KEY", "").strip()
-    and os.getenv("ELEVENLABS_VOICE_ID", "").strip()
+    RUN_INTEGRATION and os.getenv("ELEVENLABS_API_KEY", "").strip()
 )
 
 
@@ -56,10 +54,7 @@ class ElevenLabsTTSIntegrationTests(unittest.IsolatedAsyncioTestCase):
             with (
                 patch.dict(
                     os.environ,
-                    {
-                        "ELEVENLABS_API_KEY": "test-key",
-                        "ELEVENLABS_VOICE_ID": "test-voice",
-                    },
+                    {"ELEVENLABS_API_KEY": "test-key"},
                     clear=True,
                 ),
                 patch.object(
@@ -69,7 +64,12 @@ class ElevenLabsTTSIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ):
                 service = create_tts_service(
-                    {"provider": "elevenlabs", "locale": "en-US", "speed": 1.0}
+                    {
+                        "provider": "elevenlabs",
+                        "voice_id": "test-voice",
+                        "locale": "en-US",
+                        "speed": 1.0,
+                    }
                 )
                 service._url = f"ws://127.0.0.1:{port}"
                 audio_frames = await self._collect_audio(
@@ -80,12 +80,15 @@ class ElevenLabsTTSIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     @unittest.skipUnless(
         INTEGRATION_READY,
-        "Set RUN_ELEVENLABS_INTEGRATION=1, ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID to run this test.",
+        "Set RUN_ELEVENLABS_INTEGRATION=1 and ELEVENLABS_API_KEY to run this test.",
     )
     async def test_elevenlabs_api_streams_8khz_pcm_audio(self):
         service = create_tts_service(
             {
                 "provider": "elevenlabs",
+                "voice_id": os.getenv(
+                    "ELEVENLABS_TEST_VOICE_ID", "21m00Tcm4TlvDq8ikWAM"
+                ),
                 "model": os.getenv("ELEVENLABS_TEST_MODEL", "eleven_flash_v2_5"),
                 "locale": os.getenv("ELEVENLABS_TEST_LOCALE", "en-US"),
                 "speed": 1.0,

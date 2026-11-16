@@ -404,11 +404,9 @@ def _create_elevenlabs_tts_service(tts_config):
     api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
     if not api_key:
         raise ValueError("ELEVENLABS_API_KEY is required for ElevenLabs TTS")
-    voice_id = str(
-        tts_config.get("voice_id") or os.getenv("ELEVENLABS_VOICE_ID", "")
-    ).strip()
+    voice_id = str(tts_config.get("voice_id") or "").strip()
     if not voice_id:
-        raise ValueError("ElevenLabs TTS requires tts.voice_id or ELEVENLABS_VOICE_ID")
+        raise ValueError("ElevenLabs TTS requires tts.voice_id")
     speed = tts_config.get("speed")
     if speed is not None:
         speed = float(speed)
