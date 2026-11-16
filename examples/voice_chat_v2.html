@@ -184,9 +184,6 @@
                 <label>WebSocket URL:</label>
                 <input type="text" id="wsUrl" value="ws://localhost:8765/ws-v2">
 
-                <label>API Key (JWT):</label>
-                <textarea id="apiKey" style="height: 60px; margin-bottom: 10px;" placeholder="粘贴你的 API Key (JWT)"></textarea>
-
                 <label>Call Data (JSON):</label>
                 <textarea id="callData"></textarea>
             </div>
@@ -391,17 +388,11 @@
 
                         // 1. 自动修正 endpoint
                         if (url.endsWith('/websocket_endpoint')) {
-                            this.log('Endpoint 路径修正: 将 /websocket_endpoint 替换为 /ws', 'warning');
-                            url = url.replace('/websocket_endpoint', '/ws');
+                            this.log('Endpoint 路径修正: 将 /websocket_endpoint 替换为 /ws-v2', 'warning');
+                            url = url.replace('/websocket_endpoint', '/ws-v2');
                         }
 
-                        const apiKey = document.getElementById('apiKey').value.trim();
-                        if (apiKey) {
-                            const separator = url.includes('?') ? '&' : '?';
-                            url = `${url}${separator}accessToken=${apiKey}`;
-                        }
-
-                        this.log(`Attempting connection to: ${url.replace(apiKey, '***')}`, 'info');
+                        this.log(`Attempting connection to: ${url}`, 'info');
 
                         this.ws = new WebSocket(url);
                         this.ws.binaryType = 'arraybuffer';
