@@ -11,6 +11,9 @@ COPY requirements.txt README.md ./
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r requirements.txt
 
+# Preinstall NLTK sentence tokenizer data required by the TTS text aggregator
+RUN python -m nltk.downloader punkt_tab
+
 # Copy only the Agent runtime and its resources into the container
 COPY main.py ./main.py
 COPY src/collection_agents ./src/collection_agents
