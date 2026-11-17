@@ -1,8 +1,10 @@
 import base64
 import hashlib
+import ipaddress
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import subprocess
 from urllib.parse import urlsplit, urlunsplit
@@ -53,35 +55,177 @@ def password_hash(password):
     ))
 
 
-def ensure_tls():
-    required = ("ca.crt", "ca.key", "server.crt", "server.key")
-    if all((TLS_DIR / name).exists() for name in required):
+def run_openssl(arguments):
+    subprocess.run(
+        ["openssl", *arguments], check=True,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+
+
+def subject_alt_name(domain):
+    try:
+        ipaddress.ip_address(domain)
+    except ValueError:
+        if not re.fullmatch(r"[A-Za-z0-9.-]+", domain):
+            raise RuntimeError("FREESWITCH_DOMAIN must be a DNS hostname or IP address")
+        return f"DNS:{domain}"
+    return f"IP:{domain}"
+
+
+def wss_url(domain, port):
+    host = f"[{domain}]" if ":" in domain else domain
+    return f"wss://{host}:{port}"
+
+
+def certificate_matches_domain(certificate_names, domain):
+    try:
+        ipaddress.ip_address(domain)
+    except ValueError:
+        for name in certificate_names:
+            if name == domain:
+                return True
+            if (
+                name.startswith("*.")
+                and domain.count(".") == name.count(".")
+                and domain.endswith(name[1:])
+            ):
+                return True
+        return False
+    return domain in certificate_names
+
+
+def certificate_text(path):
+    return subprocess.check_output([
+        "openssl", "x509", "-in", str(path), "-noout", "-text",
+    ], text=True, stderr=subprocess.DEVNULL)
+
+
+def validate_local_certificate_extensions(certificate, is_ca=False):
+    if "Fastcall Local CA" not in certificate:
         return
+    required = [
+        "X509v3 Subject Key Identifier",
+        "X509v3 Authority Key Identifier",
+        "X509v3 Basic Constraints",
+        "CA:TRUE" if is_ca else "CA:FALSE",
+    ]
+    if any(extension not in certificate for extension in required):
+        raise RuntimeError(
+            "Local certificates lack required X.509 extensions. Move deploy/runtime/tls "
+            "aside and rerun bootstrap, then trust the new ca.crt on the SIP App"
+        )
+
+
+def validate_wss_certificate(domain):
+    certificate_path = TLS_DIR / "wss.crt"
+    unexpired = subprocess.run([
+        "openssl", "x509", "-in", str(certificate_path), "-noout", "-checkend", "0",
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if unexpired.returncode:
+        raise RuntimeError("The WSS certificate is expired; replace wss.crt, wss.key and wss.pem")
+    certificate = certificate_text(certificate_path)
+    validate_local_certificate_extensions(certificate)
+    subject_alt_name(domain)
+    certificate_names = re.findall(r"(?:DNS|IP Address):([^,\s]+)", certificate)
+    if not certificate_matches_domain(certificate_names, domain):
+        raise RuntimeError(
+            "The WSS certificate does not match FREESWITCH_DOMAIN; "
+            "replace wss.crt, wss.key and wss.pem for the current domain"
+        )
+    try:
+        certificate_public_key = subprocess.check_output([
+            "openssl", "x509", "-in", str(certificate_path), "-noout", "-pubkey",
+        ], stderr=subprocess.DEVNULL)
+        private_public_key = subprocess.check_output([
+            "openssl", "pkey", "-in", str(TLS_DIR / "wss.key"), "-pubout",
+        ], stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError("The WSS certificate or private key is invalid") from error
+    if certificate_public_key != private_public_key:
+        raise RuntimeError("The WSS certificate and private key do not match")
+
+
+def write_wss_pem():
+    (TLS_DIR / "wss.pem").write_bytes(
+        (TLS_DIR / "wss.crt").read_bytes() + (TLS_DIR / "wss.key").read_bytes()
+    )
+    (TLS_DIR / "wss.key").chmod(0o600)
+    (TLS_DIR / "wss.pem").chmod(0o600)
+
+
+def ensure_tls(domain="fastcall.internal"):
     TLS_DIR.mkdir(parents=True, exist_ok=True)
     TLS_DIR.chmod(0o700)
-    openssl = ["openssl"]
-    subprocess.run(openssl + [
-        "req", "-x509", "-newkey", "rsa:2048", "-nodes",
-        "-keyout", str(TLS_DIR / "ca.key"), "-out", str(TLS_DIR / "ca.crt"),
-        "-subj", "/CN=Fastcall Local CA", "-days", "3650",
-    ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    subprocess.run(openssl + [
-        "req", "-new", "-newkey", "rsa:2048", "-nodes",
-        "-keyout", str(TLS_DIR / "server.key"), "-out", str(TLS_DIR / "server.csr"),
-        "-subj", "/CN=fastcall.internal",
-    ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    (TLS_DIR / "server.ext").write_text(
-        "subjectAltName=DNS:fastcall.internal,DNS:localhost,IP:127.0.0.1\n"
-        "extendedKeyUsage=serverAuth\n"
-    )
-    subprocess.run(openssl + [
-        "x509", "-req", "-in", str(TLS_DIR / "server.csr"),
-        "-CA", str(TLS_DIR / "ca.crt"), "-CAkey", str(TLS_DIR / "ca.key"),
-        "-CAcreateserial", "-out", str(TLS_DIR / "server.crt"),
-        "-days", "825", "-extfile", str(TLS_DIR / "server.ext"),
-    ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    console_required = ("ca.crt", "ca.key", "server.crt", "server.key")
+    if not all((TLS_DIR / name).exists() for name in console_required):
+        run_openssl([
+            "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", str(TLS_DIR / "ca.key"), "-out", str(TLS_DIR / "ca.crt"),
+            "-subj", "/CN=Fastcall Local CA", "-days", "3650",
+            "-addext", "basicConstraints=critical,CA:TRUE",
+            "-addext", "keyUsage=critical,keyCertSign,cRLSign",
+            "-addext", "subjectKeyIdentifier=hash",
+            "-addext", "authorityKeyIdentifier=keyid:always",
+        ])
+        run_openssl([
+            "req", "-new", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", str(TLS_DIR / "server.key"), "-out", str(TLS_DIR / "server.csr"),
+            "-subj", "/CN=fastcall.internal",
+        ])
+        (TLS_DIR / "server.ext").write_text(
+            "subjectAltName=DNS:fastcall.internal,DNS:localhost,IP:127.0.0.1\n"
+            "basicConstraints=critical,CA:FALSE\n"
+            "keyUsage=critical,digitalSignature,keyEncipherment\n"
+            "extendedKeyUsage=serverAuth\n"
+            "subjectKeyIdentifier=hash\n"
+            "authorityKeyIdentifier=keyid,issuer\n"
+        )
+        run_openssl([
+            "x509", "-req", "-in", str(TLS_DIR / "server.csr"),
+            "-CA", str(TLS_DIR / "ca.crt"), "-CAkey", str(TLS_DIR / "ca.key"),
+            "-CAcreateserial", "-out", str(TLS_DIR / "server.crt"),
+            "-days", "825", "-extfile", str(TLS_DIR / "server.ext"),
+        ])
     for name in ("ca.key", "server.key"):
         (TLS_DIR / name).chmod(0o600)
+    validate_local_certificate_extensions(
+        certificate_text(TLS_DIR / "ca.crt"), is_ca=True
+    )
+    validate_local_certificate_extensions(certificate_text(TLS_DIR / "server.crt"))
+
+    wss_required = ("wss.crt", "wss.key", "wss.pem")
+    if all((TLS_DIR / name).exists() for name in wss_required):
+        validate_wss_certificate(domain)
+        write_wss_pem()
+        return
+    if any((TLS_DIR / name).exists() for name in wss_required):
+        raise RuntimeError(
+            "WSS certificate files are incomplete; provide wss.crt, wss.key and wss.pem together"
+        )
+    san = subject_alt_name(domain)
+    run_openssl([
+        "req", "-new", "-newkey", "rsa:2048", "-nodes",
+        "-keyout", str(TLS_DIR / "wss.key"), "-out", str(TLS_DIR / "wss.csr"),
+        "-subj", f"/CN={domain}",
+    ])
+    (TLS_DIR / "wss.ext").write_text(
+        f"subjectAltName={san}\n"
+        "basicConstraints=critical,CA:FALSE\n"
+        "keyUsage=critical,digitalSignature,keyEncipherment\n"
+        "extendedKeyUsage=serverAuth\n"
+        "subjectKeyIdentifier=hash\n"
+        "authorityKeyIdentifier=keyid,issuer\n"
+    )
+    run_openssl([
+        "x509", "-req", "-in", str(TLS_DIR / "wss.csr"),
+        "-CA", str(TLS_DIR / "ca.crt"), "-CAkey", str(TLS_DIR / "ca.key"),
+        "-CAcreateserial", "-out", str(TLS_DIR / "wss.crt"),
+        "-days", "825", "-extfile", str(TLS_DIR / "wss.ext"),
+    ])
+    (TLS_DIR / "wss.crt").write_bytes(
+        (TLS_DIR / "wss.crt").read_bytes() + (TLS_DIR / "ca.crt").read_bytes()
+    )
+    write_wss_pem()
 
 
 def container_database_url(value):
@@ -91,6 +235,41 @@ def container_database_url(value):
     credentials, _, _ = parsed.netloc.rpartition("@")
     netloc = f"{credentials}@host.docker.internal:{parsed.port or 3306}" if credentials else f"host.docker.internal:{parsed.port or 3306}"
     return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, ""))
+
+
+def sip_settings(source):
+    enabled_value = source.get("FASTCALL_SIP_ENABLED", "false").strip().lower()
+    if enabled_value not in {"1", "true", "yes", "on", "0", "false", "no", "off"}:
+        raise RuntimeError("FASTCALL_SIP_ENABLED must be a boolean")
+    sip_enabled = enabled_value in {"1", "true", "yes", "on"}
+    external_ip = source.get("FREESWITCH_EXTERNAL_IP", "").strip()
+    if sip_enabled and not external_ip:
+        raise RuntimeError("FREESWITCH_EXTERNAL_IP is required when SIP is enabled")
+    domain = source.get("FREESWITCH_DOMAIN", "").strip() or external_ip or "fastcall.internal"
+    subject_alt_name(domain)
+    local_user = source.get("FREESWITCH_LOCAL_USER", "").strip() or "8615908280801"
+    if not re.fullmatch(r"[0-9]{6,15}", local_user):
+        raise RuntimeError("FREESWITCH_LOCAL_USER must contain 6 to 15 digits")
+    local_password = source.get("FREESWITCH_LOCAL_PASSWORD", "") or secrets.token_urlsafe(12)
+    if len(local_password) < 12:
+        raise RuntimeError("FREESWITCH_LOCAL_PASSWORD must contain at least 12 characters")
+    wss_port = int(source.get("FREESWITCH_WSS_PORT", "7443"))
+    if not 1 <= wss_port <= 65535:
+        raise RuntimeError("FREESWITCH_WSS_PORT must be a valid TCP port")
+    gateway = source.get("FREESWITCH_SIP_GATEWAY", "").strip()
+    gateway_host = source.get("FREESWITCH_SIP_HOST", "").strip()
+    if bool(gateway) != bool(gateway_host):
+        raise RuntimeError(
+            "FREESWITCH_SIP_GATEWAY and FREESWITCH_SIP_HOST must be set together"
+        )
+    return {
+        "FASTCALL_SIP_ENABLED": str(sip_enabled).lower(),
+        "FREESWITCH_EXTERNAL_IP": external_ip,
+        "FREESWITCH_DOMAIN": domain,
+        "FREESWITCH_LOCAL_USER": local_user,
+        "FREESWITCH_LOCAL_PASSWORD": local_password,
+        "FREESWITCH_WSS_PORT": str(wss_port),
+    }
 
 
 def main():
@@ -128,10 +307,8 @@ def main():
         "COLLECTION_AGENT_HTTP_URL": (
             "http://host.docker.internal:8765" if external_agent else "http://agent:8765"
         ),
-        "FASTCALL_SIP_ENABLED": source.get("FASTCALL_SIP_ENABLED", "false"),
         "FASTCALL_MOCK_CALLS_ENABLED": source.get("FASTCALL_MOCK_CALLS_ENABLED", "true"),
         "FREESWITCH_SIP_GATEWAY": source.get("FREESWITCH_SIP_GATEWAY", ""),
-        "FREESWITCH_EXTERNAL_IP": source.get("FREESWITCH_EXTERNAL_IP", ""),
         "FASTCALL_HTTPS_PORT": source.get("FASTCALL_HTTPS_PORT", "8443"),
         "FASTCALL_HTTP_PORT": source.get("FASTCALL_HTTP_PORT", "8080"),
         "FASTCALL_DEBIAN_MIRROR": source.get("FASTCALL_DEBIAN_MIRROR", "http://deb.debian.org/debian"),
@@ -142,6 +319,8 @@ def main():
         "FASTCALL_GLOBAL_CALLS_PER_MINUTE": source.get("FASTCALL_GLOBAL_CALLS_PER_MINUTE", "60"),
         "FASTCALL_MOCK_CALLBACK_SECRET_REF": "mock",
     }
+    generated_sip_password = not source.get("FREESWITCH_LOCAL_PASSWORD")
+    result.update(sip_settings(source))
     for key in PROVIDER_KEYS:
         if source.get(key):
             result[key] = source[key]
@@ -183,7 +362,7 @@ def main():
     webhook_secrets.setdefault("mock", secrets.token_urlsafe(32))
     result["FASTCALL_WEBHOOK_SECRETS_JSON"] = json.dumps(webhook_secrets, separators=(",", ":"))
 
-    ensure_tls()
+    ensure_tls(result["FREESWITCH_DOMAIN"])
     lines = []
     for key in sorted(result):
         value = str(result[key])
@@ -216,6 +395,22 @@ def main():
     print(f"Console (HTTPS): https://fastcall.internal:{result['FASTCALL_HTTPS_PORT']}/console/")
     print("For HTTPS, map fastcall.internal to 127.0.0.1 in your hosts file.")
     print("The local TLS CA is deploy/runtime/tls/ca.crt; install it only if you want to trust the local Console certificate.")
+    if result["FASTCALL_SIP_ENABLED"] == "true":
+        print(f"SIP username: {result['FREESWITCH_LOCAL_USER']}")
+        if generated_sip_password:
+            print(f"Generated SIP password: {result['FREESWITCH_LOCAL_PASSWORD']}")
+        else:
+            print("SIP password: reuse FREESWITCH_LOCAL_PASSWORD from deploy/.env.compose")
+        print(f"SIP domain: {result['FREESWITCH_DOMAIN']}")
+        print(
+            "SIP WSS URL: "
+            + wss_url(result["FREESWITCH_DOMAIN"], result["FREESWITCH_WSS_PORT"])
+        )
+        print(f"Contact phone: +{result['FREESWITCH_LOCAL_USER']}")
+        print(
+            "For the generated self-signed WSS certificate, the SIP App must trust "
+            "deploy/runtime/tls/ca.crt. A publicly trusted certificate needs no client CA install."
+        )
 
 
 if __name__ == "__main__":

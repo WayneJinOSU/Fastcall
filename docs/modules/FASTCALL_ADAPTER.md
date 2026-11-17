@@ -133,8 +133,8 @@ review 在 Adapter 中完成 gateway 检查、必要挂断、结果修订、事�
 
 - 使用 `FASTCALL_DATABASE_URL`（或通用 `DATABASE_URL`）、其他 `FASTCALL_*`、FreeSWITCH 和 Agent 地址配置；Agent 外部检查复用稳定的 `/state/up`，只证明进程可达，不要求 Agent 新增接口，也不替代 Agent DB/模型/Provider 验收。
 - Settings 只校验 Admin/Adapter/Agent/Media 等自身凭据，不要求 Console 凭据；完整运行入口还要求加密/HMAC 的 key JSON 与 active 版本以及 `FREESWITCH_ESL_PASSWORD`。
-- `FASTCALL_SIP_ENABLED=true` 时才要求 `FREESWITCH_SIP_GATEWAY`；Mock-only 不再使用 `unused` 占位。`FASTCALL_MOCK_CALLS_ENABLED=false` 时不注册 Mock WebSocket 路由，但保留不可外部调用的内部 runtime 清理既有 A/B 通道。两项不能同时关闭。
-- SIP readiness 检查 Sofia、gateway 和媒体模块；注册型 gateway 必须处于 `REGED`，IP-auth gateway 验证配置存在。SIP 失败只阻断正式 dispatch，Mock 失败只阻断 Mock dispatch；动态故障分别返回 `SIP_UNAVAILABLE` 或 `MOCK_UNAVAILABLE`，不得返回成功语义的 `not_authorized`。
+- `FASTCALL_SIP_ENABLED=true` 时 gateway 可选；已注册被叫或无 gateway 配置直拨 `user/{被叫去+}`，否则使用运营商 gateway。Mock-only 不使用 `unused` 占位。`FASTCALL_MOCK_CALLS_ENABLED=false` 时不注册 Mock WebSocket 路由，但保留不可外部调用的内部 runtime 清理既有 A/B 通道。两项不能同时关闭。
+- SIP readiness 检查 Sofia 和媒体模块；配置 gateway 时还检查线路，注册型 gateway 必须处于 `REGED`，IP-auth gateway 验证配置存在。单个 App 是否在线在 originate 前按被叫查询，不与 Adapter readiness 耦合。SIP 失败只阻断正式 dispatch，Mock 失败只阻断 Mock dispatch；动态故障分别返回 `SIP_UNAVAILABLE` 或 `MOCK_UNAVAILABLE`，不得返回成功语义的 `not_authorized`。
 - `deploy/Dockerfile-fastcall-adapter` 只复制 `fastcall_adapter` 和 `fastcall_core`，入口为 `python -m fastcall_adapter.main`。
 - Kubernetes 使用 `FASTCALL_ADAPTER_IMAGE`，单副本、单 worker、`Recreate`。
 

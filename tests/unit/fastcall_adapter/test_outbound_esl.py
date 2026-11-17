@@ -181,9 +181,78 @@ class FreeSwitchESLTests(unittest.TestCase):
         commands = FakeCommands()
         gateway.commands = commands
         asyncio.run(gateway.originate("call_1", "origin_1", "+12025550101", "task_1", "contact_1"))
-        self.assertIn("sofia/gateway/carrier/+12025550101 &park()", commands.calls[0])
-        self.assertIn("STREAM_PLAYBACK=true", commands.calls[0])
-        self.assertIn("STREAM_BUFFER_SIZE=20", commands.calls[0])
+        self.assertIn("sofia/gateway/carrier/+12025550101 &park()", commands.calls[-1])
+        self.assertIn("STREAM_PLAYBACK=true", commands.calls[-1])
+        self.assertIn("STREAM_BUFFER_SIZE=20", commands.calls[-1])
+
+
+    def test_user_mode_uses_callee_number(self):
+        gateway = FreeSwitchESL(
+            "localhost", 8021, "secret", "carrier", "ws://adapter/media",
+            dial_mode="user",
+        )
+        commands = FakeCommands()
+        gateway.commands = commands
+        asyncio.run(gateway.originate("call_1", "origin_1", "+8615908280801", "task_1", "contact_1"))
+        self.assertIn("user/8615908280801 &park()", commands.calls[0])
+        self.assertNotIn("sofia/gateway", commands.calls[0])
+
+    def test_registered_callee_uses_user_destination(self):
+        gateway = FreeSwitchESL("localhost", 8021, "secret", "carrier", "ws://adapter/media")
+        commands = FakeCommands()
+
+        async def command(value):
+            commands.calls.append(value)
+            if value.startswith("api sofia status profile external reg"):
+                return {"Reply-Text": "Auth-User: 8615908280801"}
+            return {"Reply-Text": "+OK Job-UUID: job-1"}
+
+        commands.command = command
+        gateway.commands = commands
+        asyncio.run(gateway.originate("call_1", "origin_1", "+8615908280801", "task_1", "contact_1"))
+        self.assertIn("user/8615908280801 &park()", commands.calls[-1])
+        self.assertNotIn("sofia/gateway", commands.calls[-1])
+
+    def test_unregistered_callee_uses_gateway(self):
+        gateway = FreeSwitchESL("localhost", 8021, "secret", "carrier", "ws://adapter/media")
+        commands = FakeCommands()
+
+        async def command(value):
+            commands.calls.append(value)
+            if value.startswith("api sofia status profile external reg"):
+                return {"Reply-Text": "Total items returned: 0"}
+            return {"Reply-Text": "+OK Job-UUID: job-1"}
+
+        commands.command = command
+        gateway.commands = commands
+        asyncio.run(gateway.originate("call_1", "origin_1", "+8615908280801", "task_1", "contact_1"))
+        self.assertIn("sofia/gateway/carrier/+8615908280801 &park()", commands.calls[-1])
+
+    def test_empty_gateway_uses_user_destination_without_registration_lookup(self):
+        gateway = FreeSwitchESL("localhost", 8021, "secret", "", "ws://adapter/media")
+        commands = FakeCommands()
+        gateway.commands = commands
+        asyncio.run(gateway.originate(
+            "call_1", "origin_1", "+8615908280801", "task_1", "contact_1"
+        ))
+        self.assertEqual(len(commands.calls), 1)
+        self.assertIn("user/8615908280801 &park()", commands.calls[0])
+
+    def test_sip_health_skips_empty_gateway(self):
+        gateway = FreeSwitchESL("localhost", 8021, "secret", "", "ws://adapter/media")
+        commands = FakeCommands()
+
+        async def command(value):
+            commands.calls.append(value)
+            if value == "api status":
+                return {"_body": "up"}
+            return {"Reply-Text": "true"}
+
+        commands.command = command
+        gateway.commands = commands
+        asyncio.run(gateway.health_check("sip"))
+        self.assertIn("api module_exists mod_sofia", commands.calls)
+        self.assertNotIn("api sofia status gateway", commands.calls)
 
 
 if __name__ == "__main__":

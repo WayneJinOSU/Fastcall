@@ -37,6 +37,9 @@ services:
       FREESWITCH_ESL_PASSWORD: ${FREESWITCH_ESL_PASSWORD}
       FREESWITCH_ESL_ALLOWED_CIDR: 172.29.0.10/32
       FREESWITCH_EXTERNAL_IP: ${FREESWITCH_EXTERNAL_IP:-}
+      FREESWITCH_DOMAIN: ${FREESWITCH_DOMAIN:-}
+      FREESWITCH_LOCAL_USER: ${FREESWITCH_LOCAL_USER:-8615908280801}
+      FREESWITCH_LOCAL_PASSWORD: ${FREESWITCH_LOCAL_PASSWORD}
       FREESWITCH_SIP_GATEWAY: ${FREESWITCH_SIP_GATEWAY:-}
       FREESWITCH_SIP_HOST: ${FREESWITCH_SIP_HOST:-}
       FREESWITCH_SIP_PORT: ${FREESWITCH_SIP_PORT:-5060}
@@ -51,10 +54,14 @@ services:
     ports:
       - "${FREESWITCH_LOCAL_SIP_PORT:-5080}:5080/tcp"
       - "${FREESWITCH_LOCAL_SIP_PORT:-5080}:5080/udp"
+      - "${FREESWITCH_WSS_PORT:-7443}:7443/tcp"
       - "${FREESWITCH_RTP_START_PORT:-16384}-${FREESWITCH_RTP_END_PORT:-16483}:${FREESWITCH_RTP_START_PORT:-16384}-${FREESWITCH_RTP_END_PORT:-16483}/udp"
     volumes:
       - freeswitch-logs:/usr/local/freeswitch/log
       - freeswitch-db:/usr/local/freeswitch/db
+      - ./runtime/tls/wss.crt:/usr/local/freeswitch/certs/wss.crt:ro
+      - ./runtime/tls/wss.key:/usr/local/freeswitch/certs/wss.key:ro
+      - ./runtime/tls/wss.pem:/usr/local/freeswitch/certs/wss.pem:ro
     <<: *host-access
     networks: [fastcall-net]
     restart: unless-stopped
@@ -125,7 +132,7 @@ services:
       FREESWITCH_ESL_PASSWORD: ${FREESWITCH_ESL_PASSWORD}
       FREESWITCH_SIP_GATEWAY: ${FREESWITCH_SIP_GATEWAY:-}
       FREESWITCH_SIP_REGISTER: ${FREESWITCH_SIP_REGISTER:-true}
-      FREESWITCH_DIAL_MODE: gateway
+      FREESWITCH_DIAL_MODE: ${FREESWITCH_DIAL_MODE:-gateway}
       FASTCALL_MOCK_LOOPBACK_TARGET: mock-call
       FASTCALL_MEDIA_WS_URL: ws://adapter:8767/internal/media
       FASTCALL_SIP_ENABLED: ${FASTCALL_SIP_ENABLED}

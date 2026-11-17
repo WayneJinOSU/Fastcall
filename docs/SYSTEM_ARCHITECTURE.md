@@ -221,9 +221,9 @@ Fast-Call 与 Agent 分别使用 `deploy/mysql/fastcall_current_schema.sql` 和 
 
 ## 12. 基础设施与运维约束
 
-- FreeSWITCH 负责 SIP 拨号、接听、挂机、CDR 和电话音频。统一镜像由 `deploy/freeswitch/Dockerfile` 构建，同一实例加载 Sofia、loopback 和 `mod_audio_stream`，正式任务使用 gateway，Mock Call 使用固定 loopback target。
+- FreeSWITCH 负责 SIP 注册、拨号、接听、挂机、CDR 和电话音频。统一镜像由 `deploy/freeswitch/Dockerfile` 构建，同一实例加载 Sofia、loopback 和 `mod_audio_stream`。正式任务对已注册被叫或无 gateway 配置直拨 `user/{号码}`，否则使用运营商 gateway；Mock Call 使用固定 loopback target。
 - 镜像固定基础镜像 digest、FreeSWITCH 1.10.12、Sofia SIP、spandsp 和 `mod-audio-stream` commit `a25fb1fe530ec6a612d321ff04f70be69b1a257c`；媒体模块需满足 AGPL-3.0 或商业许可。
-- 入口按 `FASTCALL_SIP_ENABLED` 和 `FASTCALL_MOCK_CALLS_ENABLED` 渲染配置。启用 SIP 时必须配置真实 gateway 和 external IP；未启用时不生成 gateway，Mock 仍可独立运行。
+- 入口按 `FASTCALL_SIP_ENABLED` 和 `FASTCALL_MOCK_CALLS_ENABLED` 渲染配置。启用 SIP 时必须配置 external IP，gateway 可选；本地 SIP 账号和密码由 `FREESWITCH_LOCAL_USER`、`FREESWITCH_LOCAL_PASSWORD` 渲染为普通 directory 用户。默认 WSS 为 `:7443`，bootstrap 生成与 `FREESWITCH_DOMAIN` 匹配的自签名证书或复用已有公共证书。Mock 仍可独立运行。
 - ESL 必须显式配置非默认强密码，默认 ACL 只允许 `127.0.0.1/32`；实际部署需改为 Adapter 所在地址并不向宿主机发布 8021。共享网络命名空间仅属于旧 POC，不是统一镜像的默认拓扑。
 - 统一镜像包含受控的 `mock_call_direct_playback.patch`，但正式 originate 不设置 `STREAM_PLAYBACK_DIRECT`，正式 SIP 仍走模块原播放路径。Mock dialplan 固定目标、不自动 answer，不增加通配路由或公网转发。
 - `scripts/test_freeswitch_image.sh` 是不发布宿主机端口的镜像级冒烟，覆盖模块、ESL 认证、SIP 配置渲染和 loopback；它不替代真实 SIP、双向媒体或 Adapter/Agent 全链路验收。

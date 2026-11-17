@@ -119,8 +119,18 @@ class FreeSwitchESL:
         if response.get("Reply-Text", "").strip().lower() != "true":
             raise ESLError(f"FreeSWITCH module is unavailable: {module}")
 
+    async def _is_registered(self, callee):
+        user = callee.lstrip("+")
+        response = await self.commands.command(
+            f"api sofia status profile external reg {user}"
+        )
+        reply = response.get("Reply-Text", "")
+        return "Auth-User" in reply and user in reply
+
     async def _sip_health(self):
         await self._require_module("mod_sofia")
+        if not self.gateway:
+            return
         if not re.fullmatch(r"[A-Za-z0-9_-]+", self.gateway):
             raise ESLError("FreeSWITCH SIP gateway name is invalid")
         response = await self.commands.command(f"api sofia status gateway {self.gateway}")
@@ -157,6 +167,10 @@ class FreeSwitchESL:
             destination = f"loopback/{self.mock_target}"
         elif self.dial_mode == "loopback":
             destination = f"loopback/{callee.lstrip('+')}"
+        elif self.dial_mode == "user":
+            destination = f"user/{callee.lstrip('+')}"
+        elif not self.gateway or await self._is_registered(callee):
+            destination = f"user/{callee.lstrip('+')}"
         else:
             destination = f"sofia/gateway/{self.gateway}/{callee}"
         command = f"bgapi originate {{{','.join(values)}}}{destination} &park()"

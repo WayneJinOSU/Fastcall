@@ -133,8 +133,8 @@ COPY deploy/freeswitch/entrypoint.py /usr/local/share/fastcall-freeswitch/entryp
 RUN mkdir -p /usr/local/freeswitch/etc/freeswitch/sip_profiles/external \
     && chown -R freeswitch:freeswitch /usr/local/freeswitch
 
-USER freeswitch
-EXPOSE 5080/tcp 5080/udp 8021/tcp
+USER root
+EXPOSE 5080/tcp 5080/udp 7443/tcp 8021/tcp
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=6 \
     CMD test "$(fs_cli -p "$FREESWITCH_ESL_PASSWORD" -x 'module_exists mod_sofia')" = "true" \
         && test "$(fs_cli -p "$FREESWITCH_ESL_PASSWORD" -x 'module_exists mod_audio_stream')" = "true"

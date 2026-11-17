@@ -68,8 +68,6 @@ class Settings:
             raise RuntimeError("All Fast-Call Adapter API tokens must be different")
         if not self.sip_enabled and not self.mock_calls_enabled:
             raise RuntimeError("At least one of SIP or Mock Call must be enabled")
-        if self.sip_enabled and not self.freeswitch_sip_gateway:
-            raise RuntimeError("FREESWITCH_SIP_GATEWAY is required when SIP is enabled")
 
 
 def result_changed_events_enabled():

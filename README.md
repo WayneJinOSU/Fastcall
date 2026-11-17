@@ -1,6 +1,6 @@
 # Fastcall
 
-**一套面向小企业的自部署语音外呼系统：用 Fast-Call 管理外呼运营，用 Collection Agent 完成真实 AI 语音对话；先通过浏览器 Mock 验证全链路，再接入运营商 SIP。**
+**一套面向小企业的自部署语音外呼系统：用 Fast-Call 管理外呼运营，用 Collection Agent 完成真实 AI 语音对话；先通过 SIP App 或浏览器 Mock 验证全链路，再接入运营商 SIP。**
 
 ![Fastcall 部署与双路径架构](docs/images/architecture.svg)
 
@@ -62,25 +62,62 @@ Collection Agent 不只是把 STT、LLM、TTS 三个 API 串起来。它基于 P
 
 ## 快速部署
 
-### 1. 准备依赖
+### 1. 准备宿主机依赖
 
-- Docker 与 Docker Compose。
-- 两个不同的 **MySQL 8** 数据库：`fastcall` 和 `collection_agents`。
-- Collection Agent 默认随 Compose 自动构建；也可以使用宿主机上运行的外部 Agent。
-- 实际使用的 STT、LLM、TTS Provider 凭据。
+在**部署电脑**准备：
 
-Compose 不启动 MySQL，也不允许 Agent 使用 SQLite。内部 Agent 固定构建为 `linux/amd64`，以复用现有 RNNoise 的 x86_64 依赖；Apple Silicon 等 ARM Docker 主机需要通过 Docker emulation 运行，外部 Agent 不受此限制。
+- Docker 与 Docker Compose V2，支持 `docker compose up --wait`。
+- Python 3、OpenSSL 命令行工具、MySQL 命令行客户端。
+- 一个可连接的 MySQL 8 服务。Compose 不启动 MySQL，也不允许 Agent 使用 SQLite。
+- 实际使用的 STT、LLM、TTS Provider 凭据。首验建议固定使用 Deepgram、Deepseek、Cartesia。
 
-### 2. 全新数据库导入 SQL
+先执行自检，任何一项不存在都应先安装：
 
-只有全新空库需要执行：
+```bash
+docker compose version
+python3 --version
+openssl version
+mysql --version
+```
+
+Collection Agent 默认随 Compose 自动构建，也可以使用宿主机上运行的外部 Agent。内部 Agent 固定构建为 `linux/amd64`，以复用现有 RNNoise 的 x86_64 依赖；Apple Silicon 等 ARM Docker 主机需要通过 Docker emulation 运行，外部 Agent 不受此限制。
+
+### 2. 创建数据库、用户并导入 SQL
+
+以下示例假设 MySQL 运行在部署电脑的 `127.0.0.1:3306`。先用 root 登录：
+
+```bash
+mysql -h 127.0.0.1 -u root -p
+```
+
+在 MySQL 提示符中执行。把两个示例密码替换为不同的强密码：
+
+```sql
+CREATE DATABASE fastcall CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE collection_agents CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE USER 'fastcall'@'localhost' IDENTIFIED BY '<fastcall数据库密码>';
+CREATE USER 'fastcall'@'%' IDENTIFIED BY '<fastcall数据库密码>';
+GRANT ALL PRIVILEGES ON fastcall.* TO 'fastcall'@'localhost';
+GRANT ALL PRIVILEGES ON fastcall.* TO 'fastcall'@'%';
+
+CREATE USER 'agent'@'localhost' IDENTIFIED BY '<agent数据库密码>';
+CREATE USER 'agent'@'%' IDENTIFIED BY '<agent数据库密码>';
+GRANT ALL PRIVILEGES ON collection_agents.* TO 'agent'@'localhost';
+GRANT ALL PRIVILEGES ON collection_agents.* TO 'agent'@'%';
+FLUSH PRIVILEGES;
+```
+
+`localhost` 用于宿主机导入 SQL，`%` 用于示例中的容器连接。生产环境应把 `%` 收紧到实际 Docker/LAN 来源，并确认 MySQL `bind-address` 允许容器访问；不要仅为图方便把 MySQL 暴露到公网。
+
+然后在**项目根目录的宿主机终端**导入：
 
 ```bash
 mysql -h 127.0.0.1 -u fastcall -p fastcall < deploy/mysql/fastcall_current_schema.sql
 mysql -h 127.0.0.1 -u agent -p collection_agents < deploy/mysql/agent_current_schema.sql
 ```
 
-项目只维护当前 SQL 快照，不提供旧库自动升级。既有数据库应先备份，再确认其结构与当前快照一致。
+项目只维护当前 SQL 快照，不提供旧库自动升级。只有全新空库执行上述导入；既有数据库应先备份，再确认其结构与当前快照一致。
 
 ### 3. 填写部署配置
 
@@ -94,7 +131,8 @@ cp deploy/compose.env.example deploy/.env.compose
 - 默认内部 Agent 会随启动器自动构建，`COLLECTION_AGENT_IMAGE` 只需作为镜像标签；或者设置 `FASTCALL_AGENT_EXTERNAL=true`，使用宿主机 Agent。
 - 配置实际 Provider 密钥。
 - 外部 Agent 必须与 Compose 使用相同的 `FASTCALL_AGENT_TOKEN`。
-- 初始保持 `FASTCALL_SIP_ENABLED=false`、`FASTCALL_MOCK_CALLS_ENABLED=true`。
+- SIP App 首验保持 `FASTCALL_SIP_ENABLED=true`，将 `FREESWITCH_EXTERNAL_IP` 改为服务器局域网或公网 IP。
+- 首验默认预置一个 SIP 登录账号 `8615908280801`，可用 `FREESWITCH_LOCAL_USER` 修改；`FREESWITCH_LOCAL_PASSWORD` 留空即可自动生成。它只用于 App 注册，不是外呼路由配置；运营商 gateway 无需配置。
 
 ### 4. 启动
 
@@ -102,7 +140,9 @@ cp deploy/compose.env.example deploy/.env.compose
 ./scripts/bootstrap_compose.sh
 ```
 
-启动器生成缺失的凭据和内部 TLS 文件，并启动 Compose。首次生成的 Console 密码会在启动前打印。
+启动器生成缺失的凭据、Console 证书和带正确 SAN 的 WSS 证书，并启动 Compose。首次生成的 Console 与 SIP 密码会打印，后续重启复用已保存的凭据和证书。启动完成后还会输出 SIP 注册域、WSS 地址和联系人号码。
+
+Console 用户名为 `admin`。如果忘记复制首次随机密码，在宿主机项目根目录执行 `FASTCALL_CONSOLE_ADMIN_PASSWORD='<新的强密码>' ./scripts/bootstrap_compose.sh` 重设；`.env.compose` 中只有哈希，不能找回原明文密码。
 
 本机访问：
 
@@ -141,14 +181,21 @@ AGENT_DATABASE_URL=mysql+pymysql://agent:<password>@host.docker.internal:3306/co
 COLLECTION_AGENT_IMAGE=collection-agent:stable
 FASTCALL_AGENT_EXTERNAL=false
 
-FASTCALL_SIP_ENABLED=false
+FASTCALL_SIP_ENABLED=true
 FASTCALL_MOCK_CALLS_ENABLED=true
+FREESWITCH_EXTERNAL_IP=192.168.1.100
+FREESWITCH_DOMAIN=
+FREESWITCH_LOCAL_USER=8615908280801
+FREESWITCH_LOCAL_PASSWORD=
+FREESWITCH_WSS_PORT=7443
 
-# 按 Robot 实际使用的 Provider 填写，不要求全部配置。
+# 首验默认 Robot 使用以下三个 Provider。
 DEEPGRAM_API_KEY=<deepgram-key>
+DEEPSEEK_API_KEY=<deepseek-key>
 CARTESIA_API_KEY=<cartesia-key>
-OPENAI_API_KEY=<openai-key>
 ```
+
+数据库密码如果包含 `@`、`:`、`/`、`#`、`%`、`&`、`=`、`+` 等字符，先做 URL 编码再填入连接串，可执行 `python3 -c 'from urllib.parse import quote_plus; print(quote_plus("你的数据库密码"))'` 获取编码结果。
 
 使用宿主机 Agent 时改为 `FASTCALL_AGENT_EXTERNAL=true`，并确保 Agent 已连接 `AGENT_DATABASE_URL` 指向的数据库。首次启动可让启动器生成 Console 密码；后续重启会复用已保存的登录凭据。
 
@@ -166,20 +213,24 @@ OPENAI_API_KEY=<openai-key>
 | `COLLECTION_AGENT_IMAGE` | `collection-agent:stable` | 内部 Agent 使用的由 Compose 构建的镜像 |
 | `FASTCALL_AGENT_EXTERNAL` | `false` | 设为 `true` 时使用宿主机 `8765` 端口的 Agent，不启动 Compose 内部 Agent |
 | `COLLECTION_AGENT_WS_URL` / `COLLECTION_AGENT_HTTP_URL` | 启动器派生 | Adapter 与 API 使用的 Agent 地址；根据是否使用外部 Agent 自动生成，通常无需填写 |
-| `FASTCALL_SIP_ENABLED` | `false` | 是否启用正式 Sofia gateway 与 SIP 拨号 |
+| `FASTCALL_SIP_ENABLED` | 配置模板为 `true` | 是否启用 Sofia、SIP App 注册与正式任务拨号 |
 | `FASTCALL_MOCK_CALLS_ENABLED` | `true` | 是否启用网页 Mock；与 SIP 开关相互独立，可同时开启 |
 
 **SIP 与网络**
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `FREESWITCH_SIP_GATEWAY` | 空 | Sofia gateway 名称；启用 SIP 时必填 |
+| `FREESWITCH_EXTERNAL_IP` | SIP 启用时必填 | FreeSWITCH 对外通告的局域网或公网 IP |
+| `FREESWITCH_DOMAIN` | external IP | SIP 注册域和 WSS 证书 SAN；公开部署建议填写域名 |
+| `FREESWITCH_LOCAL_USER` | `8615908280801` | 要创建的 App 登录账号，不是外呼路由；quickstart 默认联系人使用对应的 `+号码` |
+| `FREESWITCH_LOCAL_PASSWORD` | 自动生成 | App 注册密码，至少 12 位，由 bootstrap 保存并复用 |
+| `FREESWITCH_WSS_PORT` | `7443` | 映射到宿主机的 SIP WSS TCP 端口 |
+| `FREESWITCH_SIP_GATEWAY` | 空 | 可选运营商 gateway；为空时被叫直拨 `user/{号码}` |
 | `FREESWITCH_SIP_HOST` / `FREESWITCH_SIP_PORT` | 空 / `5060` | 运营商或 PBX 地址与端口 |
 | `FREESWITCH_SIP_REGISTER` | `true` | 是否向线路注册；IP-auth 线路通常设为 `false` |
 | `FREESWITCH_SIP_USERNAME` / `FREESWITCH_SIP_PASSWORD` | 空 | 注册型线路的凭据 |
 | `FREESWITCH_SIP_FROM_USER` / `FREESWITCH_SIP_CALLER_ID_IN_FROM` | 空 / `false` | 按运营商要求设置 From 用户与主叫号码来源 |
 | `FREESWITCH_SIP_TRANSPORT` | `udp` | 线路传输协议 |
-| `FREESWITCH_EXTERNAL_IP` | 空 | FreeSWITCH 对外通告的 IP；公网或 NAT 部署必须按实际网络设置 |
 | `FREESWITCH_LOCAL_SIP_PORT` | `5080` | 映射到宿主机的 SIP TCP/UDP 端口 |
 | `FREESWITCH_RTP_START_PORT` / `FREESWITCH_RTP_END_PORT` | `16384` / `16483` | 映射到宿主机的 RTP UDP 端口范围，防火墙需同步放行 |
 
@@ -212,14 +263,29 @@ Provider 变量只传给 Agent，不会注入 Fast-Call、Adapter 或 FreeSWITCH
 首次启动时，启动器会为下列配置生成随机值并保存到 `deploy/.env.compose`；已存在的值会被复用：
 
 - 七类内部 token：`FASTCALL_MANAGEMENT_TOKEN`、`FASTCALL_RESOLVE_TOKEN`、`FASTCALL_OPENAPI_TOKEN`、`FASTCALL_ADMIN_TOKEN`、`FASTCALL_ADAPTER_TOKEN`、`FASTCALL_AGENT_TOKEN`、`FASTCALL_MEDIA_TOKEN`。
-- FreeSWITCH ESL 密码 `FREESWITCH_ESL_PASSWORD`。
+- FreeSWITCH ESL 密码 `FREESWITCH_ESL_PASSWORD` 和 SIP App 注册密码 `FREESWITCH_LOCAL_PASSWORD`。
 - Console 登录密码哈希与会话密钥。
 - 联系人加密使用的 `FASTCALL_ENCRYPTION_KEYS_JSON`，以及号码索引使用的 `FASTCALL_HMAC_KEYS_JSON`。
 - Mock Webhook 默认 `mock` 引用对应的 HMAC secret。客户 Webhook 的 `callback_secret_ref` 与 secret 映射需通过 `FASTCALL_WEBHOOK_SECRETS_JSON` 自行配置，启动器只保留已有映射，不会自动创建客户 secret。
 
 **不要在重启或升级时重新生成并覆盖这些凭据。** 否则 Console 会话会失效，外部 Agent 或调用方可能认证失败，历史加密数据也可能无法解密。请安全备份 `deploy/.env.compose`，不要提交它或 `deploy/runtime/`，也不要把真实值写入 `deploy/compose.env.example`。
 
-## 先验证 Mock，再接 SIP
+## 先验证 SIP App 或 Mock，再接运营商线路
+
+### SIP App（默认 WSS）
+
+先区分两个概念：**SIP 登录账号**用于 App 认证并登记设备位置，**外呼联系人**用于告诉任务这次要呼叫谁。`FREESWITCH_LOCAL_USER` 只负责创建登录账号，不参与 Adapter 的路由决策；真正拨号目标来自任务联系人。首验让两者使用同一个号码，所以服务才能通过 `user/{联系人去+}` 找到已注册 App。
+
+完整流程：
+
+1. **你在部署电脑的终端**进入 Fastcall 项目根目录，执行 `./scripts/bootstrap_compose.sh`。Bootstrap 生成 SIP 登录账号、随机密码和 WSS 证书，然后调用 Docker Compose 构建并启动服务。
+2. **在同一张终端窗口**等待启动完成，查看 `SIP username`、`Generated SIP password`、`SIP domain`、`SIP WSS URL` 和 `Contact phone`。错过时可在 `deploy/.env.compose` 查看对应配置。Docker build 只构建镜像，不会替你注册手机 App。
+3. **你在手机 SIP App 中**填写这些账号、密码、域和 WSS 地址。自签名局域网证书需要 App 信任 `deploy/runtime/tls/ca.crt`；公开部署建议使用公共可信域名证书。确认 App 显示注册成功，未注册的 App 无法仅凭手机号被找到。
+4. **你在部署电脑的浏览器**打开 Console，创建、校验并发布 Robot。
+5. **你在部署电脑的终端**运行 `./scripts/sip_quickstart.py --robot-code YOUR_APP_CODE`。脚本创建普通任务、导入同一个注册号码并启动，Adapter 根据联系人号码直拨 `user/{callee去+}`。
+6. **你在手机 App 接听**，检查 INVITE、RTP/SRTP、开场白、双向对话、结束语，再到 Console 检查 transcript、Call 终态和资源清理。
+
+当前是**单个预置账号的首验模式**，quickstart 把该账号作为默认联系人只是为了减少输入；玩家任意填号后自动创建 SIP 账号的能力尚未实现。完整原理、配置、公共证书和分阶段排错见 `docs/examples/local-sip-test/README.md`。目标 WSS App 的真机注册、SRTP/ICE 和 AI 对话仍需在设备上验收，不能用网页 Mock 代替。
 
 ### 网页 Mock
 
@@ -229,7 +295,7 @@ Provider 变量只传给 Agent，不会注入 Fast-Call、Adapter 或 FreeSWITCH
 4. 完成真实双向对话并挂断。
 5. 检查 Call 终态、Agent 技术记录、transcript 和两类 Webhook。
 
-当前已实际验证：双向通话、`succeeded/USER_HANGUP`、Agent MySQL 指标与 transcript、Webhook 各一次 204，以及 FreeSWITCH 通道清理。
+当前已实际验证：双向通话、`succeeded/USER_HANGUP`、Agent MySQL 指标与 transcript、Webhook 各一次 204，以及 FreeSWITCH 通道清理。Mock 使用独立的 `loopback/mock-call`，与 SIP App 链路互不影响。
 
 ### 正式 SIP
 

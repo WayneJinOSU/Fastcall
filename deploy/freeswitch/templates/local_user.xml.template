@@ -1,0 +1,12 @@
+<include>
+  <user id="{{LOCAL_USER}}">
+    <params>
+      <param name="password" value="{{LOCAL_PASSWORD}}"/>
+    </params>
+    <variables>
+      <variable name="user_context" value="default"/>
+      <variable name="effective_caller_id_name" value="Fastcall SIP User"/>
+      <variable name="effective_caller_id_number" value="{{LOCAL_USER}}"/>
+    </variables>
+  </user>
+</include>
