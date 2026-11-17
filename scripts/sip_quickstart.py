@@ -75,13 +75,13 @@ def parse_arguments(config):
 
 
 def main():
+    config = read_env(ENV_FILE) if ENV_FILE.exists() else {}
+    arguments = parse_arguments(config)
     if not ENV_FILE.exists():
         raise RuntimeError("deploy/.env.compose is missing; run scripts/bootstrap_compose.sh first")
-    config = read_env(ENV_FILE)
     token = config.get("FASTCALL_OPENAPI_TOKEN", "")
     if not token:
         raise RuntimeError("FASTCALL_OPENAPI_TOKEN is missing from deploy/.env.compose")
-    arguments = parse_arguments(config)
     base_url = f"http://127.0.0.1:{config.get('FASTCALL_HTTP_PORT', '8080')}"
     customer_task_id = arguments.customer_task_id or (
         "sip-" + datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S-%f")

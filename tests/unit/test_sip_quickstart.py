@@ -69,6 +69,15 @@ class SipQuickstartTests(unittest.TestCase):
             requests[0][1], "/openapi/v1/outbound-tasks/customer-task_1.2"
         )
 
+    def test_help_works_without_deployment_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(
+                sip_quickstart, "ENV_FILE", Path(directory) / "missing.env"
+            ), patch("sys.argv", ["sip_quickstart.py", "--help"]):
+                with self.assertRaises(SystemExit) as raised:
+                    sip_quickstart.main()
+        self.assertEqual(raised.exception.code, 0)
+
     def test_completed_task_with_failed_call_returns_failure(self):
         result, _ = self.run_quickstart(call_status="failed")
         self.assertEqual(result, 1)
