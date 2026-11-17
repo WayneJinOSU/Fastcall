@@ -11,16 +11,6 @@ MAX_AUDIO_FRAMES = 25
 FRAME_INTERVAL_SEC = 0.02
 
 
-def _debug_dump(call_id, direction, data):
-    # try:
-    #     with open(f"/tmp/mock_{call_id}_{direction}.pcm", "ab") as handle:
-    #         handle.write(data)
-    # except Exception:
-    #     pass
-    pass
-
-
-
 @dataclass
 class _MockSession:
     task_id: str
@@ -109,7 +99,6 @@ class MockCallMediaRuntime:
     async def _accept_browser_audio(self, session, data):
         if not session.active:
             return
-        _debug_dump(session.call_id, "up", data)
         for frame in session.browser_reassembler.feed(data):
             if session.outgoing.full():
                 session.outgoing.get_nowait()
@@ -287,7 +276,6 @@ class MockCallMediaRuntime:
             if message["type"] == "websocket.disconnect":
                 return
             if message.get("bytes"):
-                _debug_dump(session.call_id, "fs_down", message["bytes"])
                 for frame in reassembler.feed(message["bytes"]):
                     if session.incoming.full():
                         session.incoming.get_nowait()
@@ -297,22 +285,16 @@ class MockCallMediaRuntime:
         await session.freeswitch.send_text(json.dumps({
             "type": "rawAudio", "data": {"sampleRate": 8000},
         }, separators=(",", ":")))
-        await self._send_frames(
-            session.freeswitch, session.outgoing, debug=("fs_up", session.call_id)
-        )
+        await self._send_frames(session.freeswitch, session.outgoing)
 
     async def _browser_send(self, session):
-        await self._send_frames(
-            session.browser, session.incoming, debug=("down", session.call_id)
-        )
+        await self._send_frames(session.browser, session.incoming)
 
-    async def _send_frames(self, websocket, queue, debug=None):
+    async def _send_frames(self, websocket, queue):
         loop = asyncio.get_running_loop()
         next_send = loop.time()
         while True:
             frame = await queue.get()
-            if debug:
-                _debug_dump(debug[1], debug[0], frame)
             next_send = max(next_send, loop.time())
             await asyncio.sleep(max(0, next_send - loop.time()))
             await websocket.send_bytes(frame)
