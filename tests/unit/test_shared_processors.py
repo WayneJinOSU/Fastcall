@@ -1,6 +1,8 @@
+import asyncio
 import unittest
 from types import SimpleNamespace
 
+from pipecat.clocks.system_clock import SystemClock
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
@@ -11,13 +13,14 @@ from pipecat.frames.frames import (
     TTSSpeakFrame,
     TTSTextFrame,
 )
-from pipecat.processors.frame_processor import FrameDirection
+from pipecat.processors.frame_processor import FrameDirection, FrameProcessorSetup
+from pipecat.utils.asyncio.task_manager import TaskManager, TaskManagerParams
 
 from collection_agents.events import (
     VoicemailDetectedEvent,
     VoicemailDetectedFrame,
 )
-from collection_agents.processors.common.hangup import HangupState
+from collection_agents.processors.common.hangup import GracefulHangupController, HangupState
 from collection_agents.processors.common.hangup_phrase_detector import HangupPhraseDetector
 from collection_agents.processors.common.voicemail_detector import VoicemailDetector
 
@@ -161,6 +164,49 @@ class HangupPhraseDetectorTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertFalse(realtime._is_hanging_up)
         self.assertEqual(realtime._buffer, text[-1000:])
+
+
+class GracefulHangupControllerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_resumed_speaking_cancels_hangup_after_audio_underrun(self):
+        state = HangupState()
+        state.is_hanging_up = True
+        state.final_phrase_detected = True
+        hangup_calls = []
+
+        class RecordingController(RecordingPushMixin, GracefulHangupController):
+            pass
+
+        controller = RecordingController(
+            hangup_state=state,
+            hangup_cb=lambda: hangup_calls.append(1),
+            post_bot_stop_delay=0.05,
+            fallback_exit_delay=5.0,
+            end_frame_delay=0.01,
+        )
+        task_manager = TaskManager()
+        task_manager.setup(TaskManagerParams(loop=asyncio.get_running_loop()))
+        clock = SystemClock()
+        clock.start()
+        await controller.setup(
+            FrameProcessorSetup(clock=clock, task_manager=task_manager)
+        )
+
+        await controller.process_frame(
+            BotStoppedSpeakingFrame(), FrameDirection.DOWNSTREAM
+        )
+        self.assertIsNotNone(controller._bot_stop_task)
+
+        await controller.process_frame(
+            BotStartedSpeakingFrame(), FrameDirection.DOWNSTREAM
+        )
+        await asyncio.sleep(0.15)
+        self.assertEqual(hangup_calls, [])
+
+        await controller.process_frame(
+            BotStoppedSpeakingFrame(), FrameDirection.DOWNSTREAM
+        )
+        await asyncio.sleep(0.2)
+        self.assertEqual(hangup_calls, [1])
 
 
 if __name__ == "__main__":

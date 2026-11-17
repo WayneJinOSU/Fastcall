@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
     CancelFrame,
     EndFrame,
@@ -59,7 +60,11 @@ class GracefulHangupController(FrameProcessor):
 
         if self._should_control_hangup() and not self._hangup_command_sent:
             self._hangup_direction = self._hangup_direction or direction
-            if isinstance(frame, BotStoppedSpeakingFrame):
+            if isinstance(frame, BotStartedSpeakingFrame):
+                # 流式 TTS 缓冲暂时耗尽也会触发 BotStoppedSpeakingFrame；
+                # 再次发声说明结束语尚未播完，取消挂断等待真正的停止。
+                self._cancel_bot_stop_task()
+            elif isinstance(frame, BotStoppedSpeakingFrame):
                 self._cancel_fallback_task()
                 self._ensure_bot_stop_task(self._hangup_direction)
             else:

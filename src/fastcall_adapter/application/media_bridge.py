@@ -83,6 +83,11 @@ class MediaBridge:
                 self.caller_frames.put_nowait(frame)
 
     async def accept_agent_bytes(self, data):
+        # try:
+        #     with open(f"/tmp/mock_{self.call_id}_agent.pcm", "ab") as handle:
+        #         handle.write(data)
+        # except Exception:
+        #     pass
         for frame in self._agent_reassembler.feed(data):
             if self.agent_frames.full():
                 raise MediaBackpressureOverflow("Agent audio output exceeded 500ms")

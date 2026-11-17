@@ -376,8 +376,8 @@ def _create_cartesia_tts_service(tts_config):
     volume = tts_config.get("volume")
     speed = tts_config.get("speed")
     if volume is not None:
-        # backend [0, 100] → cartesia [0.5, 2.0]
-        generation_config_kwargs["volume"] = round(0.5 + float(volume) / 100.0 * 1.5, 4)
+        # 临时验证：backend [0, 100] → cartesia [0.5, 1.0]，排除高增益削波
+        generation_config_kwargs["volume"] = round(0.5 + float(volume) / 100.0 * 0.5, 4)
     if speed is not None:
         # backend [0.5, 2] → cartesia [0.6, 1.5]
         generation_config_kwargs["speed"] = round(0.6 + (float(speed) - 0.5) / 1.5 * 0.9, 4)
