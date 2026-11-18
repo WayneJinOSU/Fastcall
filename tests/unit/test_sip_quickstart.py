@@ -18,6 +18,7 @@ class SipQuickstartTests(unittest.TestCase):
             requests = []
 
             def request(base_url, token, method, path, payload=None):
+                self.assertEqual(base_url, "http://localhost:8080")
                 requests.append((method, path, payload))
                 if method == "PUT":
                     return {"task_id": "task_1", "state_version": 1}

@@ -82,7 +82,7 @@ def main():
     token = config.get("FASTCALL_OPENAPI_TOKEN", "")
     if not token:
         raise RuntimeError("FASTCALL_OPENAPI_TOKEN is missing from deploy/.env.compose")
-    base_url = f"http://127.0.0.1:{config.get('FASTCALL_HTTP_PORT', '8080')}"
+    base_url = f"http://localhost:{config.get('FASTCALL_HTTP_PORT', '8080')}"
     customer_task_id = arguments.customer_task_id or (
         "sip-" + datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
     )
