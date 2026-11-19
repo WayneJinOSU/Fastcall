@@ -78,7 +78,6 @@ cp deploy/compose.env.example deploy/.env.compose
 
 ```dotenv
 FASTCALL_SIP_ENABLED=true
-FASTCALL_MOCK_CALLS_ENABLED=true
 FREESWITCH_EXTERNAL_IP=192.168.1.100
 FREESWITCH_DOMAIN=
 FREESWITCH_LOCAL_USER=8615908280801
@@ -266,7 +265,7 @@ App 响铃后接听，至少确认：
 | 开场白 / 双向 AI 对话 / 结束语 | 待真机填写 |
 | Call 终态 / transcript / 资源清理 | 待真机填写 |
 
-网页 Mock 使用独立的 `loopback/mock-call`，不能替代目标 WSS App 的验收。UDP/TCP 客户端仍可使用 `服务器IP:5080`，但其他客户端成功也不能证明目标 WSS App 可用。
+UDP/TCP 客户端可使用 `服务器IP:5080`，但其他客户端成功不能证明目标 WSS App 可用；应使用目标 App 完成真机验收。
 
 ## 7. 按阶段排查
 

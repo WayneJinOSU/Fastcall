@@ -91,13 +91,12 @@ class ESLConnection:
 class FreeSwitchESL:
     def __init__(
         self, host, port, password, gateway, media_ws_url, dial_mode="gateway",
-        mock_target="mock-call", media_token="", sip_register=True,
+        media_token="", sip_register=True,
     ):
         self.commands = ESLConnection(host, port, password)
         self.gateway = gateway
         self.media_ws_url = media_ws_url
         self.dial_mode = dial_mode
-        self.mock_target = mock_target
         self.media_token = media_token
         self.sip_register = sip_register
 
@@ -108,8 +107,6 @@ class FreeSwitchESL:
         await self._require_module("mod_audio_stream")
         if capability == "sip":
             await self._sip_health()
-        elif capability == "mock":
-            await self._require_module("mod_loopback")
         elif capability is not None:
             raise ValueError(f"Unknown FreeSWITCH capability: {capability}")
         return True
@@ -141,16 +138,8 @@ class FreeSwitchESL:
             raise ESLError("FreeSWITCH SIP gateway is not registered")
 
     async def originate(self, call_id, origination_uuid, callee, task_id, contact_id):
-        return await self._originate(call_id, origination_uuid, callee, task_id, contact_id)
-
-    async def originate_mock(self, call_id, origination_uuid, task_id, contact_id):
-        return await self._originate(
-            call_id, origination_uuid, "", task_id, contact_id, mock=True
-        )
-
-    async def _originate(
-        self, call_id, origination_uuid, callee, task_id, contact_id, mock=False
-    ):
+        if self.dial_mode not in {"gateway", "user"}:
+            raise ESLError(f"Unsupported FreeSWITCH dial mode: {self.dial_mode}")
         values = [
             f"origination_uuid={origination_uuid}",
             f"fastcall_call_id={call_id}",
@@ -159,15 +148,7 @@ class FreeSwitchESL:
             "STREAM_PLAYBACK=true",
             "STREAM_BUFFER_SIZE=20",
         ]
-        if mock:
-            if not re.fullmatch(r"[A-Za-z0-9_-]+", self.mock_target):
-                raise ESLError("Mock Call loopback target is invalid")
-            values.append("fastcall_mock_call=true")
-            values.append("STREAM_PLAYBACK_DIRECT=true")
-            destination = f"loopback/{self.mock_target}"
-        elif self.dial_mode == "loopback":
-            destination = f"loopback/{callee.lstrip('+')}"
-        elif self.dial_mode == "user":
+        if self.dial_mode == "user":
             destination = f"user/{callee.lstrip('+')}"
         elif not self.gateway or await self._is_registered(callee):
             destination = f"user/{callee.lstrip('+')}"
@@ -182,12 +163,6 @@ class FreeSwitchESL:
         return {"uuid": origination_uuid, "job_uuid": job_uuid}
 
     async def start_media(self, channel_uuid, call_id, claim_generation):
-        await self._start_audio_stream(channel_uuid, call_id, "caller", claim_generation)
-
-    async def start_mock_media(self, channel_uuid, call_id):
-        await self._start_audio_stream(channel_uuid, call_id, "mock_browser")
-
-    async def _start_audio_stream(self, channel_uuid, call_id, direction, generation=None):
         if not self.media_token or any(char.isspace() for char in self.media_token):
             raise ESLError("A valid FreeSWITCH media token is required")
         headers = json.dumps(
@@ -200,13 +175,12 @@ class FreeSwitchESL:
             raise ESLError("Unable to set FreeSWITCH media authentication")
         metadata = json.dumps({
             "call_id": call_id,
-            "claim_generation": generation,
-            "direction": direction,
+            "claim_generation": claim_generation,
+            "direction": "caller",
         }, separators=(",", ":"))
         parsed = urlsplit(self.media_ws_url)
-        suffix = f"/{call_id}/browser" if direction == "mock_browser" else f"/{call_id}"
         url = urlunsplit((
-            parsed.scheme, parsed.netloc, f"{parsed.path.rstrip('/')}{suffix}",
+            parsed.scheme, parsed.netloc, f"{parsed.path.rstrip('/')}/{call_id}",
             "", "",
         ))
         response = await self.commands.command(

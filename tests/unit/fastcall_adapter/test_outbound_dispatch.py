@@ -147,6 +147,22 @@ class DispatchTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_legacy_mock_origin_never_uses_sip_originate(self):
+        from fastcall_core.infrastructure.outbound_orm import OutboundTaskModel
+
+        self.uow.session.get(OutboundTaskModel, "task_1").origin = "mock_call"
+        self.uow.commit()
+
+        async def scenario():
+            gateway = FakeGateway()
+            with self.assertRaises(RobotConfigError) as error:
+                await self._service(gateway).dispatch("call_1")
+            self.assertEqual(error.exception.code, "MOCK_CALL_DISABLED")
+            self.assertEqual(gateway.originate_calls, [])
+            self.assertEqual(self.uow.calls.get("call_1").result_code, "MOCK_CALL_DISABLED")
+
+        asyncio.run(scenario())
+
     def test_dynamic_sip_failure_is_not_reported_as_success(self):
         async def scenario():
             gateway = FakeGateway(fail_capability="sip")

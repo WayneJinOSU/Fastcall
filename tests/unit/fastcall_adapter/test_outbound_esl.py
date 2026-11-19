@@ -15,16 +15,16 @@ class FakeCommands:
 
 
 class FreeSwitchESLTests(unittest.TestCase):
-    def test_loopback_mode_uses_loopback_destination(self):
+    def test_removed_loopback_mode_is_rejected(self):
         gateway = FreeSwitchESL(
             "localhost", 8021, "secret", "carrier", "ws://adapter/media",
             dial_mode="loopback",
         )
         commands = FakeCommands()
         gateway.commands = commands
-        asyncio.run(gateway.originate("call_1", "origin_1", "+12025550101", "task_1", "contact_1"))
-        self.assertIn("loopback/12025550101 &park()", commands.calls[0])
-        self.assertNotIn("sofia/gateway", commands.calls[0])
+        with self.assertRaisesRegex(ESLError, "Unsupported FreeSWITCH dial mode"):
+            asyncio.run(gateway.originate("call_1", "origin_1", "+12025550101", "task_1", "contact_1"))
+        self.assertEqual(commands.calls, [])
 
     def test_media_uses_bearer_header_without_url_token(self):
         gateway = FreeSwitchESL(
@@ -145,7 +145,7 @@ class FreeSwitchESLTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_sip_and_mock_capability_health(self):
+    def test_sip_capability_health(self):
         from pathlib import Path
 
         fixture = (
@@ -168,9 +168,7 @@ class FreeSwitchESLTests(unittest.TestCase):
         commands.command = command
         gateway.commands = commands
         asyncio.run(gateway.health_check("sip"))
-        asyncio.run(gateway.health_check("mock"))
         self.assertIn("api sofia status gateway carrier", commands.calls)
-        self.assertIn("api module_exists mod_loopback", commands.calls)
         for state in ("NOREG", "FAIL"):
             commands.state = state
             with self.assertRaises(ESLError):

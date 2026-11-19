@@ -225,7 +225,7 @@ reserved → dialing → ringing → answered → talking
 
 FreeSWITCH 事件 ID 优先组合实例 UUID、boot/stream epoch、通道 UUID、事件类型和 `Event-Sequence`；缺少序号时使用规范化 payload hash。事件重放只重建状态，不重新拨号。
 
-主通道按实际 Channel UUID 和 `origination_uuid` 关联，再校验 `fastcall_call_id`。loopback 另一腿不得覆盖主通道或创建第二个 Agent Session。
+主通道按实际 Channel UUID 和 `origination_uuid` 关联，再校验 `fastcall_call_id`；不得让其他通道覆盖主通道或创建第二个 Agent Session。
 
 ### 9.3 时间窗与重试时间
 
@@ -253,8 +253,6 @@ FreeSWITCH 事件 ID 优先组合实例 UUID、boot/stream epoch、通道 UUID�
 - `max_retries=0` 使用空数组，间隔数量必须等于 `max_retries`。
 - `dial_requested_at` 是计次边界：提交前不计，提交后保守计一次，结果未知时先重读，不能据此重复发送。
 
-## 9. Mock Call 共享语义
+## 9. 历史 Mock 数据兼容
 
-Mock Call 直接复用正式 Task/Contact/Call、Scheduler 预留、Agent Session、终态和 Outbox，不新增运行聚合。`outbound_task.origin` 取 `outbound` 或 `mock_call`，是任务来源的唯一事实源；Call 不重复保存 origin。`outbound_call.freeswitch_uuid` 始终是 A-leg，`mock_browser_uuid` 仅保存 Mock 的 B-leg 浏览器通道。
-
-Mock 的 Agent Claim 仍按固定 `robot_version_id/config_hash` 读取精确发布版本，只在 start payload 增加 `callSource=mock_call`。电话重试策略固定为零，终态和 Webhook 事务与正式外呼一致。
+Mock Call 运行功能已移除。历史 `outbound_task.origin=mock_call` 和 `outbound_call.mock_browser_uuid` 字段继续保留，用于读取既有 Task、Call、Agent 和 Webhook 事实；不基于这些字段创建新任务或媒体通道。正式任务仍只使用 `origin=outbound`。

@@ -67,7 +67,7 @@ fs_cli() {
 }
 
 check_modules() {
-    for module in mod_sofia mod_loopback mod_audio_stream; do
+    for module in mod_sofia mod_audio_stream; do
         [[ "$(fs_cli "module_exists $module")" == "true" ]] || fail "$module is not loaded"
     done
     assert_contains "$(fs_cli 'show api uuid_audio_stream')" "mod_audio_stream"
@@ -126,20 +126,8 @@ Path("/usr/local/freeswitch/log/upgrade-check").write_text("root owned")
 Path("/usr/local/freeswitch/db/upgrade-check").write_text("root owned")
 '
 
-start_container -e FASTCALL_SIP_ENABLED=false -e FASTCALL_MOCK_CALLS_ENABLED=true
-check_modules
-docker exec "$CONTAINER" test ! -e /usr/local/freeswitch/etc/freeswitch/sip_profiles/external/fastcall.xml
-fs_cli 'bgapi originate {origination_uuid=00000000-0000-0000-0000-000000000001,fastcall_mock_call=true}loopback/mock-call &park()' >/dev/null
-sleep 2
-assert_contains "$(fs_cli 'show channels')" "mock-call"
-fs_cli 'hupall NORMAL_CLEARING' >/dev/null
-sleep 1
-assert_contains "$(fs_cli 'show channels')" "0 total."
-echo "PASS: Mock-only image, modules, ESL authentication and loopback dialplan"
-
 start_container \
     -e FASTCALL_SIP_ENABLED=true \
-    -e FASTCALL_MOCK_CALLS_ENABLED=false \
     -e FREESWITCH_EXTERNAL_IP=127.0.0.1 \
     -e FREESWITCH_DOMAIN=127.0.0.1 \
     -e FREESWITCH_SIP_GATEWAY=smoke \
@@ -155,7 +143,6 @@ echo "PASS: SIP profile and IP-auth gateway configuration"
 
 start_container \
     -e FASTCALL_SIP_ENABLED=true \
-    -e FASTCALL_MOCK_CALLS_ENABLED=true \
     -e FREESWITCH_EXTERNAL_IP=127.0.0.1 \
     -e FREESWITCH_DOMAIN=127.0.0.1 \
     -e FREESWITCH_SIP_GATEWAY=smoke \
@@ -166,16 +153,10 @@ start_container \
 check_modules
 check_wss
 assert_contains "$(fs_cli 'sofia status gateway smoke')" "Proxy"
-docker exec "$CONTAINER" test -f /usr/local/freeswitch/etc/freeswitch/dialplan/default/00_mock_call.xml
-fs_cli 'bgapi originate {origination_uuid=00000000-0000-0000-0000-000000000002,fastcall_mock_call=true}loopback/mock-call &park()' >/dev/null
-sleep 2
-assert_contains "$(fs_cli 'show channels')" "mock-call"
-fs_cli 'hupall NORMAL_CLEARING' >/dev/null
-echo "PASS: SIP and Mock Call enabled in the same FreeSWITCH instance"
+echo "PASS: SIP profile and registering gateway configuration"
 
 start_container \
     -e FASTCALL_SIP_ENABLED=true \
-    -e FASTCALL_MOCK_CALLS_ENABLED=false \
     -e FREESWITCH_EXTERNAL_IP=127.0.0.1 \
     -e FREESWITCH_DOMAIN=127.0.0.1 \
     -e FREESWITCH_LOCAL_USER=8615908280801

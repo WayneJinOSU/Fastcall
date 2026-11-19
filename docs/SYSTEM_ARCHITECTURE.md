@@ -148,12 +148,6 @@ src/
 5. Adapter 周期对账通过租约恢复指令，幂等挂断，只有确认终态后才将指令标记 processed。
 6. 普通 EventWorker 不领取挂断指令。
 
-### 6.5 独立 Mock Call
-
-Console `/mock-calls` 使用当前 Release 创建 `origin=mock_call` 的单联系人 Task。浏览器媒体注册后激活 Task，随后完整经过 Scheduler、Adapter dispatch、FreeSWITCH loopback、Agent Session、终态、Outbox 和 Webhook Worker。浏览器作为 B-leg 被叫，手动接听后才出现 A `CHANNEL_ANSWER` 并启动 Agent；支持拒接和无人接听，不自动重拨。
-
-Mock 使用独立固定 loopback target，不改变正式 gateway。A/B UUID 分别由 `outbound_call.freeswitch_uuid` 和 `mock_browser_uuid` 保存。Mock 保留完整 Agent 技术记录，但正式任务列表和正式 BI 默认排除；Webhook 只能投递到服务端固定、经过 HMAC/HTTPS 校验的 Mock Receiver。应用编辑器中的草稿 Voice Test 保持独立。
-
 ## 7. 数据、事务与内部设计规则
 
 - MySQL 是任务、联系人、Call、事件和 Outbox 的事实源。
@@ -180,20 +174,14 @@ Fast-Call 当前结构由 `deploy/mysql/fastcall_current_schema.sql` 唯一描�
 
 ## 9. 验证与当前证据
 
-截至 2026-11-15 的当前工作区：
+截至 2026-11-19 的当前工作区：
 
-- Console 前端 51 项测试、TypeScript 检查和生产构建通过；Mock Call 独立页面已在真实浏览器验证导航、Release 和变量加载。
-- 模拟 outbound e2e、Mock Call 的 Scheduler/dispatch/手动接听/Claim/终态/Outbox e2e，以及架构边界、路由集合和 UOW 结构测试通过。真实 Docker FreeSWITCH Mock Call 已验证 B 来电、手动 answer、联合 ready、双向有效 PCM、ASR 非零文本、1 轮 LLM 对话、真实 TTS、USER_HANGUP、Task completed、两类 Webhook 各一次 204、Agent `mock_call` 落库及 A/B 通道清零。媒体修复使用 Mock-only direct playback patch，不改变正式 gateway 路径。
-- 真实浏览器已验收登录、任务列表/详情、联系人、Call、通话技术分析，以及任务启动、暂停、恢复、取消；Agent 不可用与恢复、取消后子表刷新、BI 空库/有数据、日历和每日指标展开也已验证。
-- Agent 的 attached 等待 ACK 断线现已纳入 slot `try/finally` 释放，并有目标回归。
-- 真实 FreeSWITCH loopback 已验证当前源码：一个 Call 成功、Task 完成、两类 Webhook 各一次 204、无残留通道。
-- 语音验收包含真实 STT、LLM 和 TTS，Agent 通话指标及 transcript 独立落库。
-- 真实 MySQL 6 项在缺少独立测试库时不得记为已执行。
-- Docker 新镜像构建曾因 Docker Hub 元数据超时受阻；loopback 使用现有 Adapter 镜像并只读挂载当前源码，不等同于新镜像构建验收。
-- 统一 FreeSWITCH 镜像已在 ARM64 环境从固定源码构建成功；Mock-only、SIP/IP-auth 配置加载、SIP+Mock 同实例三组隔离冒烟通过，覆盖 ESL 强密码/ACL、Sofia profile、核心 G.711、媒体模块注册及 Mock loopback 通道创建和清理。该结果不覆盖真实 SIP INVITE/RTP、direct playback 实际音频、媒体 Header 或 Adapter/Agent 全链路。
-- Adapter/Fast-Call 双能力改造的相关后端测试 147 项通过，Console 52 项测试和生产构建通过；全量后端 264 项中 263 项通过，唯一失败仍为冻结的 collection-agent `_observer` 测试。新增能力检查、拨号栅栏和媒体 Header 有单元回归，尚未据此宣称真实 SIP 或 WebSocket 媒体全链路通过。为保持 Agent 冻结，Adapter 仅外部检查其 `/state/up` 进程可达性，不把该结果描述为 Agent 业务 readiness。
-- `fastcall:dev`、`fastcall-adapter:dev` 均已实际构建成功；Fast-Call 镜像内 API、Scheduler 和 Webhook 入口加载通过，且不含 Pipecat。入口检查只证明依赖与打包完整，不替代服务启动后的真实业务链路。
-- `deploy/compose.yaml` 与启动器已使用本地真实 MySQL 的独立 `fastcall`、`collection_agents` 数据库完成全栈启动；Fast-Call 在当时的 Alembic 管理下曾迁移至 `0005`，当前已改为纯 SQL 快照。真实浏览器 Mock 已完成接听和双向通话，Call 为 `succeeded/USER_HANGUP`，Agent MySQL 保存通话指标和 transcript，两类 Webhook 均一次 204，FreeSWITCH 通道清零。该结果仍不替代真实运营商 SIP 验收。
+- Mock Call 运行功能、Console 页面、loopback 媒体和 direct-playback 补丁已移除；历史 `origin=mock_call` 数据、来源过滤和存量字段保留。旧 Mock 验证不再代表当前可用的测试入口。
+- Mock 删除后的全量单元测试 281 项通过，普通 outbound 集成测试 1 项通过；既有 Realtime `_observer` 失败 1 项，与本次无关。Console 49 项测试、TypeScript 检查和生产构建通过。FreeSWITCH 镜像构建/冒烟两次均因 Docker Hub 元数据超时受阻，未记为通过。
+- 真实浏览器已验收登录、任务列表/详情、联系人、Call、通话技术分析，以及任务启动、暂停、恢复和取消；Agent 不可用恢复、BI 和日历页面已有历史验收。
+- Agent 的 attached 等待 ACK 断线已纳入 slot `try/finally` 释放，并有目标回归。
+- 历史 SIP/App、loopback 和 Mock 结果只作为当时链路的证据，不替代当前真实运营商 SIP INVITE/RTP、NAT、双向媒体或 Adapter/Agent 全链路验收。
+- 真实 MySQL 集成在缺少独立测试库时不得记为已执行；镜像入口加载、容器启动和健康检查不能替代真实业务链路。
 
 ## 10. 后续修改入口
 
@@ -221,12 +209,11 @@ Fast-Call 与 Agent 分别使用 `deploy/mysql/fastcall_current_schema.sql` 和 
 
 ## 12. 基础设施与运维约束
 
-- FreeSWITCH 负责 SIP 注册、拨号、接听、挂机、CDR 和电话音频。统一镜像由 `deploy/freeswitch/Dockerfile` 构建，同一实例加载 Sofia、loopback 和 `mod_audio_stream`。正式任务对已注册被叫或无 gateway 配置直拨 `user/{号码}`，否则使用运营商 gateway；Mock Call 使用固定 loopback target。
+- FreeSWITCH 负责 SIP 注册、拨号、接听、挂机、CDR 和电话音频。统一镜像由 `deploy/freeswitch/Dockerfile` 构建，加载 Sofia 和 `mod_audio_stream`；Mock loopback 与 direct-playback 补丁已移除。当前测试路由仍可使用 SIP App，生产 Trunk-only 路由约束见 `docs/PRODUCTION_FREESWITCH_MIGRATION.md`。
 - 镜像固定基础镜像 digest、FreeSWITCH 1.10.12、Sofia SIP、spandsp 和 `mod-audio-stream` commit `a25fb1fe530ec6a612d321ff04f70be69b1a257c`；媒体模块需满足 AGPL-3.0 或商业许可。
-- 入口按 `FASTCALL_SIP_ENABLED` 和 `FASTCALL_MOCK_CALLS_ENABLED` 渲染配置。启用 SIP 时必须配置 external IP，gateway 可选；本地 SIP 账号和密码由 `FREESWITCH_LOCAL_USER`、`FREESWITCH_LOCAL_PASSWORD` 渲染为普通 directory 用户。默认 WSS 为 `:7443`，bootstrap 生成与 `FREESWITCH_DOMAIN` 匹配的自签名证书或复用已有公共证书。Mock 仍可独立运行。
+- SIP 是当前唯一电话能力，启用时必须配置 external IP；本地 SIP 账号和密码由 `FREESWITCH_LOCAL_USER`、`FREESWITCH_LOCAL_PASSWORD` 渲染为内部测试用户。WSS 常开为 `:7443`，bootstrap 生成与 `FREESWITCH_DOMAIN` 匹配的证书或复用已有公共证书。
 - ESL 必须显式配置非默认强密码，默认 ACL 只允许 `127.0.0.1/32`；实际部署需改为 Adapter 所在地址并不向宿主机发布 8021。共享网络命名空间仅属于旧 POC，不是统一镜像的默认拓扑。
-- 统一镜像包含受控的 `mock_call_direct_playback.patch`，但正式 originate 不设置 `STREAM_PLAYBACK_DIRECT`，正式 SIP 仍走模块原播放路径。Mock dialplan 固定目标、不自动 answer，不增加通配路由或公网转发。
-- `scripts/test_freeswitch_image.sh` 是不发布宿主机端口的镜像级冒烟，覆盖模块、ESL 认证、SIP 配置渲染和 loopback；它不替代真实 SIP、双向媒体或 Adapter/Agent 全链路验收。
+- `scripts/test_freeswitch_image.sh` 是不发布宿主机端口的镜像级冒烟，覆盖模块、ESL 认证、SIP 配置渲染和 WSS；它不替代真实 SIP、双向媒体或 Adapter/Agent 全链路验收。
 - Fast-Call 与 Agent schema 均只由 SQL 文件管理：全新空库分别使用 `deploy/mysql/fastcall_current_schema.sql` 和 `agent_current_schema.sql`。Compose 不注册 `fastcall-migrate` 或 `agent-init`，不在服务启动时自动迁移。项目只保留当前 SQL 快照，旧库需在项目外备份并自行完成结构升级。
 - Provider 密钥留在各服务部署环境，不进入 Robot 配置 JSON、审计、Webhook 或文档。
 - 本地 `/tmp` 的运行脚本、runtime env、测试 CA 和 HTTPS 接收端只用于验收，不是生产组件。

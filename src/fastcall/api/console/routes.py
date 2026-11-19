@@ -44,7 +44,6 @@ def session(request: Request, session: ConsoleSession = Depends(console_session)
     return {
         "actor_id": session.actor,
         "csrf_token": session.csrf_token,
-        "mock_calls_enabled": request.app.state.settings.mock_calls_enabled,
     }
 
 

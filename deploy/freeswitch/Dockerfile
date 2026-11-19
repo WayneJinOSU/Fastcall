@@ -78,10 +78,7 @@ RUN git init . \
     && git remote add origin https://github.com/AlchemillaHQ/mod-audio-stream.git \
     && git fetch --depth 1 origin "${MOD_AUDIO_STREAM_COMMIT}" \
     && git checkout --detach FETCH_HEAD
-COPY deploy/freeswitch/mock_call_direct_playback.patch /tmp/mock_call_direct_playback.patch
-RUN git apply --check /tmp/mock_call_direct_playback.patch \
-    && git apply /tmp/mock_call_direct_playback.patch \
-    && cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_LOCAL=ON -DBUILD_TESTING=OFF \
+RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_LOCAL=ON -DBUILD_TESTING=OFF \
     && cmake --build build --parallel "$(nproc)" \
     && cmake --install build \
     && rm -rf /usr/src/mod_audio_stream
@@ -112,8 +109,7 @@ RUN echo "/usr/local/freeswitch/lib" > /etc/ld.so.conf.d/freeswitch.conf \
 
 ENV PATH="/usr/local/freeswitch/bin:${PATH}"
 ENV LD_LIBRARY_PATH="/usr/local/freeswitch/lib:/usr/local/lib"
-ENV FASTCALL_SIP_ENABLED=false
-ENV FASTCALL_MOCK_CALLS_ENABLED=true
+ENV FASTCALL_SIP_ENABLED=true
 ENV FREESWITCH_ESL_ALLOWED_CIDR=127.0.0.1/32
 ENV FREESWITCH_RTP_START_PORT=16384
 ENV FREESWITCH_RTP_END_PORT=16483
@@ -127,7 +123,6 @@ RUN rm -rf /usr/local/freeswitch/etc/freeswitch/dialplan/default \
         /usr/local/freeswitch/etc/freeswitch/sip_profiles/external
 
 COPY deploy/freeswitch/config/ /usr/local/freeswitch/etc/freeswitch/
-COPY deploy/freeswitch/mock_call_dialplan.xml /usr/local/freeswitch/etc/freeswitch/dialplan/default/00_mock_call.xml
 COPY deploy/freeswitch/templates/ /usr/local/share/fastcall-freeswitch/templates/
 COPY deploy/freeswitch/entrypoint.py /usr/local/share/fastcall-freeswitch/entrypoint.py
 RUN mkdir -p /usr/local/freeswitch/etc/freeswitch/sip_profiles/external \

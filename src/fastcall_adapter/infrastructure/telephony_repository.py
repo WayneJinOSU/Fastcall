@@ -1,6 +1,6 @@
 from fastcall_core.domain.calls import CallStatus, validate_call_transition
 from fastcall_core.domain.errors import RobotConfigError
-from fastcall_core.infrastructure.outbound_orm import OutboundCallModel, OutboundTaskModel
+from fastcall_core.infrastructure.outbound_orm import OutboundCallModel
 from fastcall_core.infrastructure.outbound_repositories import _compare_and_set
 from fastcall_core.infrastructure.session_repository import SqlAlchemyAgentSessionRepository
 from sqlalchemy import select
@@ -35,41 +35,6 @@ class SqlAlchemyTelephonyRepository:
         if model.freeswitch_uuid and channel_uuid and model.freeswitch_uuid != channel_uuid:
             raise RobotConfigError("CHANNEL_UUID_CONFLICT", "Channel UUID changed during the Call")
         return model.id
-
-    def get_mock_call(self, task_id):
-        model = self.session.execute(
-            select(OutboundCallModel)
-            .where(OutboundCallModel.task_id == task_id)
-            .order_by(OutboundCallModel.call_no.desc())
-        ).scalars().first()
-        return self.aggregate.calls.get(model.id) if model else None
-
-    def bind_mock_browser(self, call_id, channel_uuid):
-        task, contact, call = self.aggregate._lock_aggregate(call_id)
-        if task.origin != "mock_call":
-            raise RobotConfigError("CHANNEL_CALL_MISMATCH", "Only Mock Calls have a browser leg")
-        if call.mock_browser_uuid and call.mock_browser_uuid != channel_uuid:
-            raise RobotConfigError("CHANNEL_UUID_CONFLICT", "Mock browser UUID changed")
-        if call.mock_browser_uuid == channel_uuid:
-            return call
-        _compare_and_set(
-            self.session, OutboundCallModel, call_id, call.state_version,
-            {"mock_browser_uuid": channel_uuid},
-            (OutboundCallModel.id == call_id,),
-        )
-        self.session.flush()
-        return self.aggregate.calls.get(call_id)
-
-    def list_active_mock_calls(self):
-        models = self.session.execute(
-            select(OutboundCallModel)
-            .join(OutboundTaskModel, OutboundTaskModel.id == OutboundCallModel.task_id)
-            .where(
-                OutboundTaskModel.origin == "mock_call",
-                OutboundCallModel.status.not_in(["succeeded", "failed", "cancelled"]),
-            )
-        ).scalars().all()
-        return [self.aggregate.calls.get(model.id) for model in models]
 
     def restore_active(self, call_id, expected_state_version, now):
         task, contact, call = self.aggregate._lock_aggregate(call_id)

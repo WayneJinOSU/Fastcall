@@ -102,9 +102,8 @@ def drop_privileges():
 
 def main():
     sip_enabled = env_bool("FASTCALL_SIP_ENABLED", False)
-    mock_enabled = env_bool("FASTCALL_MOCK_CALLS_ENABLED", True)
-    if not sip_enabled and not mock_enabled:
-        raise RuntimeError("At least one of SIP or Mock Call must be enabled")
+    if not sip_enabled:
+        raise RuntimeError("SIP must be enabled")
 
     esl_password = os.getenv("FREESWITCH_ESL_PASSWORD", "")
     if len(esl_password) < 16 or esl_password == "ClueCon":
@@ -186,9 +185,9 @@ def main():
         gateway_path.write_text(content)
         gateway_path.chmod(0o600)
 
-    mock_dialplan = CONF_DIR / "dialplan/default/00_mock_call.xml"
-    if not mock_enabled and mock_dialplan.exists():
-        mock_dialplan.unlink()
+    legacy_mock_dialplan = CONF_DIR / "dialplan/default/00_mock_call.xml"
+    if legacy_mock_dialplan.exists():
+        legacy_mock_dialplan.unlink()
 
     vars_path = CONF_DIR / "vars.xml"
     freeswitch_domain = os.getenv("FREESWITCH_DOMAIN", "").strip() or "$${local_ip_v4}"
@@ -199,7 +198,7 @@ def main():
     )
     vars_path.chmod(0o600)
 
-    print(f"Fastcall FreeSWITCH configured: sip={str(sip_enabled).lower()} mock={str(mock_enabled).lower()}", flush=True)
+    print(f"Fastcall FreeSWITCH configured: sip={str(sip_enabled).lower()}", flush=True)
     if len(sys.argv) < 2:
         raise RuntimeError("A FreeSWITCH command is required")
     drop_privileges()

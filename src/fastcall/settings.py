@@ -34,10 +34,7 @@ class Settings:
     adapter_token: str = ""
     agent_token: str = ""
     media_token: str = ""
-    mock_callback_url: str = ""
-    mock_callback_secret_ref: str = ""
     sip_enabled: bool = True
-    mock_calls_enabled: bool = True
 
     @classmethod
     def from_env(cls):
@@ -66,10 +63,7 @@ class Settings:
             adapter_token=os.getenv("FASTCALL_ADAPTER_TOKEN", "").strip(),
             agent_token=os.getenv("FASTCALL_AGENT_TOKEN", "").strip(),
             media_token=os.getenv("FASTCALL_MEDIA_TOKEN", "").strip(),
-            mock_callback_url=os.getenv("FASTCALL_MOCK_CALLBACK_URL", "").strip(),
-            mock_callback_secret_ref=os.getenv("FASTCALL_MOCK_CALLBACK_SECRET_REF", "").strip(),
             sip_enabled=_env_bool("FASTCALL_SIP_ENABLED", True),
-            mock_calls_enabled=_env_bool("FASTCALL_MOCK_CALLS_ENABLED", True),
         )
 
     def validate(self):
@@ -84,10 +78,10 @@ class Settings:
         if any(not token for token in tokens):
             raise RuntimeError("All Fast-Call API tokens are required")
         if len(set(tokens)) != len(tokens):
-            raise RuntimeError("Fast-Call API tokens must be different")
+            raise RuntimeError("All Fast-Call API tokens must be different")
         if not self.console_admin_actor_id or not self.console_admin_password_hash:
             raise RuntimeError("Console administrator identity and password hash are required")
         if len(self.console_session_secret) < 32:
-            raise RuntimeError("Console session secret must contain at least 32 characters")
-        if not self.sip_enabled and not self.mock_calls_enabled:
-            raise RuntimeError("At least one of SIP or Mock Call must be enabled")
+            raise RuntimeError("Console session secret must be at least 32 characters")
+        if not self.sip_enabled:
+            raise RuntimeError("SIP must be enabled")

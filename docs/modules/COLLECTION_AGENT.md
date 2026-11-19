@@ -106,7 +106,7 @@ WebSocket 音频 → Telephony Serializer → VAD/轮次与中断
 
 Agent 自有主要表：
 
-- `call_record`：技术指标、模型、时长和成本；`call_source` 区分正式外呼、Mock Call、语音测试和普通 WebSocket，`claim_generation` 保留 Agent 代际，`technical_config.pricing` 保存价格版本、USD 币种和估算标记。Console 语音测试不写该表，测试 transcript、日志和事件仍可独立保留；Mock Call 使用显式 `callSource=mock_call` 并保留完整技术记录，但正式 summary/daily BI 默认排除；普通 WebSocket 不得因来源未知而误删指标。
+- `call_record`：技术指标、模型、时长和成本；`call_source` 区分正式外呼、语音测试和普通 WebSocket，并保留历史 `mock_call` 记录的读取兼容，`claim_generation` 保留 Agent 代际，`technical_config.pricing` 保存价格版本、USD 币种和估算标记。Console 语音测试不写该表，测试 transcript、日志和事件仍可独立保留；历史 Mock 记录继续从正式 summary/daily BI 排除，普通 WebSocket 不得因来源未知而误删指标。
 - `call_transcript`：完整对话消息。
 - `call_analysis`：Agent 原有业务分析结构。
 
@@ -133,8 +133,6 @@ BI 按固定 Asia/Shanghai 自然日聚合，日界线由 `zoneinfo` 转为 UTC 
 - 当前已有一项既有 Realtime `_observer` 错误：`test_realtime_pre_session_audio`。除非任务专门修复该问题，不得把它混入 Fast-Call 改造。
 - 修改 `session_lifecycle.py` 或 `session_registry.py` 时必须覆盖 ACK、代际、重复 slot、pre-ready recover 和清理顺序。
 - 修改 Bot 业务时不得破坏普通 `/ws-v2` 流程，也不得要求 Fast-Call 为业务分析复制分类逻辑。
-
-真实 loopback 已验证 Agent 能完成真实 STT、LLM、TTS、结束语和独立通话落库；详细结果见系统总览。
 
 ## 9. 配置模式与运行行为
 

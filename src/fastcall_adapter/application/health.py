@@ -12,24 +12,8 @@ class AdapterHealthService:
     async def check(self):
         common = await self._common_health()
         sip = await self._capability_health("sip", common, self.settings.sip_enabled)
-        mock = await self._capability_health(
-            "mock", common, self.settings.mock_calls_enabled
-        )
-        enabled = [
-            name for name, active in (
-                ("sip", self.settings.sip_enabled),
-                ("mock", self.settings.mock_calls_enabled),
-            ) if active
-        ]
-        statuses = {"sip": sip, "mock": mock}
-        ready_count = sum(statuses[name] == "ready" for name in enabled)
-        if common != "ready" or not ready_count:
-            status = "not_ready"
-        elif ready_count < len(enabled):
-            status = "degraded"
-        else:
-            status = "ready"
-        return {"status": status, "common": common, "sip": sip, "mock": mock}
+        status = "ready" if common == "ready" and sip == "ready" else "not_ready"
+        return {"status": status, "common": common, "sip": sip}
 
     async def _common_health(self):
         try:

@@ -1,8 +1,7 @@
 from fastapi import FastAPI
 
-from fastcall.api import health, management, mock_webhook, resolve
+from fastcall.api import health, management, resolve
 from fastcall.api.console import agent_reports as console_agent_reports
-from fastcall.api.console import mock_calls as console_mock_calls
 from fastcall.api.console import outbound as console_outbound
 from fastcall.api.console import routes as console
 from fastcall.api.console import voice_test
@@ -18,7 +17,5 @@ def register_routes(app: FastAPI):
     app.include_router(voice_test.router)
     app.include_router(console_outbound.router)
     app.include_router(console_agent_reports.router)
-    app.include_router(console_mock_calls.router)
-    app.include_router(mock_webhook.router)
     app.include_router(outbound.router)
     app.include_router(calls.router)

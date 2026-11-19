@@ -238,12 +238,14 @@ def container_database_url(value):
 
 
 def sip_settings(source):
-    enabled_value = source.get("FASTCALL_SIP_ENABLED", "false").strip().lower()
+    enabled_value = source.get("FASTCALL_SIP_ENABLED", "true").strip().lower()
     if enabled_value not in {"1", "true", "yes", "on", "0", "false", "no", "off"}:
         raise RuntimeError("FASTCALL_SIP_ENABLED must be a boolean")
     sip_enabled = enabled_value in {"1", "true", "yes", "on"}
+    if not sip_enabled:
+        raise RuntimeError("SIP must be enabled")
     external_ip = source.get("FREESWITCH_EXTERNAL_IP", "").strip()
-    if sip_enabled and not external_ip:
+    if not external_ip:
         raise RuntimeError("FREESWITCH_EXTERNAL_IP is required when SIP is enabled")
     domain = source.get("FREESWITCH_DOMAIN", "").strip() or external_ip or "fastcall.internal"
     subject_alt_name(domain)
@@ -307,7 +309,6 @@ def main():
         "COLLECTION_AGENT_HTTP_URL": (
             "http://host.docker.internal:8765" if external_agent else "http://agent:8765"
         ),
-        "FASTCALL_MOCK_CALLS_ENABLED": source.get("FASTCALL_MOCK_CALLS_ENABLED", "true"),
         "FREESWITCH_SIP_GATEWAY": source.get("FREESWITCH_SIP_GATEWAY", ""),
         "FASTCALL_HTTPS_PORT": source.get("FASTCALL_HTTPS_PORT", "8443"),
         "FASTCALL_HTTP_PORT": source.get("FASTCALL_HTTP_PORT", "8080"),
@@ -317,7 +318,6 @@ def main():
         ),
         "FASTCALL_GLOBAL_MAX_CONCURRENT": source.get("FASTCALL_GLOBAL_MAX_CONCURRENT", "50"),
         "FASTCALL_GLOBAL_CALLS_PER_MINUTE": source.get("FASTCALL_GLOBAL_CALLS_PER_MINUTE", "60"),
-        "FASTCALL_MOCK_CALLBACK_SECRET_REF": "mock",
     }
     generated_sip_password = not source.get("FREESWITCH_LOCAL_PASSWORD")
     result.update(sip_settings(source))
@@ -359,7 +359,6 @@ def main():
         generated_password = secrets.token_urlsafe(18)
         result["FASTCALL_CONSOLE_ADMIN_PASSWORD_HASH"] = password_hash(generated_password)
     webhook_secrets = json.loads(source.get("FASTCALL_WEBHOOK_SECRETS_JSON", "{}"))
-    webhook_secrets.setdefault("mock", secrets.token_urlsafe(32))
     result["FASTCALL_WEBHOOK_SECRETS_JSON"] = json.dumps(webhook_secrets, separators=(",", ":"))
 
     ensure_tls(result["FREESWITCH_DOMAIN"])

@@ -31,41 +31,27 @@ def settings(**overrides):
 
 
 class AdapterHealthTests(unittest.TestCase):
-    def test_sip_failure_degrades_service_without_blocking_mock(self):
+    def test_sip_failure_makes_service_not_ready(self):
         gateway = FakeGateway(fail_capability="sip")
         service = AdapterHealthService(Mock(), gateway, settings())
         service._agent_health = AsyncMock()
         result = asyncio.run(service.check())
         self.assertEqual(result, {
-            "status": "degraded", "common": "ready",
-            "sip": "not_ready", "mock": "ready",
+            "status": "not_ready", "common": "ready", "sip": "not_ready",
         })
-        self.assertEqual(gateway.calls, [None, "sip", "mock"])
+        self.assertEqual(gateway.calls, [None, "sip"])
 
-    def test_mock_only_mode_does_not_require_sip_gateway(self):
-        config = settings(sip_enabled=False, freeswitch_sip_gateway="")
-        config.validate()
-        gateway = FakeGateway(fail_capability="sip")
-        service = AdapterHealthService(Mock(), gateway, config)
-        service._agent_health = AsyncMock()
-        result = asyncio.run(service.check())
-        self.assertEqual(result["status"], "ready")
-        self.assertEqual(result["sip"], "disabled")
-        self.assertEqual(result["mock"], "ready")
-        self.assertNotIn("sip", gateway.calls)
-
-    def test_agent_failure_makes_all_capabilities_unavailable(self):
+    def test_agent_failure_makes_service_not_ready(self):
         service = AdapterHealthService(Mock(), FakeGateway(), settings())
         service._agent_health = AsyncMock(side_effect=TimeoutError("agent unavailable"))
         result = asyncio.run(service.check())
-        self.assertEqual(result["status"], "not_ready")
-        self.assertEqual(result["common"], "not_ready")
-        self.assertEqual(result["sip"], "not_ready")
-        self.assertEqual(result["mock"], "not_ready")
+        self.assertEqual(result, {
+            "status": "not_ready", "common": "not_ready", "sip": "not_ready",
+        })
 
-    def test_disabling_both_capabilities_is_invalid(self):
+    def test_disabling_sip_is_invalid(self):
         with self.assertRaises(RuntimeError):
-            settings(sip_enabled=False, mock_calls_enabled=False).validate()
+            settings(sip_enabled=False).validate()
 
 
 if __name__ == "__main__":

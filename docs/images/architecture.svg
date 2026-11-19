@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
   <title id="title">Fastcall 部署与双路径架构</title>
-  <desc id="desc">Fast-Call 负责外呼运营，Collection Agent 负责 AI 语音，Adapter 连接统一 FreeSWITCH，同一实例支持真实 SIP 和浏览器 Mock。</desc>
+  <desc id="desc">Fast-Call 负责外呼运营，Collection Agent 负责 AI 语音，Adapter 连接统一 FreeSWITCH，同一实例支持运营商 SIP Trunk 和常开的 SIP App/WSS 内部测试。</desc>
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#64748b"/></marker>
     <style>
@@ -43,8 +43,8 @@
 
   <rect x="810" y="345" width="220" height="125" class="box orange"/>
   <text x="920" y="385" text-anchor="middle" class="label">FreeSWITCH</text>
-  <text x="920" y="415" text-anchor="middle" class="body">Sofia · loopback · RTP</text>
-  <text x="920" y="440" text-anchor="middle" class="small">同一实例 · 按 Call 分流</text>
+  <text x="920" y="415" text-anchor="middle" class="body">Sofia · WSS · RTP</text>
+  <text x="920" y="440" text-anchor="middle" class="small">Trunk · SIP App 内部测试</text>
 
   <rect x="800" y="535" width="230" height="120" class="box green"/>
   <text x="915" y="575" text-anchor="middle" class="label">Collection Agent</text>
@@ -71,7 +71,7 @@
   <path d="M735 185 H800" class="line"/>
   <path d="M910 255 V345" class="line"/>
   <path d="M1030 407 H1070" class="line"/>
-  <text x="50" y="345" class="small">Mock 使用同一链路：浏览器 → Fast-Call BFF → Adapter → FreeSWITCH loopback</text>
+  <text x="50" y="345" class="small">SIP App 测试：WSS → FreeSWITCH → Adapter → Agent</text>
   <path d="M915 535 H760 V295 H850 V255" class="line"/>
   <text x="650" y="320" class="small">WebSocket / Agent Session</text>
   <path d="M612 255 V535" class="line"/>
@@ -79,5 +79,5 @@
   <text x="630" y="520" class="small">独立 MySQL</text>
 
   <rect x="50" y="665" width="1100" height="38" rx="10" fill="#eef2ff"/>
-  <text x="600" y="690" text-anchor="middle" class="small">Mock：真实浏览器双向通话已验证　｜　真实运营商 SIP：仍需完成 INVITE / RTP / NAT 线路验收</text>
+  <text x="600" y="690" text-anchor="middle" class="small">SIP App/WSS：常开内部测试　｜　真实运营商 SIP：仍需完成 INVITE / RTP / NAT 线路验收</text>
 </svg>

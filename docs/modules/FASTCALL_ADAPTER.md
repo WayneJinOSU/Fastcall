@@ -57,8 +57,8 @@ Adapter 使用 `fastcall_adapter.api.app.create_app()`，不 import 控制面应
 | 路由 | 用途 | 凭据 |
 |---|---|---|
 | `/up`、`/state/up` | 进程存活 | 内部健康检查 |
-| `/ready`、`/state/ready` | DB、FreeSWITCH、Agent 进程可达性及 SIP/Mock 能力；至少一种已启用能力可用时返回 200，并明确区分 `ready/degraded/not_ready`。Agent `/state/up` 不代表其 DB、模型或 Provider 已就绪 | 内部健康检查 |
-| `POST /internal/v1/calls/{call_id}/dispatch` | 预留 Call 拨号请求；按 origin 分别检查 SIP/Mock 能力 | Adapter token |
+| `/ready`、`/state/ready` | DB、FreeSWITCH、Agent 进程可达性及 SIP 能力；共同依赖和 SIP 均可用时返回 ready。Agent `/state/up` 不代表其 DB、模型或 Provider 已就绪 | 内部健康检查 |
+| `POST /internal/v1/calls/{call_id}/dispatch` | 预留 Call 拨号请求；检查 SIP 能力，遗留 Mock origin 明确拒绝拨号 | Adapter token |
 | `POST /internal/v1/calls/{call_id}/session-claim` | 初始 Claim | Adapter token |
 | `POST /internal/v1/calls/{call_id}/session-claims:recover` | pre-ready 代际恢复 | Adapter token |
 | `POST /internal/v1/calls/{call_id}/session-events/{action}` | Agent 生命周期事件 | Agent token |
@@ -133,8 +133,8 @@ review 在 Adapter 中完成 gateway 检查、必要挂断、结果修订、事�
 
 - 使用 `FASTCALL_DATABASE_URL`（或通用 `DATABASE_URL`）、其他 `FASTCALL_*`、FreeSWITCH 和 Agent 地址配置；Agent 外部检查复用稳定的 `/state/up`，只证明进程可达，不要求 Agent 新增接口，也不替代 Agent DB/模型/Provider 验收。
 - Settings 只校验 Admin/Adapter/Agent/Media 等自身凭据，不要求 Console 凭据；完整运行入口还要求加密/HMAC 的 key JSON 与 active 版本以及 `FREESWITCH_ESL_PASSWORD`。
-- `FASTCALL_SIP_ENABLED=true` 时 gateway 可选；已注册被叫或无 gateway 配置直拨 `user/{被叫去+}`，否则使用运营商 gateway。Mock-only 不使用 `unused` 占位。`FASTCALL_MOCK_CALLS_ENABLED=false` 时不注册 Mock WebSocket 路由，但保留不可外部调用的内部 runtime 清理既有 A/B 通道。两项不能同时关闭。
-- SIP readiness 检查 Sofia 和媒体模块；配置 gateway 时还检查线路，注册型 gateway 必须处于 `REGED`，IP-auth gateway 验证配置存在。单个 App 是否在线在 originate 前按被叫查询，不与 Adapter readiness 耦合。SIP 失败只阻断正式 dispatch，Mock 失败只阻断 Mock dispatch；动态故障分别返回 `SIP_UNAVAILABLE` 或 `MOCK_UNAVAILABLE`，不得返回成功语义的 `not_authorized`。
+- SIP 是唯一电话能力，`FASTCALL_SIP_ENABLED=false` 会拒绝启动。当前测试环境仍支持已注册 App 或显式 user 路由；生产强制 Trunk-only 的改造见 `docs/PRODUCTION_FREESWITCH_MIGRATION.md`。
+- readiness 检查共同依赖和 SIP。配置 gateway 时还检查线路，注册型 gateway 必须处于 `REGED`，IP-auth gateway 验证配置存在；SIP 故障返回 `SIP_UNAVAILABLE`，不得返回成功语义的 `not_authorized`。遗留 Mock origin 返回 `MOCK_CALL_DISABLED`，不发起拨号。
 - `deploy/Dockerfile-fastcall-adapter` 只复制 `fastcall_adapter` 和 `fastcall_core`，入口为 `python -m fastcall_adapter.main`。
 - Kubernetes 使用 `FASTCALL_ADAPTER_IMAGE`，单副本、单 worker、`Recreate`。
 
@@ -155,7 +155,7 @@ fastcall_task_id
 fastcall_contact_id
 ```
 
-事件可能早于 `bgapi` 响应，必须先按实际 Channel UUID 和 `origination_uuid` 关联，再校验 `fastcall_call_id`。只处理 Fast-Call originate 主通道，loopback 另一腿即使继承相同 Call 标识，也不得覆盖主通道或触发第二个 Agent Session。Job-UUID 只写入命令事件用于诊断。
+事件可能早于 `bgapi` 响应，必须先按实际 Channel UUID 和 `origination_uuid` 关联，再校验 `fastcall_call_id`。只处理 Fast-Call originate 主通道，其他通道不得覆盖主通道或触发第二个 Agent Session。Job-UUID 只写入命令事件用于诊断。
 
 ### 9.2 接听后的顺序
 
@@ -178,7 +178,7 @@ FreeSWITCH 负责 SIP codec 转码；模块与 Agent 内部处理其他采样率
 
 ### 9.4 基础设施约束
 
-统一 FreeSWITCH 镜像由 `deploy/freeswitch/Dockerfile` 构建，固定 `mod-audio-stream` commit `a25fb1fe530ec6a612d321ff04f70be69b1a257c`，部署需满足 AGPL-3.0 或商业许可。同一实例同时加载 Sofia 与 loopback，正式 Call 和 Mock Call 按任务 origin 分流。
+统一 FreeSWITCH 镜像由 `deploy/freeswitch/Dockerfile` 构建，固定 `mod-audio-stream` commit `a25fb1fe530ec6a612d321ff04f70be69b1a257c`，部署需满足 AGPL-3.0 或商业许可。同一实例加载 Sofia 与 WSS 测试入口；Mock loopback 和 direct-playback 补丁已移除。
 
 ESL 使用显式强密码和入站 ACL，默认仅允许 `127.0.0.1/32`；部署时必须改为 Adapter 所在地址，且不向宿主机发布 8021。Adapter 与 FreeSWITCH 共享网络命名空间仅属于旧 POC，不是统一镜像的默认拓扑。
 
@@ -188,12 +188,6 @@ ESL 使用显式强密码和入站 ACL，默认仅允许 `127.0.0.1/32`；部署
 
 Ready 看门狗在 ready 后不得结束正常媒体任务。等待 Session ACK 时仅解析文本 ACK，跳过二进制音频；完成事件丢失时仍按 FreeSWITCH 终态兜底。
 
-## 11. Mock Call 双腿媒体
+## 11. 历史 Mock 数据兼容
 
-Adapter 只针对关联 Task `origin=mock_call` 的 Call 使用固定 `FASTCALL_MOCK_LOOPBACK_TARGET` 发起 loopback，不读取浏览器目标，也不改变正式 gateway/dial mode。Mock 仍经过正式 dispatch 授权、全局容量/速率和单次 originate 栅栏；dispatch 前必须存在已注册的浏览器 transport。
-
-B-leg 只进入 Mock 媒体协调器，不进入正式电话事件服务。B `CHANNEL_CREATE` 持久化 `outbound_call.mock_browser_uuid` 后向页面发送 incoming；固定 dialplan 仅 park，不自动 answer。用户接听后 Adapter 对 B 执行 `uuid_answer`，A `CHANNEL_ANSWER` 才启动现有 Agent Claim。拒绝和超时使用现有 `CALL_REJECTED`/`NO_ANSWER` 终态，不重拨。
-
-A UUID 继续由 `outbound_call.freeswitch_uuid` 唯一保存，B UUID 只用于浏览器媒体和辅助清理。Agent ready、A 媒体、B 模块和浏览器 WS 未全部绑定前，不发送 ready ACK、Agent answer 或页面 ready。双腿使用独立 PCM 队列；挂断、断线和重启只执行幂等清理，不恢复对话或重新 originate。
-
-Mock originate 额外设置 `STREAM_PLAYBACK_DIRECT=true`。统一镜像已在固定模块源码上应用 `deploy/freeswitch/mock_call_direct_playback.patch`；该补丁只在收到 PCM 时利用 Adapter 的 20ms pacing 调用 `switch_core_session_write_frame`，不新增播放线程，仅接受 PCM16LE mono L16/8kHz，不匹配时拒绝写入。正式 originate 不设置该开关，仍使用原 WRITE_REPLACE 路径。镜像级冒烟不替代同一实例上 Mock 与真实 SIP 的双路径验收。
+Mock Call 运行功能、API、Console 页面、loopback 媒体和 direct-playback 补丁已移除。历史 `origin=mock_call` 记录及存量 `mock_browser_uuid` 字段保留只读兼容；启动时仍会取消旧的 Mock 草稿任务，Adapter 对遗留 Mock origin 明确拒绝拨号，避免误走正式线路。

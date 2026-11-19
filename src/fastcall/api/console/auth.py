@@ -108,7 +108,6 @@ def login_response(payload: LoginRequest, request: Request) -> JSONResponse:
     response = JSONResponse({
         "actor_id": payload.actor_id,
         "csrf_token": csrf,
-        "mock_calls_enabled": settings.mock_calls_enabled,
     })
     response.set_cookie(
         COOKIE_NAME,

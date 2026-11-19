@@ -1,6 +1,6 @@
 # Fastcall
 
-**一套面向小企业的自部署语音外呼系统：用 Fast-Call 管理外呼运营，用 Collection Agent 完成真实 AI 语音对话；先通过 SIP App 或浏览器 Mock 验证全链路，再接入运营商 SIP。**
+**一套面向小企业的自部署语音外呼系统：用 Fast-Call 管理外呼运营，用 Collection Agent 完成真实 AI 语音对话；先通过 SIP App/WSS 验证全链路，再接入运营商 SIP。**
 
 ![Fastcall 部署与双路径架构](docs/images/architecture.svg)
 
@@ -11,7 +11,7 @@
 | **Fast-Call 控制面** | Robot 配置与不可变版本、联系人加密导入、任务调度、呼叫窗口、并发与速率、禁呼、重试、结果查询和 Webhook 通知 |
 | **Fast-Call Adapter** | 单次 originate 授权、FreeSWITCH ESL、Agent Session、双向媒体、通话终态、通道核查与挂断 |
 | **Collection Agent** | STT/LLM/TTS 语音交互、打断、无响应、语音信箱，以及通话指标、转写和分析的独立落库 |
-| **统一 FreeSWITCH** | 在同一实例中承载正式 Sofia gateway 与网页 Mock loopback，按 Call 类型分流 |
+| **统一 FreeSWITCH** | 承载正式 Sofia gateway、运营商线路与常开的内部 SIP App/WSS 测试入口 |
 
 Fast-Call 不负责生成 AI 对话，Collection Agent 不管理 Task、Contact、Call 或 SIP。两者通过稳定的 Agent WebSocket 协议协作，并分别使用独立 MySQL 数据库。
 
@@ -21,8 +21,8 @@ Fast-Call 不负责生成 AI 对话，Collection Agent 不管理 Task、Contact�
 - **Robot 配置管理**：草稿、校验、发布、精确版本固定和回滚。
 - **运营控制**：呼叫时间窗、并发、速率、重试额度、禁呼和任务取消。
 - **可追溯**：Call 状态、FreeSWITCH 通道事实、Agent 技术指标、transcript 和 Webhook 投递记录。
-- **网页 Mock Call**：无需运营商线路，即可使用真实浏览器接听并与 AI 双向通话。
-- **统一电话镜像**：FreeSWITCH、Sofia、loopback 与 `mod_audio_stream` 固定版本构建。
+- **SIP App/WSS 测试**：使用真实 SIP 注册、ICE/SRTP 和双向 AI 音频验证全链路。
+- **统一电话镜像**：FreeSWITCH、Sofia 与 `mod_audio_stream` 固定版本构建。
 - **客户集成**：Open API 与带 HMAC、重试和稳定事件 ID 的 HTTPS Webhook。
 
 ## Collection Agent：面向真实电话的 Voice Agent 优化
@@ -53,12 +53,6 @@ Collection Agent 不只是把 STT、LLM、TTS 三个 API 串起来。它基于 P
 - **数据库结构可读**：两个服务各保留一份当前 SQL 快照，没有 Alembic 或隐藏迁移过程。
 - **部署边界清楚**：控制面、电话执行和 AI 对话分离，便于定位线路、媒体和 Provider 问题。
 - **默认收紧入口**：ESL 不向宿主机发布，使用强密码与 ACL；媒体认证使用 Bearer Header。
-
-## 真实 Console
-
-下图来自当前网站的一通真实网页 Mock 通话，不是设计稿：左侧是电话事实，右侧是 Agent 技术指标。
-
-![真实 Call 详情与 Agent 技术记录](docs/images/call-detail.png)
 
 ## 快速部署
 
@@ -163,7 +157,7 @@ HTTPS 地址为 `https://fastcall.internal:8443/console/`。本机使用前需�
 | `deploy/.env.compose` | 实际部署配置和启动器生成的凭据；由模板复制而来，已被 Git 忽略 |
 | `deploy/mysql/fastcall_current_schema.sql` | Fast-Call 当前 MySQL 数据库结构 |
 | `deploy/mysql/agent_current_schema.sql` | Collection Agent 当前 MySQL 数据库结构 |
-| `deploy/caddy/Caddyfile` | Console 与内部 Mock Webhook 的 HTTP/HTTPS 反向代理 |
+| `deploy/caddy/Caddyfile` | Console HTTP/HTTPS 反向代理 |
 | `deploy/freeswitch/` | 统一 FreeSWITCH 镜像的构建文件、Sofia/媒体配置及启动模板 |
 | `deploy/runtime/` | 启动器生成的内部 TLS 证书和私钥，已被 Git 忽略 |
 | 根目录 `.env` | 本地或独立进程运行的配置；Compose 启动时也可作为补充来源，但不是首选配置入口 |
@@ -182,7 +176,6 @@ COLLECTION_AGENT_IMAGE=collection-agent:stable
 FASTCALL_AGENT_EXTERNAL=false
 
 FASTCALL_SIP_ENABLED=true
-FASTCALL_MOCK_CALLS_ENABLED=true
 FREESWITCH_EXTERNAL_IP=192.168.1.100
 FREESWITCH_DOMAIN=
 FREESWITCH_LOCAL_USER=8615908280801
@@ -209,12 +202,11 @@ CARTESIA_API_KEY=<cartesia-key>
 | `AGENT_DATABASE_URL` | 必填 | Agent 的 MySQL 连接 URL；数据库名必须与 Fast-Call 不同，SQLite 不可用 |
 | `FASTCALL_IMAGE` | `fastcall:dev` | API、Scheduler 和 Webhook 共用镜像 |
 | `FASTCALL_ADAPTER_IMAGE` | `fastcall-adapter:dev` | FreeSWITCH Adapter 镜像 |
-| `FREESWITCH_IMAGE` | `fastcall-freeswitch:dev` | 同时承载 SIP 与 Mock 的统一镜像 |
+| `FREESWITCH_IMAGE` | `fastcall-freeswitch:dev` | 承载 SIP Trunk 与常开 WSS 测试入口的统一镜像 |
 | `COLLECTION_AGENT_IMAGE` | `collection-agent:stable` | 内部 Agent 使用的由 Compose 构建的镜像 |
 | `FASTCALL_AGENT_EXTERNAL` | `false` | 设为 `true` 时使用宿主机 `8765` 端口的 Agent，不启动 Compose 内部 Agent |
 | `COLLECTION_AGENT_WS_URL` / `COLLECTION_AGENT_HTTP_URL` | 启动器派生 | Adapter 与 API 使用的 Agent 地址；根据是否使用外部 Agent 自动生成，通常无需填写 |
-| `FASTCALL_SIP_ENABLED` | 配置模板为 `true` | 是否启用 Sofia、SIP App 注册与正式任务拨号 |
-| `FASTCALL_MOCK_CALLS_ENABLED` | `true` | 是否启用网页 Mock；与 SIP 开关相互独立，可同时开启 |
+| `FASTCALL_SIP_ENABLED` | 配置模板为 `true` | 启用 Sofia、SIP App 测试与正式任务拨号；当前不可关闭 |
 
 **SIP 与网络**
 
@@ -246,7 +238,7 @@ CARTESIA_API_KEY=<cartesia-key>
 | `AZURE_LLM_*` / `AZURE_REALTIME_*` | Azure LLM、Realtime 与转写配置，完整变量名见 `scripts/bootstrap_compose.py` 的 `PROVIDER_KEYS` |
 | `VOSK_MODEL_PATH` | Agent 容器内 Vosk 模型路径，默认为 `/mnt/data/vosk-model-small-es-0.42`；模型需位于镜像或 `agent-models` 卷中 |
 
-Provider 变量只传给 Agent，不会注入 Fast-Call、Adapter 或 FreeSWITCH。只配置实际使用的 Provider，并先在 Mock 通话中验证。
+Provider 变量只传给 Agent，不会注入 Fast-Call、Adapter 或 FreeSWITCH。只配置实际使用的 Provider，并先通过 SIP App/WSS 或真实线路验证。
 
 **容量、端口与构建**
 
@@ -266,11 +258,12 @@ Provider 变量只传给 Agent，不会注入 Fast-Call、Adapter 或 FreeSWITCH
 - FreeSWITCH ESL 密码 `FREESWITCH_ESL_PASSWORD` 和 SIP App 注册密码 `FREESWITCH_LOCAL_PASSWORD`。
 - Console 登录密码哈希与会话密钥。
 - 联系人加密使用的 `FASTCALL_ENCRYPTION_KEYS_JSON`，以及号码索引使用的 `FASTCALL_HMAC_KEYS_JSON`。
-- Mock Webhook 默认 `mock` 引用对应的 HMAC secret。客户 Webhook 的 `callback_secret_ref` 与 secret 映射需通过 `FASTCALL_WEBHOOK_SECRETS_JSON` 自行配置，启动器只保留已有映射，不会自动创建客户 secret。
+
+客户 Webhook 的 `callback_secret_ref` 与 secret 映射需通过 `FASTCALL_WEBHOOK_SECRETS_JSON` 自行配置，启动器只保留已有映射，不会自动创建客户 secret。
 
 **不要在重启或升级时重新生成并覆盖这些凭据。** 否则 Console 会话会失效，外部 Agent 或调用方可能认证失败，历史加密数据也可能无法解密。请安全备份 `deploy/.env.compose`，不要提交它或 `deploy/runtime/`，也不要把真实值写入 `deploy/compose.env.example`。
 
-## 先验证 SIP App 或 Mock，再接运营商线路
+## 先验证 SIP App，再接运营商线路
 
 ### SIP App（默认 WSS）
 
@@ -285,21 +278,11 @@ Provider 变量只传给 Agent，不会注入 Fast-Call、Adapter 或 FreeSWITCH
 5. **你在部署电脑的终端**运行 `./scripts/sip_quickstart.py --robot-code YOUR_APP_CODE`。脚本创建普通任务、导入同一个注册号码并启动，Adapter 根据联系人号码直拨 `user/{callee去+}`。
 6. **你在手机 App 接听**，检查 INVITE、RTP/SRTP、开场白、双向对话、结束语，再到 Console 检查 transcript、Call 终态和资源清理。
 
-当前是**单个预置账号的首验模式**，quickstart 把该账号作为默认联系人只是为了减少输入；玩家任意填号后自动创建 SIP 账号的能力尚未实现。完整原理、配置、公共证书和分阶段排错见 `docs/examples/local-sip-test/README.md`。目标 WSS App 的真机注册、SRTP/ICE 和 AI 对话仍需在设备上验收，不能用网页 Mock 代替。
-
-### 网页 Mock
-
-1. 在 Console 创建并发布 Robot。
-2. 打开 `Mock Call`，填写所需变量。
-3. 发起呼叫，在浏览器收到“AI 来电”后手动接听。
-4. 完成真实双向对话并挂断。
-5. 检查 Call 终态、Agent 技术记录、transcript 和两类 Webhook。
-
-当前已实际验证：双向通话、`succeeded/USER_HANGUP`、Agent MySQL 指标与 transcript、Webhook 各一次 204，以及 FreeSWITCH 通道清理。Mock 使用独立的 `loopback/mock-call`，与 SIP App 链路互不影响。
+当前是**单个预置账号的首验模式**，quickstart 把该账号作为默认联系人只是为了减少输入；任意填号后自动创建 SIP 账号的能力尚未实现。完整原理、配置、公共证书和分阶段排错见 `docs/examples/local-sip-test/README.md`。目标 WSS App 的真机注册、SRTP/ICE 和 AI 对话仍需在设备上验收。
 
 ### 正式 SIP
 
-统一 FreeSWITCH 镜像已通过 Sofia、IP-auth gateway、Mock-only 和 SIP+Mock 同实例的镜像级冒烟，但**真实运营商 SIP 尚未完成 INVITE、RTP、NAT 和线路验收**。
+统一 FreeSWITCH 镜像已通过 Sofia、IP-auth gateway 和 WSS 的镜像级冒烟，但**真实运营商 SIP 尚未完成 INVITE、RTP、NAT 和线路验收**。
 
 接入时需要配置：
 
@@ -309,12 +292,12 @@ Provider 变量只传给 Agent，不会注入 Fast-Call、Adapter 或 FreeSWITCH
 - 注册型线路的账号密码，或 IP-auth 对应参数
 - `FREESWITCH_EXTERNAL_IP`、SIP/RTP 端口和防火墙
 
-Mock 通过不等于 PSTN 可用；正式任务前应使用真实测试号码完成线路验收。
+测试 App 通过不等于 PSTN 可用；正式任务前应使用真实测试号码完成线路验收。
 
 ## 当前边界
 
 - 当前目标是单副本、可控并发的小规模部署，不包含多租户、预测式外呼、多 Adapter ownership 或多活高可用。
-- Console 已覆盖任务查看与控制、Call/Agent 分析和 Mock；任务创建及名单导入目前主要通过 Open API。
+- Console 已覆盖任务查看与控制、Call/Agent 分析；任务创建及名单导入目前主要通过 Open API。
 - 仅支持全新数据库或已处于当前结构的数据库，不提供历史自动迁移。
 - Collection Agent 使用由 Compose 构建的镜像或外部实例；Provider 的实际可用性仍需在目标环境验证。
 

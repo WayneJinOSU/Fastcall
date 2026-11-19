@@ -52,16 +52,8 @@ class AdapterApiTests(unittest.TestCase):
             event_path, headers={"Authorization": "Bearer adapter-token"}, json=payload,
         ).status_code, 401)
 
-    def test_mock_websocket_routes_are_not_registered_when_disabled(self):
-        from dataclasses import replace
-
-        app = create_app(
-            settings=replace(
-                self.client.app.state.settings, mock_calls_enabled=False
-            ),
-            validate_startup=False,
-        )
-        paths = {route.path for route in app.routes}
+    def test_mock_websocket_routes_are_not_registered(self):
+        paths = {route.path for route in self.client.app.routes}
         self.assertNotIn("/internal/v1/mock-calls/{task_id}/browser", paths)
         self.assertNotIn("/internal/media/{call_id}/browser", paths)
 

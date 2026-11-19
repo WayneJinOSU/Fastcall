@@ -42,6 +42,14 @@ class SipSettingsTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "FASTCALL_SIP_ENABLED"):
             bootstrap_compose.sip_settings({"FASTCALL_SIP_ENABLED": "perhaps"})
 
+    def test_sip_is_enabled_by_default_and_cannot_be_disabled(self):
+        result = bootstrap_compose.sip_settings({
+            "FREESWITCH_EXTERNAL_IP": "192.168.1.104",
+        })
+        self.assertEqual(result["FASTCALL_SIP_ENABLED"], "true")
+        with self.assertRaisesRegex(RuntimeError, "SIP must be enabled"):
+            bootstrap_compose.sip_settings({"FASTCALL_SIP_ENABLED": "false"})
+
     def test_local_user_and_password_are_validated(self):
         source = {
             "FASTCALL_SIP_ENABLED": "true",

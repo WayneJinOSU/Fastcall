@@ -29,7 +29,6 @@ class Settings:
     media_token: str = ""
     freeswitch_sip_gateway: str = ""
     sip_enabled: bool = True
-    mock_calls_enabled: bool = True
     sip_register: bool = True
 
     @classmethod
@@ -52,7 +51,6 @@ class Settings:
             media_token=os.getenv("FASTCALL_MEDIA_TOKEN", "").strip(),
             freeswitch_sip_gateway=os.getenv("FREESWITCH_SIP_GATEWAY", "").strip(),
             sip_enabled=_env_bool("FASTCALL_SIP_ENABLED", True),
-            mock_calls_enabled=_env_bool("FASTCALL_MOCK_CALLS_ENABLED", True),
             sip_register=_env_bool("FREESWITCH_SIP_REGISTER", True),
         )
 
@@ -66,8 +64,8 @@ class Settings:
             raise RuntimeError("All Fast-Call Adapter API tokens are required")
         if len(set(tokens)) != len(tokens):
             raise RuntimeError("All Fast-Call Adapter API tokens must be different")
-        if not self.sip_enabled and not self.mock_calls_enabled:
-            raise RuntimeError("At least one of SIP or Mock Call must be enabled")
+        if not self.sip_enabled:
+            raise RuntimeError("SIP must be enabled")
 
 
 def result_changed_events_enabled():
