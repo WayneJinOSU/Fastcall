@@ -57,6 +57,47 @@ class StartupTests(unittest.TestCase):
         self.assertEqual(settings.resolve_token, "")
         self.assertEqual(adapter_settings.database_url, "")
 
+    def test_production_component_settings_enforce_only_their_own_sip_contract(self):
+        from fastcall_adapter.settings import Settings as AdapterSettings
+
+        fastcall = Settings(
+            app_env="prod",
+            database_url="mysql+pymysql://u:p@host/db",
+            management_token="management",
+            resolve_token="resolve",
+            console_admin_actor_id="admin",
+            console_admin_password_hash="hash",
+            console_session_secret="x" * 48,
+            openapi_token="openapi",
+            admin_token="admin-api",
+            adapter_token="adapter-api",
+            agent_token="agent",
+            media_token="media",
+        )
+        fastcall.validate()
+        with self.assertRaisesRegex(RuntimeError, "SIP must be enabled"):
+            Settings(**{**fastcall.__dict__, "sip_enabled": False}).validate()
+
+        adapter_values = {
+            "app_env": "prod",
+            "database_url": "mysql+pymysql://u:p@host/db",
+            "admin_token": "admin",
+            "adapter_token": "adapter",
+            "agent_token": "agent",
+            "media_token": "media",
+            "freeswitch_sip_gateway": "carrier",
+        }
+        AdapterSettings(**adapter_values).validate()
+        for values in (
+            {"freeswitch_sip_gateway": ""},
+            {"freeswitch_dial_mode": "user"},
+            {"freeswitch_dial_mode": "loopback"},
+            {"sip_enabled": False},
+        ):
+            with self.subTest(values=values):
+                with self.assertRaises(RuntimeError):
+                    AdapterSettings(**{**adapter_values, **values}).validate()
+
 
 class FakeDialect:
     name = "mysql"

@@ -182,6 +182,7 @@ class FreeSwitchESLTests(unittest.TestCase):
         self.assertIn("sofia/gateway/carrier/+12025550101 &park()", commands.calls[-1])
         self.assertIn("STREAM_PLAYBACK=true", commands.calls[-1])
         self.assertIn("STREAM_BUFFER_SIZE=20", commands.calls[-1])
+        self.assertIn("send_silence_when_idle=-1", commands.calls[-1])
 
 
     def test_user_mode_uses_callee_number(self):
@@ -210,6 +211,35 @@ class FreeSwitchESLTests(unittest.TestCase):
         asyncio.run(gateway.originate("call_1", "origin_1", "+8615908280801", "task_1", "contact_1"))
         self.assertIn("user/8615908280801 &park()", commands.calls[-1])
         self.assertNotIn("sofia/gateway", commands.calls[-1])
+
+    def test_production_never_uses_registered_user_destination(self):
+        gateway = FreeSwitchESL(
+            "localhost", 8021, "secret", "carrier", "ws://adapter/media",
+            production=True,
+        )
+        commands = FakeCommands()
+        gateway.commands = commands
+        asyncio.run(gateway.originate(
+            "call_1", "origin_1", "+8615908280801", "task_1", "contact_1"
+        ))
+        self.assertEqual(len(commands.calls), 1)
+        self.assertIn("sofia/gateway/carrier/+8615908280801 &park()", commands.calls[0])
+        self.assertNotIn("reg", commands.calls[0])
+
+    def test_production_rejects_missing_gateway_and_non_gateway_modes(self):
+        for gateway_name, dial_mode in (("", "gateway"), ("carrier", "user"), ("carrier", "loopback")):
+            with self.subTest(gateway=gateway_name, dial_mode=dial_mode):
+                gateway = FreeSwitchESL(
+                    "localhost", 8021, "secret", gateway_name, "ws://adapter/media",
+                    dial_mode=dial_mode, production=True,
+                )
+                commands = FakeCommands()
+                gateway.commands = commands
+                with self.assertRaises(ESLError):
+                    asyncio.run(gateway.originate(
+                        "call_1", "origin_1", "+12025550101", "task_1", "contact_1"
+                    ))
+                self.assertEqual(commands.calls, [])
 
     def test_unregistered_callee_uses_gateway(self):
         gateway = FreeSwitchESL("localhost", 8021, "secret", "carrier", "ws://adapter/media")

@@ -44,9 +44,10 @@ async def run_adapter():
         os.environ["FREESWITCH_ESL_PASSWORD"],
         settings.freeswitch_sip_gateway,
         _media_url(),
-        dial_mode=os.getenv("FREESWITCH_DIAL_MODE", "gateway"),
+        dial_mode=settings.freeswitch_dial_mode,
         media_token=settings.media_token,
         sip_register=settings.sip_register,
+        production=settings.app_env == "prod",
     )
     dispatcher = DispatchService(
         uow_factory, gateway, codec, hmac_keys,

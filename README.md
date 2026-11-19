@@ -1,6 +1,6 @@
 # Fastcall
 
-**一套面向小企业的自部署语音外呼系统：用 Fast-Call 管理外呼运营，用 Collection Agent 完成真实 AI 语音对话；先通过 SIP App/WSS 验证全链路，再接入运营商 SIP。**
+**一套面向小企业的自部署语音外呼系统：用 Fast-Call 管理外呼运营，用 Collection Agent 完成真实 AI 语音对话；生产只通过运营商 SIP Trunk 外呼，SIP App/WSS 作为常开的内部测试入口。**
 
 ![Fastcall 部署与双路径架构](docs/images/architecture.svg)
 
@@ -125,8 +125,9 @@ cp deploy/compose.env.example deploy/.env.compose
 - 默认内部 Agent 会随启动器自动构建，`COLLECTION_AGENT_IMAGE` 只需作为镜像标签；或者设置 `FASTCALL_AGENT_EXTERNAL=true`，使用宿主机 Agent。
 - 配置实际 Provider 密钥。
 - 外部 Agent 必须与 Compose 使用相同的 `FASTCALL_AGENT_TOKEN`。
-- SIP App 首验保持 `FASTCALL_SIP_ENABLED=true`，将 `FREESWITCH_EXTERNAL_IP` 改为服务器局域网或公网 IP。
-- 首验默认预置一个 SIP 登录账号 `8615908280801`，可用 `FREESWITCH_LOCAL_USER` 修改；`FREESWITCH_LOCAL_PASSWORD` 留空即可自动生成。它只用于 App 注册，不是外呼路由配置；运营商 gateway 无需配置。
+- 生产保持 `APP_ENV=prod`、`FASTCALL_SIP_ENABLED=true` 和 `FREESWITCH_DIAL_MODE=gateway`，并填写运营商 `FREESWITCH_SIP_GATEWAY`、`FREESWITCH_SIP_HOST` 与实际 `FREESWITCH_EXTERNAL_IP`；缺少任一 Trunk 配置都会拒绝启动。
+- 构建 FreeSWITCH 前在终端设置 `SIGNALWIRE_TOKEN`，Compose 仅将它作为 BuildKit secret 使用；不要写入 `.env.compose`、Dockerfile 或服务环境。
+- 单个内部测试账号可用 `FREESWITCH_LOCAL_USER` 修改，`FREESWITCH_LOCAL_PASSWORD` 留空即可自动生成强密码。它只用于 WSS/App 测试，不参与生产 originate 路由。
 
 ### 4. 启动
 
@@ -175,8 +176,15 @@ AGENT_DATABASE_URL=mysql+pymysql://agent:<password>@host.docker.internal:3306/co
 COLLECTION_AGENT_IMAGE=collection-agent:stable
 FASTCALL_AGENT_EXTERNAL=false
 
+APP_ENV=prod
 FASTCALL_SIP_ENABLED=true
-FREESWITCH_EXTERNAL_IP=192.168.1.100
+FREESWITCH_DIAL_MODE=gateway
+FREESWITCH_SIP_GATEWAY=<运营商gateway名称>
+FREESWITCH_SIP_HOST=<运营商地址>
+FREESWITCH_SIP_REGISTER=false
+FREESWITCH_EXTERNAL_IP=<运营商可见的本机地址>
+
+# 常开的单个内部测试账号，不参与生产被叫路由。
 FREESWITCH_DOMAIN=
 FREESWITCH_LOCAL_USER=8615908280801
 FREESWITCH_LOCAL_PASSWORD=
@@ -212,13 +220,14 @@ CARTESIA_API_KEY=<cartesia-key>
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `FREESWITCH_EXTERNAL_IP` | SIP 启用时必填 | FreeSWITCH 对外通告的局域网或公网 IP |
-| `FREESWITCH_DOMAIN` | external IP | SIP 注册域和 WSS 证书 SAN；公开部署建议填写域名 |
-| `FREESWITCH_LOCAL_USER` | `8615908280801` | 要创建的 App 登录账号，不是外呼路由；quickstart 默认联系人使用对应的 `+号码` |
-| `FREESWITCH_LOCAL_PASSWORD` | 自动生成 | App 注册密码，至少 12 位，由 bootstrap 保存并复用 |
-| `FREESWITCH_WSS_PORT` | `7443` | 映射到宿主机的 SIP WSS TCP 端口 |
-| `FREESWITCH_SIP_GATEWAY` | 空 | 可选运营商 gateway；为空时被叫直拨 `user/{号码}` |
-| `FREESWITCH_SIP_HOST` / `FREESWITCH_SIP_PORT` | 空 / `5060` | 运营商或 PBX 地址与端口 |
+| `FREESWITCH_EXTERNAL_IP` | SIP 启用时必填 | FreeSWITCH 对外通告的运营商可见地址 |
+| `FREESWITCH_DOMAIN` | external IP | 内部测试注册域和 WSS 证书 SAN；公开测试建议使用域名 |
+| `FREESWITCH_LOCAL_USER` | `8615908280801` | 唯一的内部 App 测试账号，不参与生产 originate 路由 |
+| `FREESWITCH_LOCAL_PASSWORD` | 自动生成 | 独立测试密码，至少 12 位，由 bootstrap 保存并复用；应通过防火墙限制 7443 来源 |
+| `FREESWITCH_WSS_PORT` | `7443` | 映射到宿主机的内部测试 SIP WSS TCP 端口 |
+| `FREESWITCH_DIAL_MODE` | `gateway` | 生产只允许 `gateway`；user/loopback 在 `APP_ENV=prod` 时拒绝启动 |
+| `FREESWITCH_SIP_GATEWAY` | 生产必填 | 运营商 gateway；生产为空或仅配置测试注册都不得拨号 |
+| `FREESWITCH_SIP_HOST` / `FREESWITCH_SIP_PORT` | 生产必填 / `5060` | 运营商地址与端口 |
 | `FREESWITCH_SIP_REGISTER` | `true` | 是否向线路注册；IP-auth 线路通常设为 `false` |
 | `FREESWITCH_SIP_USERNAME` / `FREESWITCH_SIP_PASSWORD` | 空 | 注册型线路的凭据 |
 | `FREESWITCH_SIP_FROM_USER` / `FREESWITCH_SIP_CALLER_ID_IN_FROM` | 空 / `false` | 按运营商要求设置 From 用户与主叫号码来源 |
@@ -248,6 +257,7 @@ Provider 变量只传给 Agent，不会注入 Fast-Call、Adapter 或 FreeSWITCH
 | `FASTCALL_GLOBAL_CALLS_PER_MINUTE` | `60` | 全局每分钟发起呼叫上限 |
 | `FASTCALL_HTTP_PORT` | `8080` | 本机 Console HTTP 端口，仅绑定 `127.0.0.1` |
 | `FASTCALL_HTTPS_PORT` | `8443` | Console HTTPS 端口；对外访问时需配置主机防火墙 |
+| `FASTCALL_DEBIAN_IMAGE` | 固定 digest 的 Debian 12 | Docker Hub 不可达时可改为使用同一 digest 的镜像代理地址 |
 | `FASTCALL_DEBIAN_MIRROR` / `FASTCALL_DEBIAN_SECURITY_MIRROR` | Debian 官方源 | 构建 FreeSWITCH 时可选的 Debian 软件源与安全更新源 |
 
 ### 自动生成的凭据
@@ -263,36 +273,19 @@ Provider 变量只传给 Agent，不会注入 Fast-Call、Adapter 或 FreeSWITCH
 
 **不要在重启或升级时重新生成并覆盖这些凭据。** 否则 Console 会话会失效，外部 Agent 或调用方可能认证失败，历史加密数据也可能无法解密。请安全备份 `deploy/.env.compose`，不要提交它或 `deploy/runtime/`，也不要把真实值写入 `deploy/compose.env.example`。
 
-## 先验证 SIP App，再接运营商线路
-
-### SIP App（默认 WSS）
-
-先区分两个概念：**SIP 登录账号**用于 App 认证并登记设备位置，**外呼联系人**用于告诉任务这次要呼叫谁。`FREESWITCH_LOCAL_USER` 只负责创建登录账号，不参与 Adapter 的路由决策；真正拨号目标来自任务联系人。首验让两者使用同一个号码，所以服务才能通过 `user/{联系人去+}` 找到已注册 App。
-
-完整流程：
-
-1. **你在部署电脑的终端**进入 Fastcall 项目根目录，执行 `./scripts/bootstrap_compose.sh`。Bootstrap 生成 SIP 登录账号、随机密码和 WSS 证书，然后调用 Docker Compose 构建并启动服务。
-2. **在同一张终端窗口**等待启动完成，查看 `SIP username`、`Generated SIP password`、`SIP domain`、`SIP WSS URL` 和 `Contact phone`。错过时可在 `deploy/.env.compose` 查看对应配置。Docker build 只构建镜像，不会替你注册手机 App。
-3. **你在手机 SIP App 中**填写这些账号、密码、域和 WSS 地址。自签名局域网证书需要 App 信任 `deploy/runtime/tls/ca.crt`；公开部署建议使用公共可信域名证书。确认 App 显示注册成功，未注册的 App 无法仅凭手机号被找到。
-4. **你在部署电脑的浏览器**打开 Console，创建、校验并发布 Robot。
-5. **你在部署电脑的终端**运行 `./scripts/sip_quickstart.py --robot-code YOUR_APP_CODE`。脚本创建普通任务、导入同一个注册号码并启动，Adapter 根据联系人号码直拨 `user/{callee去+}`。
-6. **你在手机 App 接听**，检查 INVITE、RTP/SRTP、开场白、双向对话、结束语，再到 Console 检查 transcript、Call 终态和资源清理。
-
-当前是**单个预置账号的首验模式**，quickstart 把该账号作为默认联系人只是为了减少输入；任意填号后自动创建 SIP 账号的能力尚未实现。完整原理、配置、公共证书和分阶段排错见 `docs/examples/local-sip-test/README.md`。目标 WSS App 的真机注册、SRTP/ICE 和 AI 对话仍需在设备上验收。
+## 生产运营商线路与内部 SIP App 测试
 
 ### 正式 SIP
 
-统一 FreeSWITCH 镜像已通过 Sofia、IP-auth gateway 和 WSS 的镜像级冒烟，但**真实运营商 SIP 尚未完成 INVITE、RTP、NAT 和线路验收**。
+生产必须使用 `APP_ENV=prod`、`FASTCALL_SIP_ENABLED=true`、非空 `FREESWITCH_SIP_GATEWAY`/`FREESWITCH_SIP_HOST` 和 `FREESWITCH_DIAL_MODE=gateway`。注册型线路还需账号密码，IP-auth 线路通常设置 `FREESWITCH_SIP_REGISTER=false`。生产 originate 始终使用 Trunk，不查询或回退到测试 App 注册。
 
-接入时需要配置：
+当前真实运营商 INVITE、RTP、NAT、双向 AI 音频和挂断清理均**未验收，生产状态为 NO-GO**。必须先通过镜像 smoke，再按 `docs/PRODUCTION_FREESWITCH_MIGRATION.md` 完成无 AI Trunk 基线和完整真实线路验收；容器健康、配置加载或 WSS 测试均不能替代这些证据。
 
-- `FASTCALL_SIP_ENABLED=true`
-- `FREESWITCH_SIP_GATEWAY`
-- `FREESWITCH_SIP_HOST`
-- 注册型线路的账号密码，或 IP-auth 对应参数
-- `FREESWITCH_EXTERNAL_IP`、SIP/RTP 端口和防火墙
+### 内部 SIP App（默认 WSS）
 
-测试 App 通过不等于 PSTN 可用；正式任务前应使用真实测试号码完成线路验收。
+WSS、7443 和单个测试账号随 SIP 能力常开，但不是生产用户入口或 App 用户体系。测试时显式设置 `APP_ENV=test`，执行 `./scripts/bootstrap_compose.sh` 后按终端输出的账号、密码、域和 WSS 地址注册 App，再运行 `./scripts/sip_quickstart.py --robot-code YOUR_APP_CODE`。非生产默认路由仍可通过 `user/{callee去+}` 找到已注册 App。
+
+`FREESWITCH_LOCAL_USER` 只创建测试登录账号，quickstart 将其作为默认联系人只是为了减少输入；任意填号后自动创建 SIP 账号的能力尚未实现。完整证书、真机注册和排错步骤见 `docs/examples/local-sip-test/README.md`。公开测试时应使用可信证书、独立强密码，并通过防火墙限制 7443 来源。
 
 ## 当前边界
 
@@ -303,7 +296,7 @@ Provider 变量只传给 Agent，不会注入 Fast-Call、Adapter 或 FreeSWITCH
 
 ## 许可证
 
-当前仓库尚未包含 `LICENSE`。正式对外开源发布前，需要由项目所有者选择并添加许可证。
+当前仓库尚未包含 `LICENSE`。正式对外开源发布前，需要由项目所有者选择并添加许可证。`mod-audio-stream` 上游提供 AGPL-3.0 或商业许可；当前部署许可证合规尚未确认，发布前必须完成确认。
 
 ## 文档
 

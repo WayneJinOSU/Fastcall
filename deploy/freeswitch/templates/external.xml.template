@@ -29,6 +29,6 @@
     <param name="tls" value="false"/>
     <param name="tls-only" value="false"/>
     <param name="wss-binding" value=":7443"/>
-    <param name="tls-cert-dir" value="/usr/local/freeswitch/etc/freeswitch/certs"/>
+    <param name="tls-cert-dir" value="/etc/freeswitch/certs"/>
   </settings>
 </profile>

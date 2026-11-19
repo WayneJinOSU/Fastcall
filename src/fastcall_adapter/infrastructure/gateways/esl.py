@@ -91,7 +91,7 @@ class ESLConnection:
 class FreeSwitchESL:
     def __init__(
         self, host, port, password, gateway, media_ws_url, dial_mode="gateway",
-        media_token="", sip_register=True,
+        media_token="", sip_register=True, production=False,
     ):
         self.commands = ESLConnection(host, port, password)
         self.gateway = gateway
@@ -99,6 +99,7 @@ class FreeSwitchESL:
         self.dial_mode = dial_mode
         self.media_token = media_token
         self.sip_register = sip_register
+        self.production = production
 
     async def health_check(self, capability=None):
         response = await self.commands.command("api status")
@@ -147,8 +148,15 @@ class FreeSwitchESL:
             f"fastcall_contact_id={contact_id}",
             "STREAM_PLAYBACK=true",
             "STREAM_BUFFER_SIZE=20",
+            "send_silence_when_idle=-1",
         ]
-        if self.dial_mode == "user":
+        if self.production:
+            if self.dial_mode != "gateway":
+                raise ESLError("Production FreeSWITCH dial mode must be gateway")
+            if not self.gateway:
+                raise ESLError("Production FreeSWITCH gateway is required")
+            destination = f"sofia/gateway/{self.gateway}/{callee}"
+        elif self.dial_mode == "user":
             destination = f"user/{callee.lstrip('+')}"
         elif not self.gateway or await self._is_registered(callee):
             destination = f"user/{callee.lstrip('+')}"

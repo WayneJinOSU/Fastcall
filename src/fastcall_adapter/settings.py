@@ -28,6 +28,7 @@ class Settings:
     agent_token: str = ""
     media_token: str = ""
     freeswitch_sip_gateway: str = ""
+    freeswitch_dial_mode: str = "gateway"
     sip_enabled: bool = True
     sip_register: bool = True
 
@@ -50,6 +51,7 @@ class Settings:
             agent_token=os.getenv("FASTCALL_AGENT_TOKEN", "").strip(),
             media_token=os.getenv("FASTCALL_MEDIA_TOKEN", "").strip(),
             freeswitch_sip_gateway=os.getenv("FREESWITCH_SIP_GATEWAY", "").strip(),
+            freeswitch_dial_mode=os.getenv("FREESWITCH_DIAL_MODE", "gateway").strip(),
             sip_enabled=_env_bool("FASTCALL_SIP_ENABLED", True),
             sip_register=_env_bool("FREESWITCH_SIP_REGISTER", True),
         )
@@ -66,6 +68,11 @@ class Settings:
             raise RuntimeError("All Fast-Call Adapter API tokens must be different")
         if not self.sip_enabled:
             raise RuntimeError("SIP must be enabled")
+        if self.app_env == "prod":
+            if not self.freeswitch_sip_gateway:
+                raise RuntimeError("FREESWITCH_SIP_GATEWAY is required when APP_ENV=prod")
+            if self.freeswitch_dial_mode != "gateway":
+                raise RuntimeError("FREESWITCH_DIAL_MODE must be gateway when APP_ENV=prod")
 
 
 def result_changed_events_enabled():

@@ -12,9 +12,11 @@ from xml.sax.saxutils import escape as xml_escape
 def escape(value):
     return xml_escape(str(value), {'"': "&quot;"})
 
-CONF_DIR = Path("/usr/local/freeswitch/etc/freeswitch")
-LOG_DIR = Path("/usr/local/freeswitch/log")
-DB_DIR = Path("/usr/local/freeswitch/db")
+CONF_DIR = Path("/etc/freeswitch")
+LOG_DIR = Path("/var/log/freeswitch")
+DB_DIR = Path("/var/lib/freeswitch")
+RUN_DIR = Path("/run/freeswitch")
+WSS_CERT_SOURCE_DIR = Path("/run/fastcall-wss-certs")
 TEMPLATE_DIR = Path("/usr/local/share/fastcall-freeswitch/templates")
 
 
@@ -55,23 +57,42 @@ def configure_local_user():
     local_password = os.getenv("FREESWITCH_LOCAL_PASSWORD", "")
     if not re.fullmatch(r"[0-9]{6,15}", local_user):
         raise RuntimeError("FREESWITCH_LOCAL_USER must contain 6 to 15 digits")
-    if len(local_password) < 12:
-        raise RuntimeError("FREESWITCH_LOCAL_PASSWORD must contain at least 12 characters")
+    if len(local_password) < 12 or len(set(local_password)) < 6:
+        raise RuntimeError(
+            "FREESWITCH_LOCAL_PASSWORD must be a strong, non-repetitive value of at least 12 characters"
+        )
+    other_passwords = {
+        os.getenv("FREESWITCH_ESL_PASSWORD", ""),
+        os.getenv("FREESWITCH_SIP_PASSWORD", ""),
+    }
+    if local_password in other_passwords:
+        raise RuntimeError(
+            "FREESWITCH_LOCAL_PASSWORD must differ from FreeSWITCH ESL and Trunk passwords"
+        )
     write_rendered("local_user.xml", {
         "LOCAL_USER": local_user,
         "LOCAL_PASSWORD": local_password,
     }, CONF_DIR / "directory/default/fastcall-local-user.xml")
 
 
-def validate_gateway_settings(gateway_name, sip_host):
+def validate_gateway_settings(gateway_name, sip_host, app_env="", dial_mode="gateway"):
+    if app_env == "prod" and (not gateway_name or not sip_host):
+        raise RuntimeError(
+            "FREESWITCH_SIP_GATEWAY and FREESWITCH_SIP_HOST are required when APP_ENV=prod"
+        )
     if bool(gateway_name) != bool(sip_host):
         raise RuntimeError(
             "FREESWITCH_SIP_GATEWAY and FREESWITCH_SIP_HOST must be set together"
         )
+    if app_env == "prod" and dial_mode != "gateway":
+        raise RuntimeError("FREESWITCH_DIAL_MODE must be gateway when APP_ENV=prod")
 
 
-def prepare_tls_certificates(source_dir=Path("/usr/local/freeswitch/certs")):
+def prepare_tls_certificates(source_dir=WSS_CERT_SOURCE_DIR):
+    source_dir = Path(source_dir)
     destination_dir = CONF_DIR / "certs"
+    if source_dir == destination_dir:
+        raise RuntimeError("WSS certificate source and destination must be different")
     destination_dir.mkdir(parents=True, exist_ok=True)
     for name in ("wss.crt", "wss.key", "wss.pem"):
         source = source_dir / name
@@ -86,7 +107,7 @@ def drop_privileges():
     if os.getuid() != 0:
         return
     account = pwd.getpwnam("freeswitch")
-    for runtime_directory in (CONF_DIR, LOG_DIR, DB_DIR):
+    for runtime_directory in (CONF_DIR, LOG_DIR, DB_DIR, RUN_DIR):
         runtime_directory.mkdir(parents=True, exist_ok=True)
         for root, directories, files in os.walk(runtime_directory):
             os.chown(root, account.pw_uid, account.pw_gid, follow_symlinks=False)
@@ -146,7 +167,12 @@ def main():
     gateway_name = os.getenv("FREESWITCH_SIP_GATEWAY", "").strip()
     sip_host = os.getenv("FREESWITCH_SIP_HOST", "").strip()
     if sip_enabled:
-        validate_gateway_settings(gateway_name, sip_host)
+        validate_gateway_settings(
+            gateway_name,
+            sip_host,
+            app_env=os.getenv("APP_ENV", "").strip(),
+            dial_mode=os.getenv("FREESWITCH_DIAL_MODE", "gateway").strip(),
+        )
     if sip_enabled and gateway_name and sip_host:
         if not re.fullmatch(r"[A-Za-z0-9_-]+", gateway_name):
             raise RuntimeError("FREESWITCH_SIP_GATEWAY contains invalid characters")

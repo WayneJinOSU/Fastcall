@@ -28,10 +28,15 @@ services:
       context: ..
       dockerfile: deploy/freeswitch/Dockerfile
       args:
+        DEBIAN_IMAGE: ${FASTCALL_DEBIAN_IMAGE:-debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc}
         DEBIAN_MIRROR: ${FASTCALL_DEBIAN_MIRROR:-http://deb.debian.org/debian}
         DEBIAN_SECURITY_MIRROR: ${FASTCALL_DEBIAN_SECURITY_MIRROR:-http://deb.debian.org/debian-security}
+      secrets:
+        - signalwire_token
     environment:
+      APP_ENV: ${APP_ENV}
       FASTCALL_SIP_ENABLED: ${FASTCALL_SIP_ENABLED}
+      FREESWITCH_DIAL_MODE: ${FREESWITCH_DIAL_MODE:-gateway}
       FREESWITCH_ESL_PASSWORD: ${FREESWITCH_ESL_PASSWORD}
       FREESWITCH_ESL_ALLOWED_CIDR: 172.29.0.10/32
       FREESWITCH_EXTERNAL_IP: ${FREESWITCH_EXTERNAL_IP:-}
@@ -55,11 +60,11 @@ services:
       - "${FREESWITCH_WSS_PORT:-7443}:7443/tcp"
       - "${FREESWITCH_RTP_START_PORT:-16384}-${FREESWITCH_RTP_END_PORT:-16483}:${FREESWITCH_RTP_START_PORT:-16384}-${FREESWITCH_RTP_END_PORT:-16483}/udp"
     volumes:
-      - freeswitch-logs:/usr/local/freeswitch/log
-      - freeswitch-db:/usr/local/freeswitch/db
-      - ./runtime/tls/wss.crt:/usr/local/freeswitch/certs/wss.crt:ro
-      - ./runtime/tls/wss.key:/usr/local/freeswitch/certs/wss.key:ro
-      - ./runtime/tls/wss.pem:/usr/local/freeswitch/certs/wss.pem:ro
+      - freeswitch-logs:/var/log/freeswitch
+      - freeswitch-db:/var/lib/freeswitch
+      - ./runtime/tls/wss.crt:/run/fastcall-wss-certs/wss.crt:ro
+      - ./runtime/tls/wss.key:/run/fastcall-wss-certs/wss.key:ro
+      - ./runtime/tls/wss.pem:/run/fastcall-wss-certs/wss.pem:ro
     <<: *host-access
     networks: [fastcall-net]
     restart: unless-stopped
@@ -225,6 +230,10 @@ volumes:
   freeswitch-logs:
   freeswitch-db:
   caddy-data:
+
+secrets:
+  signalwire_token:
+    environment: SIGNALWIRE_TOKEN
 
 networks:
   fastcall-net:

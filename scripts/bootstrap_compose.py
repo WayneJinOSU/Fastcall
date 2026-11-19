@@ -253,17 +253,34 @@ def sip_settings(source):
     if not re.fullmatch(r"[0-9]{6,15}", local_user):
         raise RuntimeError("FREESWITCH_LOCAL_USER must contain 6 to 15 digits")
     local_password = source.get("FREESWITCH_LOCAL_PASSWORD", "") or secrets.token_urlsafe(12)
-    if len(local_password) < 12:
-        raise RuntimeError("FREESWITCH_LOCAL_PASSWORD must contain at least 12 characters")
+    if len(local_password) < 12 or len(set(local_password)) < 6:
+        raise RuntimeError(
+            "FREESWITCH_LOCAL_PASSWORD must be a strong, non-repetitive value of at least 12 characters"
+        )
+    if local_password in {
+        source.get("FREESWITCH_ESL_PASSWORD", ""),
+        source.get("FREESWITCH_SIP_PASSWORD", ""),
+    }:
+        raise RuntimeError(
+            "FREESWITCH_LOCAL_PASSWORD must differ from FreeSWITCH ESL and Trunk passwords"
+        )
     wss_port = int(source.get("FREESWITCH_WSS_PORT", "7443"))
     if not 1 <= wss_port <= 65535:
         raise RuntimeError("FREESWITCH_WSS_PORT must be a valid TCP port")
     gateway = source.get("FREESWITCH_SIP_GATEWAY", "").strip()
     gateway_host = source.get("FREESWITCH_SIP_HOST", "").strip()
+    app_env = source.get("APP_ENV", "").strip()
+    dial_mode = source.get("FREESWITCH_DIAL_MODE", "gateway").strip()
+    if app_env == "prod" and (not gateway or not gateway_host):
+        raise RuntimeError(
+            "FREESWITCH_SIP_GATEWAY and FREESWITCH_SIP_HOST are required when APP_ENV=prod"
+        )
     if bool(gateway) != bool(gateway_host):
         raise RuntimeError(
             "FREESWITCH_SIP_GATEWAY and FREESWITCH_SIP_HOST must be set together"
         )
+    if app_env == "prod" and dial_mode != "gateway":
+        raise RuntimeError("FREESWITCH_DIAL_MODE must be gateway when APP_ENV=prod")
     return {
         "FASTCALL_SIP_ENABLED": str(sip_enabled).lower(),
         "FREESWITCH_EXTERNAL_IP": external_ip,
@@ -271,6 +288,7 @@ def sip_settings(source):
         "FREESWITCH_LOCAL_USER": local_user,
         "FREESWITCH_LOCAL_PASSWORD": local_password,
         "FREESWITCH_WSS_PORT": str(wss_port),
+        "FREESWITCH_DIAL_MODE": dial_mode,
     }
 
 
@@ -312,6 +330,10 @@ def main():
         "FREESWITCH_SIP_GATEWAY": source.get("FREESWITCH_SIP_GATEWAY", ""),
         "FASTCALL_HTTPS_PORT": source.get("FASTCALL_HTTPS_PORT", "8443"),
         "FASTCALL_HTTP_PORT": source.get("FASTCALL_HTTP_PORT", "8080"),
+        "FASTCALL_DEBIAN_IMAGE": source.get(
+            "FASTCALL_DEBIAN_IMAGE",
+            "debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc",
+        ),
         "FASTCALL_DEBIAN_MIRROR": source.get("FASTCALL_DEBIAN_MIRROR", "http://deb.debian.org/debian"),
         "FASTCALL_DEBIAN_SECURITY_MIRROR": source.get(
             "FASTCALL_DEBIAN_SECURITY_MIRROR", "http://deb.debian.org/debian-security"
@@ -320,7 +342,7 @@ def main():
         "FASTCALL_GLOBAL_CALLS_PER_MINUTE": source.get("FASTCALL_GLOBAL_CALLS_PER_MINUTE", "60"),
     }
     generated_sip_password = not source.get("FREESWITCH_LOCAL_PASSWORD")
-    result.update(sip_settings(source))
+    result.update(sip_settings({**source, "APP_ENV": result["APP_ENV"]}))
     for key in PROVIDER_KEYS:
         if source.get(key):
             result[key] = source[key]

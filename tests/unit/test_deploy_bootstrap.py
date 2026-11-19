@@ -59,6 +59,18 @@ class SipSettingsTests(unittest.TestCase):
             bootstrap_compose.sip_settings({**source, "FREESWITCH_LOCAL_USER": "1001"})
         with self.assertRaisesRegex(RuntimeError, "FREESWITCH_LOCAL_PASSWORD"):
             bootstrap_compose.sip_settings({**source, "FREESWITCH_LOCAL_PASSWORD": "1001"})
+        with self.assertRaisesRegex(RuntimeError, "strong, non-repetitive"):
+            bootstrap_compose.sip_settings({
+                **source, "FREESWITCH_LOCAL_PASSWORD": "aaaaaaaaaaaa",
+            })
+        for other_key in ("FREESWITCH_ESL_PASSWORD", "FREESWITCH_SIP_PASSWORD"):
+            with self.subTest(other_key=other_key):
+                with self.assertRaisesRegex(RuntimeError, "must differ"):
+                    bootstrap_compose.sip_settings({
+                        **source,
+                        "FREESWITCH_LOCAL_PASSWORD": "Strong-pass-123",
+                        other_key: "Strong-pass-123",
+                    })
 
     def test_gateway_name_and_host_must_be_set_together(self):
         source = {
@@ -79,6 +91,37 @@ class SipSettingsTests(unittest.TestCase):
             "FREESWITCH_SIP_HOST": "sip.example.com",
         })
 
+    def test_production_requires_trunk_and_gateway_dial_mode(self):
+        source = {
+            "APP_ENV": "prod",
+            "FASTCALL_SIP_ENABLED": "true",
+            "FREESWITCH_EXTERNAL_IP": "192.0.2.10",
+            "FREESWITCH_LOCAL_PASSWORD": "internal-test-password",
+        }
+        for gateway, host in (("", ""), ("carrier", ""), ("", "sip.example.com")):
+            with self.subTest(gateway=gateway, host=host):
+                with self.assertRaisesRegex(RuntimeError, "APP_ENV=prod"):
+                    bootstrap_compose.sip_settings({
+                        **source,
+                        "FREESWITCH_SIP_GATEWAY": gateway,
+                        "FREESWITCH_SIP_HOST": host,
+                    })
+        trunk = {
+            **source,
+            "FREESWITCH_SIP_GATEWAY": "carrier",
+            "FREESWITCH_SIP_HOST": "sip.example.com",
+        }
+        for dial_mode in ("user", "loopback"):
+            with self.subTest(dial_mode=dial_mode):
+                with self.assertRaisesRegex(RuntimeError, "must be gateway"):
+                    bootstrap_compose.sip_settings({
+                        **trunk, "FREESWITCH_DIAL_MODE": dial_mode,
+                    })
+        result = bootstrap_compose.sip_settings(trunk)
+        self.assertEqual(result["FREESWITCH_DIAL_MODE"], "gateway")
+        with self.assertRaisesRegex(RuntimeError, "SIP must be enabled"):
+            bootstrap_compose.sip_settings({**trunk, "FASTCALL_SIP_ENABLED": "false"})
+
 
 class BootstrapMainTests(unittest.TestCase):
     def test_main_writes_wss_registration_configuration(self):
@@ -89,6 +132,7 @@ class BootstrapMainTests(unittest.TestCase):
             env_file.write_text(
                 "FASTCALL_DATABASE_URL=mysql+pymysql://fastcall:password@db:3306/fastcall\n"
                 "AGENT_DATABASE_URL=mysql+pymysql://agent:password@db:3306/agents\n"
+                "APP_ENV=test\n"
                 "FASTCALL_SIP_ENABLED=true\n"
                 "FREESWITCH_EXTERNAL_IP=192.168.1.104\n"
                 "FREESWITCH_LOCAL_PASSWORD=\n"
@@ -104,6 +148,11 @@ class BootstrapMainTests(unittest.TestCase):
             self.assertEqual(values["FREESWITCH_LOCAL_USER"], "8615908280801")
             self.assertGreaterEqual(len(values["FREESWITCH_LOCAL_PASSWORD"]), 12)
             self.assertEqual(values["FREESWITCH_WSS_PORT"], "7443")
+            self.assertTrue(
+                values["FASTCALL_DEBIAN_IMAGE"].startswith(
+                    "debian:bookworm-slim@sha256:"
+                )
+            )
             ensure_tls.assert_called_once_with("192.168.1.104")
             command = run.call_args.args[0]
             self.assertIn("docker", command)

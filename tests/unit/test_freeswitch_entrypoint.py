@@ -51,6 +51,24 @@ class LocalUserTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "FREESWITCH_LOCAL_PASSWORD"):
                 entrypoint.configure_local_user()
 
+    def test_weak_or_shared_local_password_is_rejected(self):
+        cases = (
+            {"FREESWITCH_LOCAL_PASSWORD": "aaaaaaaaaaaa"},
+            {
+                "FREESWITCH_LOCAL_PASSWORD": "Strong-pass-123",
+                "FREESWITCH_ESL_PASSWORD": "Strong-pass-123",
+            },
+            {
+                "FREESWITCH_LOCAL_PASSWORD": "Strong-pass-123",
+                "FREESWITCH_SIP_PASSWORD": "Strong-pass-123",
+            },
+        )
+        for environment in cases:
+            with self.subTest(environment=environment):
+                with patch.dict(os.environ, environment, clear=True):
+                    with self.assertRaisesRegex(RuntimeError, "FREESWITCH_LOCAL_PASSWORD"):
+                        entrypoint.configure_local_user()
+
     def test_wss_files_are_copied_with_restricted_permissions(self):
         source = self.conf_directory / "mounted"
         source.mkdir()
@@ -76,11 +94,33 @@ class LocalUserTests(unittest.TestCase):
         entrypoint.validate_gateway_settings("carrier", "sip.example.com")
         entrypoint.validate_gateway_settings("", "")
 
+    def test_production_requires_a_trunk_and_gateway_dial_mode(self):
+        for gateway, host in (("", ""), ("carrier", ""), ("", "sip.example.com")):
+            with self.subTest(gateway=gateway, host=host):
+                with self.assertRaisesRegex(RuntimeError, "APP_ENV=prod"):
+                    entrypoint.validate_gateway_settings(gateway, host, app_env="prod")
+        for dial_mode in ("user", "loopback"):
+            with self.subTest(dial_mode=dial_mode):
+                with self.assertRaisesRegex(RuntimeError, "must be gateway"):
+                    entrypoint.validate_gateway_settings(
+                        "carrier", "sip.example.com",
+                        app_env="prod", dial_mode=dial_mode,
+                    )
+        entrypoint.validate_gateway_settings(
+            "carrier", "sip.example.com", app_env="prod", dial_mode="gateway"
+        )
+
+    def test_wss_source_and_destination_must_be_separate(self):
+        with self.assertRaisesRegex(RuntimeError, "must be different"):
+            entrypoint.prepare_tls_certificates(self.conf_directory / "certs")
+
     def test_drop_privileges_owns_configuration_logs_and_database(self):
         log_directory = self.conf_directory / "log"
         database_directory = self.conf_directory / "db"
+        run_directory = self.conf_directory / "run"
         log_directory.mkdir()
         database_directory.mkdir()
+        run_directory.mkdir()
         log_file = log_directory / "freeswitch.log"
         database_file = database_directory / "core.db"
         log_file.touch()
@@ -88,7 +128,9 @@ class LocalUserTests(unittest.TestCase):
         account = Mock(pw_uid=999, pw_gid=999, pw_name="freeswitch")
         with patch.object(entrypoint, "LOG_DIR", log_directory), patch.object(
             entrypoint, "DB_DIR", database_directory
-        ), patch.object(entrypoint.os, "getuid", return_value=0), patch.object(
+        ), patch.object(entrypoint, "RUN_DIR", run_directory), patch.object(
+            entrypoint.os, "getuid", return_value=0
+        ), patch.object(
             entrypoint.pwd, "getpwnam", return_value=account
         ), patch.object(entrypoint.os, "chown") as chown, patch.object(
             entrypoint.os, "initgroups"
@@ -96,6 +138,18 @@ class LocalUserTests(unittest.TestCase):
             entrypoint.drop_privileges()
         chown.assert_any_call(log_file, 999, 999, follow_symlinks=False)
         chown.assert_any_call(database_file, 999, 999, follow_symlinks=False)
+        chown.assert_any_call(run_directory, 999, 999, follow_symlinks=False)
+
+
+class PackageLayoutTests(unittest.TestCase):
+    def test_official_package_paths_are_explicit(self):
+        self.assertEqual(entrypoint.CONF_DIR, Path("/etc/freeswitch"))
+        self.assertEqual(entrypoint.LOG_DIR, Path("/var/log/freeswitch"))
+        self.assertEqual(entrypoint.DB_DIR, Path("/var/lib/freeswitch"))
+        self.assertEqual(entrypoint.RUN_DIR, Path("/run/freeswitch"))
+        self.assertEqual(
+            entrypoint.WSS_CERT_SOURCE_DIR, Path("/run/fastcall-wss-certs")
+        )
 
 
 if __name__ == "__main__":

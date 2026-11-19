@@ -1,4 +1,6 @@
-# SIP App 首次验证（默认 WSS，无运营商线路）
+# 内部 SIP App 测试（默认 WSS，无运营商线路）
+
+SIP App/WSS、7443 和单个测试账号随 SIP 能力常开，只用于内部测试，不是生产用户入口或 App 用户体系。本指南要求显式使用 `APP_ENV=test`；生产 `APP_ENV=prod` 必须使用 Trunk gateway，且 originate 不会查询或回退到已注册的 `user/{号码}`。
 
 用普通 SIP App 验证真实 SIP 注册、INVITE、RTP/SRTP 音频和 AI 对话，全程经过通用 outbound-task，不依赖运营商线路，也不需要 `USER_TARGET`、`ext:`、`FREESWITCH_DIAL_MODE`、dummy gateway 或手工修改 XML。
 
@@ -77,15 +79,19 @@ cp deploy/compose.env.example deploy/.env.compose
 至少检查以下值：
 
 ```dotenv
+APP_ENV=test
 FASTCALL_SIP_ENABLED=true
+FREESWITCH_DIAL_MODE=gateway
 FREESWITCH_EXTERNAL_IP=192.168.1.100
 FREESWITCH_DOMAIN=
 FREESWITCH_LOCAL_USER=8615908280801
 FREESWITCH_LOCAL_PASSWORD=
 FREESWITCH_WSS_PORT=7443
 FREESWITCH_SIP_GATEWAY=
+FREESWITCH_SIP_HOST=
 ```
 
+- `APP_ENV=test`：显式选择非生产测试路由；`prod` 下空 gateway/host 会拒绝启动，生产 originate 也绝不会使用这里的 App 注册记录。
 - `FREESWITCH_EXTERNAL_IP`：运行 Fastcall 的 Mac/服务器局域网 IP；公开部署使用公网 IP。
 - `FREESWITCH_DOMAIN`：SIP 注册域和 WSS 证书 SAN。留空时自动使用 external IP；公开部署建议填写 `sip.example.com` 一类域名。
 - `FREESWITCH_LOCAL_USER`：要创建的 SIP 登录账号，使用 6–15 位数字，默认 `8615908280801`。它不是外呼路由配置。

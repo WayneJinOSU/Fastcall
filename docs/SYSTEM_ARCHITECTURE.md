@@ -177,7 +177,9 @@ Fast-Call 当前结构由 `deploy/mysql/fastcall_current_schema.sql` 唯一描�
 截至 2026-11-19 的当前工作区：
 
 - Mock Call 运行功能、Console 页面、loopback 媒体和 direct-playback 补丁已移除；历史 `origin=mock_call` 数据、来源过滤和存量字段保留。旧 Mock 验证不再代表当前可用的测试入口。
-- Mock 删除后的全量单元测试 281 项通过，普通 outbound 集成测试 1 项通过；既有 Realtime `_observer` 失败 1 项，与本次无关。Console 49 项测试、TypeScript 检查和生产构建通过。FreeSWITCH 镜像构建/冒烟两次均因 Docker Hub 元数据超时受阻，未记为通过。
+- 本次生产 FreeSWITCH 改造后的目标测试 58 项通过，Adapter 61 项、Fast-Call 79 项通过；全量单元测试 296 项通过，既有 Realtime `_observer` 失败 1 项，与基线相同。Compose 配置结构校验、Shell 语法、smoke 内嵌 Python 编译和 `git diff --check` 通过。
+- ARM64 官方包镜像已构建并通过完整镜像 smoke：`fastcall-freeswitch@sha256:19b9c320d1e53e32a807fb352893227d790b96d0d65bceb18a738103b03ba320`，`mod_audio_stream.so` SHA-256 为 `d45befedb9369147daecf9a4e27bab923402bbb1a54213f13def34bf872e8f28`。已验证模块实际加载、包 ABI、目录权限、生产负向门禁、WSS/TLS、SIP REGISTER 摘要认证和错误密码拒绝。Docker Hub 直连曾超时，实际构建使用相同 digest 的镜像代理。真实运营商 SIP/RTP 与 AI 媒体仍为 `UNVERIFIED`；历史 Console、普通 outbound 集成和浏览器验收不替代真实线路验证。
+- 真实 SIP App/WSS 曾复现上行转写正常但完全无声且没有 `chunk_played`；源码确认 `park()` 默认只读上行，模块需要可替换的下行写帧。originate 增加原生 `send_silence_when_idle=-1` 后，保留官方 1.11.4 和未修改模块即可持续提供静音写帧。复验已观察到 `chunk_played` 和多轮有效对话，最终以 `USER_HANGUP` 完成、任务 `completed`、通道清零，内部 SIP App 双向 AI 链路通过。真实运营商 SIP/RTP 仍未执行，生产保持 NO-GO。
 - 真实浏览器已验收登录、任务列表/详情、联系人、Call、通话技术分析，以及任务启动、暂停、恢复和取消；Agent 不可用恢复、BI 和日历页面已有历史验收。
 - Agent 的 attached 等待 ACK 断线已纳入 slot `try/finally` 释放，并有目标回归。
 - 历史 SIP/App、loopback 和 Mock 结果只作为当时链路的证据，不替代当前真实运营商 SIP INVITE/RTP、NAT、双向媒体或 Adapter/Agent 全链路验收。
@@ -209,11 +211,12 @@ Fast-Call 与 Agent 分别使用 `deploy/mysql/fastcall_current_schema.sql` 和 
 
 ## 12. 基础设施与运维约束
 
-- FreeSWITCH 负责 SIP 注册、拨号、接听、挂机、CDR 和电话音频。统一镜像由 `deploy/freeswitch/Dockerfile` 构建，加载 Sofia 和 `mod_audio_stream`；Mock loopback 与 direct-playback 补丁已移除。当前测试路由仍可使用 SIP App，生产 Trunk-only 路由约束见 `docs/PRODUCTION_FREESWITCH_MIGRATION.md`。
-- 镜像固定基础镜像 digest、FreeSWITCH 1.10.12、Sofia SIP、spandsp 和 `mod-audio-stream` commit `a25fb1fe530ec6a612d321ff04f70be69b1a257c`；媒体模块需满足 AGPL-3.0 或商业许可。
-- SIP 是当前唯一电话能力，启用时必须配置 external IP；本地 SIP 账号和密码由 `FREESWITCH_LOCAL_USER`、`FREESWITCH_LOCAL_PASSWORD` 渲染为内部测试用户。WSS 常开为 `:7443`，bootstrap 生成与 `FREESWITCH_DOMAIN` 匹配的证书或复用已有公共证书。
-- ESL 必须显式配置非默认强密码，默认 ACL 只允许 `127.0.0.1/32`；实际部署需改为 Adapter 所在地址并不向宿主机发布 8021。共享网络命名空间仅属于旧 POC，不是统一镜像的默认拓扑。
-- `scripts/test_freeswitch_image.sh` 是不发布宿主机端口的镜像级冒烟，覆盖模块、ESL 认证、SIP 配置渲染和 WSS；它不替代真实 SIP、双向媒体或 Adapter/Agent 全链路验收。
+- FreeSWITCH 负责 SIP 注册、拨号、接听、挂机、CDR 和电话音频。统一镜像由 `deploy/freeswitch/Dockerfile` 构建，加载 Sofia 和 `mod_audio_stream`；Mock loopback 与 direct-playback 补丁已移除。`APP_ENV=prod` 的 originate 始终使用 `sofia/gateway/{gateway}/{callee}`，不查询或回退到 SIP App 注册路由；非生产保留显式 user/默认测试路由。
+- 镜像使用 Debian 12 和 SignalWire 官方预编译 FreeSWITCH/Sofia 包，不再从源码编译 PCRE、spandsp、Sofia 或 FreeSWITCH 核心。基础镜像 digest、FreeSWITCH ARM64 包 `1.11.4-release-44405182291-795228ad43~bookworm~arm64-1~bookworm+1` 和未打补丁的 `mod-audio-stream` commit `a25fb1fe530ec6a612d321ff04f70be69b1a257c` 固定；模块在相同发行版、架构和官方开发包的独立阶段构建。媒体模块需满足 AGPL-3.0 或商业许可。
+- 官方包目录为配置 `/etc/freeswitch`、日志 `/var/log/freeswitch`、DB/state `/var/lib/freeswitch`、模块 `/usr/lib/freeswitch/mod`、PID/runtime `/run/freeswitch`。WSS 证书从只读 `/run/fastcall-wss-certs` 复制到 `/etc/freeswitch/certs`，镜像内保存无敏感信息的完整包清单、架构、模块 commit 和 SHA-256。
+- SIP 是当前唯一电话能力。生产必须启用 SIP，配置 Trunk gateway/host、external IP、ESL 强密码及 `FREESWITCH_DIAL_MODE=gateway`；bootstrap、FreeSWITCH、Fast-Call 和 Adapter 按各自职责执行门禁。本地 SIP 账号和密码由 `FREESWITCH_LOCAL_USER`、`FREESWITCH_LOCAL_PASSWORD` 渲染为唯一的内部测试用户。WSS 常开为 `:7443`，bootstrap 生成与 `FREESWITCH_DOMAIN` 匹配的证书或复用已有公共证书。
+- SignalWire Token 只通过 Docker BuildKit secret `signalwire_token` 使用，不进入 Dockerfile ARG、服务环境或最终镜像。ESL 必须显式配置非默认强密码，Compose ACL 只允许 Adapter 地址且不向宿主机发布 8021。共享网络命名空间仅属于旧 POC，不是统一镜像的默认拓扑。
+- `scripts/test_freeswitch_image.sh` 是不发布宿主机端口的镜像级冒烟，覆盖生产负向门禁、官方路径、模块、ESL 认证、SIP 配置渲染、WSS/TLS、真实 SIP REGISTER 摘要认证和错误密码拒绝；它不替代真实运营商 SIP/RTP、双向媒体或 Adapter/Agent 全链路验收。
 - Fast-Call 与 Agent schema 均只由 SQL 文件管理：全新空库分别使用 `deploy/mysql/fastcall_current_schema.sql` 和 `agent_current_schema.sql`。Compose 不注册 `fastcall-migrate` 或 `agent-init`，不在服务启动时自动迁移。项目只保留当前 SQL 快照，旧库需在项目外备份并自行完成结构升级。
 - Provider 密钥留在各服务部署环境，不进入 Robot 配置 JSON、审计、Webhook 或文档。
 - 本地 `/tmp` 的运行脚本、runtime env、测试 CA 和 HTTPS 接收端只用于验收，不是生产组件。

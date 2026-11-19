@@ -133,7 +133,8 @@ review 在 Adapter 中完成 gateway 检查、必要挂断、结果修订、事�
 
 - 使用 `FASTCALL_DATABASE_URL`（或通用 `DATABASE_URL`）、其他 `FASTCALL_*`、FreeSWITCH 和 Agent 地址配置；Agent 外部检查复用稳定的 `/state/up`，只证明进程可达，不要求 Agent 新增接口，也不替代 Agent DB/模型/Provider 验收。
 - Settings 只校验 Admin/Adapter/Agent/Media 等自身凭据，不要求 Console 凭据；完整运行入口还要求加密/HMAC 的 key JSON 与 active 版本以及 `FREESWITCH_ESL_PASSWORD`。
-- SIP 是唯一电话能力，`FASTCALL_SIP_ENABLED=false` 会拒绝启动。当前测试环境仍支持已注册 App 或显式 user 路由；生产强制 Trunk-only 的改造见 `docs/PRODUCTION_FREESWITCH_MIGRATION.md`。
+- SIP 是唯一电话能力，`FASTCALL_SIP_ENABLED=false` 会拒绝启动。`APP_ENV=prod` 还要求非空 `FREESWITCH_SIP_GATEWAY` 和 `FREESWITCH_DIAL_MODE=gateway`；组合根把生产约束传入 ESL Gateway。生产 originate 始终使用 `sofia/gateway/{gateway}/{callee}`，不执行 registration lookup，也不接受 user/loopback；非生产保留已注册 App 和显式 user 测试路由。
+- Fast-Call 控制面只校验自身 SIP 能力，不读取 gateway/host 或 dial mode；FreeSWITCH entrypoint 和 bootstrap 另外校验生产 Trunk host 与 dial mode，防止组件间形成混合配置。
 - readiness 检查共同依赖和 SIP。配置 gateway 时还检查线路，注册型 gateway 必须处于 `REGED`，IP-auth gateway 验证配置存在；SIP 故障返回 `SIP_UNAVAILABLE`，不得返回成功语义的 `not_authorized`。遗留 Mock origin 返回 `MOCK_CALL_DISABLED`，不发起拨号。
 - `deploy/Dockerfile-fastcall-adapter` 只复制 `fastcall_adapter` 和 `fastcall_core`，入口为 `python -m fastcall_adapter.main`。
 - Kubernetes 使用 `FASTCALL_ADAPTER_IMAGE`，单副本、单 worker、`Recreate`。
@@ -153,7 +154,10 @@ origination_uuid
 fastcall_call_id
 fastcall_task_id
 fastcall_contact_id
+send_silence_when_idle=-1
 ```
+
+`send_silence_when_idle=-1` 让 `park()` 持续产生静音写帧，`mod_audio_stream` 再将其替换为 Agent 音频；它不会发送可听见的舒适噪声，也不修改模块源码。没有该写帧节拍时，模块可能保留播放缓冲但不产生 `chunk_played`。
 
 事件可能早于 `bgapi` 响应，必须先按实际 Channel UUID 和 `origination_uuid` 关联，再校验 `fastcall_call_id`。只处理 Fast-Call originate 主通道，其他通道不得覆盖主通道或触发第二个 Agent Session。Job-UUID 只写入命令事件用于诊断。
 
@@ -178,7 +182,7 @@ FreeSWITCH 负责 SIP codec 转码；模块与 Agent 内部处理其他采样率
 
 ### 9.4 基础设施约束
 
-统一 FreeSWITCH 镜像由 `deploy/freeswitch/Dockerfile` 构建，固定 `mod-audio-stream` commit `a25fb1fe530ec6a612d321ff04f70be69b1a257c`，部署需满足 AGPL-3.0 或商业许可。同一实例加载 Sofia 与 WSS 测试入口；Mock loopback 和 direct-playback 补丁已移除。
+统一 FreeSWITCH 镜像由 `deploy/freeswitch/Dockerfile` 构建，核心和 Sofia 来自 SignalWire 官方预编译包，固定 `mod-audio-stream` commit `a25fb1fe530ec6a612d321ff04f70be69b1a257c` 且不修改源码，部署需满足 AGPL-3.0 或商业许可。配置、日志、DB/state 和模块分别使用 `/etc/freeswitch`、`/var/log/freeswitch`、`/var/lib/freeswitch`、`/usr/lib/freeswitch/mod`。同一实例加载 Sofia 与常开 WSS 内部测试入口；Mock loopback 和 direct-playback 补丁已移除。
 
 ESL 使用显式强密码和入站 ACL，默认仅允许 `127.0.0.1/32`；部署时必须改为 Adapter 所在地址，且不向宿主机发布 8021。Adapter 与 FreeSWITCH 共享网络命名空间仅属于旧 POC，不是统一镜像的默认拓扑。
 
