@@ -6,7 +6,7 @@ const COUNTRY_NAMES: Record<string, string> = {
 };
 
 const PROVIDER_NAMES: Record<string, string> = {
-  deepgram: 'Deepgram', cartesia: 'Cartesia', elevenlabs: 'ElevenLabs',
+  deepgram: 'Deepgram', cartesia: 'Cartesia', elevenlabs: 'ElevenLabs', volcengine: '火山引擎',
   assemblyai: 'AssemblyAI', speechmatics: 'Speechmatics', soniox: 'Soniox',
 };
 

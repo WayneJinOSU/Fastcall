@@ -18,6 +18,8 @@ from pipecat.services.soniox.stt import SonioxInputParams, SonioxSTTService
 from pipecat.services.speechmatics.stt import SpeechmaticsSTTService
 from pipecat.transcriptions.language import Language
 from collection_agents.services.stt_local import VoskSTTService
+from collection_agents.services.volcengine_stt import VolcengineSTTService
+from collection_agents.services.volcengine_tts import VolcengineTTSService
 
 
 class ElevenLabsRealtimeSTTService(_ElevenLabsRealtimeSTTService):
@@ -277,8 +279,28 @@ def _create_soniox_stt_service(asr_config, robot_code, robot_name, grammar):
     )
 
 
+def _create_volcengine_stt_service(asr_config, robot_code, robot_name, grammar):
+    api_key = os.getenv("VOLCENGINE_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("VOLCENGINE_API_KEY is required for Volcengine ASR")
+    provider = resolve_stt_provider(asr_config, robot_code)
+    provider_config = _asr_provider_config(asr_config)
+    return VolcengineSTTService(
+        api_key=api_key,
+        resource_id=provider_config.get(
+            "resource_id", "volc.seedasr.sauc.duration"
+        ),
+        model=asr_config.get("model") or get_asr_fallback_model(provider),
+        locale=asr_config.get("locale", "zh-CN"),
+        url=provider_config.get(
+            "url", "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel"
+        ),
+    )
+
+
 STT_SERVICE_BUILDERS = {
     "deepgram": _create_deepgram_stt_service,
+    "volcengine": _create_volcengine_stt_service,
     "cartesia": _create_cartesia_stt_service,
     "elevenlabs": _create_elevenlabs_stt_service,
     "assemblyai": _create_assemblyai_stt_service,
@@ -422,9 +444,33 @@ def _create_elevenlabs_tts_service(tts_config):
     )
 
 
+def _create_volcengine_tts_service(tts_config):
+    api_key = os.getenv("VOLCENGINE_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("VOLCENGINE_API_KEY is required for Volcengine TTS")
+    provider = normalize_tts_provider(tts_config.get("provider"))
+    voice_id = str(tts_config.get("voice_id") or "").strip()
+    if not voice_id:
+        raise ValueError("Volcengine TTS requires tts.voice_id")
+    provider_config = tts_config.get("provider_config", {})
+    provider_config = provider_config if isinstance(provider_config, dict) else {}
+    return VolcengineTTSService(
+        api_key=api_key,
+        speaker=voice_id,
+        resource_id=provider_config.get("resource_id", "seed-tts-2.0"),
+        model=tts_config.get("model") or get_tts_fallback_model(provider),
+        speed=tts_config.get("speed"),
+        volume=tts_config.get("volume"),
+        url=provider_config.get(
+            "url", "wss://openspeech.bytedance.com/api/v3/tts/bidirection"
+        ),
+    )
+
+
 TTS_SERVICE_BUILDERS = {
     "cartesia": _create_cartesia_tts_service,
     "elevenlabs": _create_elevenlabs_tts_service,
+    "volcengine": _create_volcengine_tts_service,
 }
 
 

@@ -1,5 +1,5 @@
 {
-  "catalog_version": "2026-11-12.3",
+  "catalog_version": "2026-11-27.2",
   "runtime_profiles": [
     {
       "provider": "deepseek",
@@ -70,11 +70,22 @@
         "u3-rt-pro": {
           "enabled": true,
           "deprecated": false,
-          "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN"]
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN"
+          ]
         }
       },
-      "sample_rates": [8000],
-      "encodings": ["pcm_s16le"]
+      "sample_rates": [
+        8000
+      ],
+      "encodings": [
+        "pcm_s16le"
+      ]
     },
     "speechmatics": {
       "enabled": true,
@@ -83,11 +94,23 @@
         "enhanced": {
           "enabled": true,
           "deprecated": false,
-          "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"]
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ]
         }
       },
-      "sample_rates": [8000],
-      "encodings": ["pcm_s16le"]
+      "sample_rates": [
+        8000
+      ],
+      "encodings": [
+        "pcm_s16le"
+      ]
     },
     "soniox": {
       "enabled": true,
@@ -96,11 +119,46 @@
         "stt-rt-v4": {
           "enabled": true,
           "deprecated": false,
-          "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"]
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ]
         }
       },
-      "sample_rates": [8000],
-      "encodings": ["pcm_s16le"]
+      "sample_rates": [
+        8000
+      ],
+      "encodings": [
+        "pcm_s16le"
+      ]
+    },
+    "volcengine": {
+      "enabled": true,
+      "deprecated": false,
+      "models": {
+        "bigmodel": {
+          "enabled": true,
+          "deprecated": false,
+          "languages": [
+            "zh-CN",
+            "en-US",
+            "es-MX",
+            "vi-VN",
+            "fil-PH"
+          ]
+        }
+      },
+      "sample_rates": [
+        8000
+      ],
+      "encodings": [
+        "pcm_s16le"
+      ]
     }
   },
   "tts": {
@@ -112,12 +170,51 @@
         "sonic-2": {
           "enabled": true,
           "deprecated": false,
-          "languages": ["en-GB", "en-US", "es-ES", "es-MX", "tl-PH", "zh-CN"]
+          "languages": [
+            "en-GB",
+            "en-US",
+            "es-ES",
+            "es-MX",
+            "tl-PH",
+            "zh-CN"
+          ]
         },
         "sonic-3.6": {
           "enabled": true,
           "deprecated": false,
-          "languages": ["ar-SA", "bg-BG", "de-DE", "en-GB", "en-IN", "en-NZ", "en-US", "es-ES", "es-MX", "fr-CA", "fr-FR", "he-IL", "hi-IN", "it-IT", "ja-JP", "kn-IN", "ko-KR", "ml-IN", "mr-IN", "no-NO", "or-IN", "pt-BR", "ta-IN", "te-IN", "th-TH", "tl-PH", "ur-IN", "ur-PK", "vi-VN", "zh-CN", "zh-TW"]
+          "languages": [
+            "ar-SA",
+            "bg-BG",
+            "de-DE",
+            "en-GB",
+            "en-IN",
+            "en-NZ",
+            "en-US",
+            "es-ES",
+            "es-MX",
+            "fr-CA",
+            "fr-FR",
+            "he-IL",
+            "hi-IN",
+            "it-IT",
+            "ja-JP",
+            "kn-IN",
+            "ko-KR",
+            "ml-IN",
+            "mr-IN",
+            "no-NO",
+            "or-IN",
+            "pt-BR",
+            "ta-IN",
+            "te-IN",
+            "th-TH",
+            "tl-PH",
+            "ur-IN",
+            "ur-PK",
+            "vi-VN",
+            "zh-CN",
+            "zh-TW"
+          ]
         }
       },
       "voices": [
@@ -764,33 +861,1137 @@
         "eleven_flash_v2_5": {
           "enabled": true,
           "deprecated": false,
-          "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"]
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ]
         }
       },
       "voices": [
-        {"voice_id": "Xb7hH8MSUJpSbSDYk0k2", "name": "Alice", "country": "GB", "gender": "female", "description": "Confident voice for news", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
-        {"voice_id": "9BWtsMINqrJLrRacOk9x", "name": "Aria", "country": "US", "gender": "female", "description": "Expressive voice for social media", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
-        {"voice_id": "pqHfZKP75CvOlQylNhV4", "name": "Bill", "country": "US", "gender": "male", "description": "Trustworthy voice for narration", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
-        {"voice_id": "nPczCjzI2devNBz1zQrb", "name": "Brian", "country": "US", "gender": "male", "description": "Deep voice for narration", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
-        {"voice_id": "N2lVS1w4EtoT3dr4eOWO", "name": "Callum", "country": "", "gender": "male", "description": "Intense transatlantic voice for characters", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
-        {"voice_id": "IKne3meq5aSn9XLyUdCD", "name": "Charlie", "country": "AU", "gender": "male", "description": "Natural Australian voice for conversational use", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
-        {"voice_id": "XB0fDUnXU5powFXDhCwa", "name": "Charlotte", "country": "SE", "gender": "female", "description": "Swedish voice for characters", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
-        {"voice_id": "iP95p4xoKVk53GoZ742B", "name": "Chris", "country": "US", "gender": "male", "description": "Casual voice for conversational use", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
-        {"voice_id": "onwK4e9ZLuTAKqWW03F9", "name": "Daniel", "country": "GB", "gender": "male", "description": "Authoritative British voice for news", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
-        {"voice_id": "cjVigY5qzO86Huf0OWal", "name": "Eric", "country": "US", "gender": "male", "description": "Friendly voice for conversational use", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
-        {"voice_id": "JBFqnCBsd6RMkjVDRZzb", "name": "George", "country": "GB", "gender": "male", "description": "Warm British voice for narration", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
-        {"voice_id": "cgSgspJ2msm6clMCkdW9", "name": "Jessica", "country": "US", "gender": "female", "description": "Expressive voice for conversational use", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
-        {"voice_id": "FGY2WhTYpPnrIDTdsKH5", "name": "Laura", "country": "US", "gender": "female", "description": "Upbeat voice for social media", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
-        {"voice_id": "TX3LPaxmHKxFdv7VOQHJ", "name": "Liam", "country": "US", "gender": "male", "description": "Articulate voice for narration", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
-        {"voice_id": "pFZP5JQG7iQjIQuC4Bku", "name": "Lily", "country": "GB", "gender": "female", "description": "Warm British voice for narration", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
-        {"voice_id": "XrExE9yKIg1WjnnlVkGX", "name": "Matilda", "country": "US", "gender": "female", "description": "Friendly voice for narration", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
-        {"voice_id": "SAz9YHcvj6GT2YYXdXww", "name": "River", "country": "US", "gender": "non-binary", "description": "Confident voice for social media", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
-        {"voice_id": "CwhRBWXzGAHq8TQ4Fs17", "name": "Roger", "country": "US", "gender": "male", "description": "Confident voice for social media", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
-        {"voice_id": "EXAVITQu4vr4xnSDxMaL", "name": "Sarah", "country": "US", "gender": "female", "description": "Soft voice for news", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false},
-        {"voice_id": "bIHbv24MWmeRgasZH58o", "name": "Will", "country": "US", "gender": "male", "description": "Friendly voice for social media", "models": ["eleven_flash_v2_5"], "languages": ["en-US", "en-GB", "es-ES", "es-MX", "vi-VN", "zh-CN", "tl-PH"], "enabled": true, "deprecated": false}
+        {
+          "voice_id": "Xb7hH8MSUJpSbSDYk0k2",
+          "name": "Alice",
+          "country": "GB",
+          "gender": "female",
+          "description": "Confident voice for news",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "9BWtsMINqrJLrRacOk9x",
+          "name": "Aria",
+          "country": "US",
+          "gender": "female",
+          "description": "Expressive voice for social media",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "pqHfZKP75CvOlQylNhV4",
+          "name": "Bill",
+          "country": "US",
+          "gender": "male",
+          "description": "Trustworthy voice for narration",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "nPczCjzI2devNBz1zQrb",
+          "name": "Brian",
+          "country": "US",
+          "gender": "male",
+          "description": "Deep voice for narration",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "N2lVS1w4EtoT3dr4eOWO",
+          "name": "Callum",
+          "country": "",
+          "gender": "male",
+          "description": "Intense transatlantic voice for characters",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "IKne3meq5aSn9XLyUdCD",
+          "name": "Charlie",
+          "country": "AU",
+          "gender": "male",
+          "description": "Natural Australian voice for conversational use",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "XB0fDUnXU5powFXDhCwa",
+          "name": "Charlotte",
+          "country": "SE",
+          "gender": "female",
+          "description": "Swedish voice for characters",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "iP95p4xoKVk53GoZ742B",
+          "name": "Chris",
+          "country": "US",
+          "gender": "male",
+          "description": "Casual voice for conversational use",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "onwK4e9ZLuTAKqWW03F9",
+          "name": "Daniel",
+          "country": "GB",
+          "gender": "male",
+          "description": "Authoritative British voice for news",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "cjVigY5qzO86Huf0OWal",
+          "name": "Eric",
+          "country": "US",
+          "gender": "male",
+          "description": "Friendly voice for conversational use",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "JBFqnCBsd6RMkjVDRZzb",
+          "name": "George",
+          "country": "GB",
+          "gender": "male",
+          "description": "Warm British voice for narration",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "cgSgspJ2msm6clMCkdW9",
+          "name": "Jessica",
+          "country": "US",
+          "gender": "female",
+          "description": "Expressive voice for conversational use",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "FGY2WhTYpPnrIDTdsKH5",
+          "name": "Laura",
+          "country": "US",
+          "gender": "female",
+          "description": "Upbeat voice for social media",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "TX3LPaxmHKxFdv7VOQHJ",
+          "name": "Liam",
+          "country": "US",
+          "gender": "male",
+          "description": "Articulate voice for narration",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "pFZP5JQG7iQjIQuC4Bku",
+          "name": "Lily",
+          "country": "GB",
+          "gender": "female",
+          "description": "Warm British voice for narration",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "XrExE9yKIg1WjnnlVkGX",
+          "name": "Matilda",
+          "country": "US",
+          "gender": "female",
+          "description": "Friendly voice for narration",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "SAz9YHcvj6GT2YYXdXww",
+          "name": "River",
+          "country": "US",
+          "gender": "non-binary",
+          "description": "Confident voice for social media",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "CwhRBWXzGAHq8TQ4Fs17",
+          "name": "Roger",
+          "country": "US",
+          "gender": "male",
+          "description": "Confident voice for social media",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "EXAVITQu4vr4xnSDxMaL",
+          "name": "Sarah",
+          "country": "US",
+          "gender": "female",
+          "description": "Soft voice for news",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "bIHbv24MWmeRgasZH58o",
+          "name": "Will",
+          "country": "US",
+          "gender": "male",
+          "description": "Friendly voice for social media",
+          "models": [
+            "eleven_flash_v2_5"
+          ],
+          "languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "es-MX",
+            "vi-VN",
+            "zh-CN",
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        }
       ],
-      "sample_rates": [8000],
-      "encodings": ["pcm_s16le"]
+      "sample_rates": [
+        8000
+      ],
+      "encodings": [
+        "pcm_s16le"
+      ]
+    },
+    "volcengine": {
+      "enabled": true,
+      "deprecated": false,
+      "voice_input": "catalog_or_custom",
+      "models": {
+        "seed-tts-2.0-standard": {
+          "enabled": true,
+          "deprecated": false,
+          "languages": [
+            "de-DE",
+            "en-GB",
+            "en-US",
+            "es-ES",
+            "es-MX",
+            "fr-FR",
+            "id-ID",
+            "ja-JP",
+            "pt-BR",
+            "tl-PH",
+            "vi-VN",
+            "zh-CN"
+          ]
+        }
+      },
+      "voices": [
+        {
+          "voice_id": "zh_female_vv_uranus_bigtts",
+          "name": "Vivi 2.0",
+          "country": "CN",
+          "gender": "female",
+          "description": "通用场景；指令遵循；S2S 主打音色，支持粤语/上海/河南/北京/天津/四川/陕西/东北方言及30+语种自动识别",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "zh-CN",
+            "en-US",
+            "ja-JP",
+            "id-ID",
+            "es-MX"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "zh_female_xiaohe_uranus_bigtts",
+          "name": "小何 2.0",
+          "country": "CN",
+          "gender": "female",
+          "description": "通用场景；指令遵循；S2S 主打音色，支持粤语/上海/河南/北京/天津/四川/陕西/东北方言及30+语种自动识别",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "zh-CN",
+            "en-US"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "zh_male_m191_uranus_bigtts",
+          "name": "云舟 2.0",
+          "country": "CN",
+          "gender": "male",
+          "description": "通用场景；指令遵循；S2S 主打音色，支持粤语/上海/河南/北京/天津/四川/陕西/东北方言及30+语种自动识别",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "zh-CN",
+            "en-US"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "zh_male_taocheng_uranus_bigtts",
+          "name": "小天 2.0",
+          "country": "CN",
+          "gender": "male",
+          "description": "通用场景；指令遵循；S2S 主打音色，支持粤语/上海/河南/北京/天津/四川/陕西/东北方言及30+语种自动识别",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "zh-CN",
+            "en-US"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "zh_female_shuangkuaisisi_uranus_bigtts",
+          "name": "爽快思思 2.0",
+          "country": "CN",
+          "gender": "female",
+          "description": "通用场景；指令遵循（中文音色具备英文能力）",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "zh-CN",
+            "en-US"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "zh_female_kefunvsheng_uranus_bigtts",
+          "name": "暖阳女声 2.0",
+          "country": "CN",
+          "gender": "female",
+          "description": "客服场景；指令遵循（中文音色具备英文能力）",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "zh-CN",
+            "en-US"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "zh_female_zhixingnv_uranus_bigtts",
+          "name": "知性女声 2.0",
+          "country": "CN",
+          "gender": "female",
+          "description": "通用场景；指令遵循（中文音色具备英文能力）",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "zh-CN",
+            "en-US"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "en_male_tim_uranus_bigtts",
+          "name": "Tim",
+          "country": "US",
+          "gender": "male",
+          "description": "外语音色；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "en-US"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "en_female_dacey_uranus_bigtts",
+          "name": "Dacey",
+          "country": "US",
+          "gender": "female",
+          "description": "外语音色；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "en-US"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "en_female_stokie_uranus_bigtts",
+          "name": "Stokie",
+          "country": "US",
+          "gender": "female",
+          "description": "外语音色；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "en-US"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "ICL_uranus_zh_female_cuishouxieshang_tob",
+          "name": "沉稳悠悠 2.0",
+          "country": "CN",
+          "gender": "female",
+          "description": "客服场景（催收协商）；官方 2.0 精品音色",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "zh-CN",
+            "en-US"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "ICL_uranus_zh_male_cuishoutixing_dongbei_tob",
+          "name": "外呼阿明 2.0",
+          "country": "CN",
+          "gender": "male",
+          "description": "客服场景（催收提醒、东北口音）；官方 2.0 精品音色",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "zh-CN",
+            "en-US"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "ICL_uranus_zh_female_kefuyanlicuishou_v1_tob",
+          "name": "凌厉霜霜 2.0",
+          "country": "CN",
+          "gender": "female",
+          "description": "客服场景（严厉催收）；官方 2.0 精品音色",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "zh-CN",
+            "en-US"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "ICL_uranus_zh_female_kefunvshengwenhecuishou_tob",
+          "name": "外呼凌凌 2.0",
+          "country": "CN",
+          "gender": "female",
+          "description": "客服场景（温和催收）；官方 2.0 精品音色",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "zh-CN",
+            "en-US"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "vi_female_f01507b_uranus_bigtts",
+          "name": "Hannah",
+          "country": "VN",
+          "gender": "female",
+          "description": "通用/客服场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "vi-VN"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "es_male_mariano_uranus_bigtts",
+          "name": "Mariano",
+          "country": "ES",
+          "gender": "male",
+          "description": "通用场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "es-ES"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "es_female_romina_uranus_bigtts",
+          "name": "Romina",
+          "country": "ES",
+          "gender": "female",
+          "description": "通用场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "es-ES"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "de_female_bv081_uranus_bigtts",
+          "name": "Stella",
+          "country": "DE",
+          "gender": "female",
+          "description": "教学/客服场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "de-DE"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "en_female_authoritative-british_uranus_bigtts",
+          "name": "Charlotte",
+          "country": "GB",
+          "gender": "female",
+          "description": "教学/视频配音场景（英式）；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "en-GB"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "en_female_jenny_uranus_bigtts",
+          "name": "Jenny",
+          "country": "US",
+          "gender": "female",
+          "description": "通用/客服场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "en-US"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "en_male_knightley_uranus_bigtts",
+          "name": "Knightley",
+          "country": "GB",
+          "gender": "male",
+          "description": "有声阅读（英式）；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "en-GB"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "en_female_scarlet_p1_uranus_bigtts",
+          "name": "Scarlet",
+          "country": "US",
+          "gender": "female",
+          "description": "客服场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "en-US"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "es_female_bv084_uranus_bigtts",
+          "name": "Gracie",
+          "country": "ES",
+          "gender": "female",
+          "description": "通用/客服场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "es-ES"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "fr_female_fr_bv078_uranus_bigtts",
+          "name": "Simone",
+          "country": "FR",
+          "gender": "female",
+          "description": "通用/视频配音场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "fr-FR"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "fr_female_fr_f47_uranus_bigtts",
+          "name": "Camille",
+          "country": "FR",
+          "gender": "female",
+          "description": "教学/客服场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "fr-FR"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "ja_female_bv024_uranus_bigtts",
+          "name": "Bonnie",
+          "country": "JP",
+          "gender": "female",
+          "description": "通用/教学场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "ja-JP"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "ja_female_bv522_uranus_bigtts",
+          "name": "Hana",
+          "country": "JP",
+          "gender": "female",
+          "description": "通用/教学/客服场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "ja-JP"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "ja_male_bv524_uranus_bigtts",
+          "name": "Ken",
+          "country": "JP",
+          "gender": "male",
+          "description": "通用/视频配音场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "ja-JP"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "mx_female_bv065_uranus_bigtts",
+          "name": "Irene",
+          "country": "MX",
+          "gender": "female",
+          "description": "教学/视频配音场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "es-MX"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "mx_female_bv166dialogue_uranus_bigtts",
+          "name": "Lucy",
+          "country": "MX",
+          "gender": "female",
+          "description": "通用/视频配音场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "es-MX"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "mx_female_bv166emotion_uranus_bigtts",
+          "name": "Rosa",
+          "country": "MX",
+          "gender": "female",
+          "description": "通用/视频配音场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "es-MX"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "mx_female_bv166narrator_uranus_bigtts",
+          "name": "Freya",
+          "country": "MX",
+          "gender": "female",
+          "description": "有声阅读/视频配音/客服场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "es-MX"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "mx_male_marcelo_uranus_bigtts",
+          "name": "Marcelo",
+          "country": "MX",
+          "gender": "male",
+          "description": "通用/视频配音场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "es-MX"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "pt_male_bv172_uranus_bigtts",
+          "name": "Sam",
+          "country": "BR",
+          "gender": "male",
+          "description": "通用/客服场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "pt-BR"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "pt_female_bv173_uranus_bigtts",
+          "name": "Diana",
+          "country": "BR",
+          "gender": "female",
+          "description": "通用/教学场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "pt-BR"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "pt_female_bv530_uranus_bigtts",
+          "name": "Sofia",
+          "country": "BR",
+          "gender": "female",
+          "description": "通用/视频配音场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "pt-BR"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "tl_female_annika_uranus_bigtts",
+          "name": "Annika",
+          "country": "PH",
+          "gender": "female",
+          "description": "通用/视频配音场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "tl_male_ed_uranus_bigtts",
+          "name": "Ed",
+          "country": "PH",
+          "gender": "male",
+          "description": "通用/视频配音场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "tl_female_hervie_uranus_bigtts",
+          "name": "Hervie",
+          "country": "PH",
+          "gender": "female",
+          "description": "有声阅读/视频配音/客服场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "tl-PH"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "vi_female_hong_uranus_bigtts",
+          "name": "Hong",
+          "country": "VN",
+          "gender": "female",
+          "description": "通用/客服场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "vi-VN"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "vi_female_ling_uranus_bigtts",
+          "name": "Ling",
+          "country": "VN",
+          "gender": "female",
+          "description": "通用/视频配音场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "vi-VN"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "vi_female_partner_uranus_bigtts",
+          "name": "Partner",
+          "country": "VN",
+          "gender": "female",
+          "description": "视频配音/客服场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "vi-VN"
+          ],
+          "enabled": true,
+          "deprecated": false
+        },
+        {
+          "voice_id": "vi_male_wumg_uranus_bigtts",
+          "name": "Wumg",
+          "country": "VN",
+          "gender": "male",
+          "description": "通用/客服场景；情感变化、指令遵循",
+          "models": [
+            "seed-tts-2.0-standard"
+          ],
+          "languages": [
+            "vi-VN"
+          ],
+          "enabled": true,
+          "deprecated": false
+        }
+      ],
+      "sample_rates": [
+        8000
+      ],
+      "encodings": [
+        "pcm_s16le"
+      ]
     }
   },
   "realtime": {

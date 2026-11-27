@@ -200,3 +200,11 @@ BI 按固定 Asia/Shanghai 自然日聚合，日界线由 `zoneinfo` 转为 UTC 
 | 应用版本 ID | `config.robotVersionId` |
 
 `allow_interruptions` 和最大时长由新配置链路驱动；旧请求链路在兼容期保持原行为。新配置不得与请求中的其他局部配置合并，Resolve/编译失败时直接使用错误，不回退到代码默认供应商、模型或音色。
+
+## 12. 火山引擎 ASR/TTS WebSocket
+
+- `services/volcengine_stt.py` 使用 `wss://openspeech.bytedance.com/api/v3/sauc/bigmodel` 的 full-client/audio-only 二进制协议，持续发送重采样后的 PCM16LE、单声道、16kHz 音频，并把中间结果和 `definite` 最终结果分别映射为 `InterimTranscriptionFrame` 与 `TranscriptionFrame`。只支持 `X-Api-Key`，不提供 V2 或旧配置别名。
+- `services/volcengine_tts.py` 使用 `wss://openspeech.bytedance.com/api/v3/tts/bidirection`，一条连接内串行执行多个合成 Session，输出 PCM16LE、单声道、8kHz；用户打断发送 `CancelSession`，结束使用 `FinishSession` 和 `FinishConnection`。
+- ASR 与 TTS 共用 `VOLCENGINE_API_KEY`，`tts.voice_id` 必填。ASR 的 `provider_config.resource_id` 默认 `volc.seedasr.sauc.duration`，TTS 的 `provider_config.resource_id` 默认 `seed-tts-2.0`。Provider 均配置为 `volcengine`，模型和音色必须在 capability catalog 中启用。
+- `provider_config.url` 可覆盖默认地址，TTS 的 `provider_config.resource_id` 默认 `seed-tts-2.0`。凭据不进入 Robot JSON 或媒体 URL。单元测试覆盖协议、连续音频、最终/中间转写、多 Session 复用、取消和清理；真实火山凭据、国内连通性和延迟尚未验收。
+- 固定语音信箱缓存资源仍只支持 Cartesia，火山 TTS 按既有行为回退实时合成。火山 ASR/TTS 的价格未内置，成本报表在没有价格配置前不得当作供应商账单。

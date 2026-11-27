@@ -11,6 +11,7 @@ LLM_RETRY_ON_TIMEOUT_DEFAULT = True
 TTS_PROVIDER_FALLBACK_MODELS = {
     "cartesia": "sonic-3.6",
     "elevenlabs": "eleven_flash_v2_5",
+    "volcengine": "seed-tts-2.0-standard",
 }
 
 
@@ -34,6 +35,7 @@ ASR_PROVIDER_FALLBACK_MODELS = {
     "soniox": "stt-rt-v4",
     "elevenlabs": "",
     "vosk": "",
+    "volcengine": "bigmodel",
 }
 
 

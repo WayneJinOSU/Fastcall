@@ -177,9 +177,10 @@ Fast-Call 当前结构由 `deploy/mysql/fastcall_current_schema.sql` 唯一描�
 截至 2026-11-19 的当前工作区：
 
 - Mock Call 运行功能、Console 页面、loopback 媒体和 direct-playback 补丁已移除；历史 `origin=mock_call` 数据、来源过滤和存量字段保留。旧 Mock 验证不再代表当前可用的测试入口。
-- 本次生产 FreeSWITCH 改造后的目标测试 58 项通过，Adapter 61 项、Fast-Call 79 项通过；全量单元测试 296 项通过，既有 Realtime `_observer` 失败 1 项，与基线相同。Compose 配置结构校验、Shell 语法、smoke 内嵌 Python 编译和 `git diff --check` 通过。
+- 本次生产 FreeSWITCH 改造后的目标测试 58 项通过，Adapter 61 项、Fast-Call 79 项通过；全量单元测试 301 项通过，既有 Realtime `_observer` 失败 1 项，与基线相同。Compose 配置结构校验、Shell 语法、smoke 内嵌 Python 编译和 `git diff --check` 通过。
 - ARM64 官方包镜像已构建并通过完整镜像 smoke：`fastcall-freeswitch@sha256:19b9c320d1e53e32a807fb352893227d790b96d0d65bceb18a738103b03ba320`，`mod_audio_stream.so` SHA-256 为 `d45befedb9369147daecf9a4e27bab923402bbb1a54213f13def34bf872e8f28`。已验证模块实际加载、包 ABI、目录权限、生产负向门禁、WSS/TLS、SIP REGISTER 摘要认证和错误密码拒绝。Docker Hub 直连曾超时，实际构建使用相同 digest 的镜像代理。真实运营商 SIP/RTP 与 AI 媒体仍为 `UNVERIFIED`；历史 Console、普通 outbound 集成和浏览器验收不替代真实线路验证。
 - 真实 SIP App/WSS 曾复现上行转写正常但完全无声且没有 `chunk_played`；源码确认 `park()` 默认只读上行，模块需要可替换的下行写帧。originate 增加原生 `send_silence_when_idle=-1` 后，保留官方 1.11.4 和未修改模块即可持续提供静音写帧。复验已观察到 `chunk_played` 和多轮有效对话，最终以 `USER_HANGUP` 完成、任务 `completed`、通道清零，内部 SIP App 双向 AI 链路通过。真实运营商 SIP/RTP 仍未执行，生产保持 NO-GO。
+- 新增火山 ASR/TTS WebSocket 适配器及能力目录，覆盖连续音频、最终/中间转写、多 Session 复用、取消和清理；全量测试相应增加。Agent 镜像构建目前被既有 `pyrnnoise==0.3.8` 分发包不可用问题阻塞，火山真实凭据、国内连通性和延迟尚未验收。
 - 真实浏览器已验收登录、任务列表/详情、联系人、Call、通话技术分析，以及任务启动、暂停、恢复和取消；Agent 不可用恢复、BI 和日历页面已有历史验收。
 - Agent 的 attached 等待 ACK 断线已纳入 slot `try/finally` 释放，并有目标回归。
 - 历史 SIP/App、loopback 和 Mock 结果只作为当时链路的证据，不替代当前真实运营商 SIP INVITE/RTP、NAT、双向媒体或 Adapter/Agent 全链路验收。

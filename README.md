@@ -244,10 +244,11 @@ CARTESIA_API_KEY=<cartesia-key>
 | `OPENAI_API_KEY` / `OPENAI_BASE_URL` | OpenAI 或兼容接口的凭据与地址 |
 | `OPENROUTER_API_KEY` / `DEEPSEEK_API_KEY` | 对应 LLM Provider 凭据 |
 | `ELEVENLABS_API_KEY` | ElevenLabs TTS 凭据（音色由机器人 `tts.voice_id` 下发） |
+| `VOLCENGINE_API_KEY` | 火山 ASR V3/TTS V3 共用 API Key，Provider 为 `volcengine` 时必填；TTS 音色由 Robot `tts.voice_id` 指定 |
 | `AZURE_LLM_*` / `AZURE_REALTIME_*` | Azure LLM、Realtime 与转写配置，完整变量名见 `scripts/bootstrap_compose.py` 的 `PROVIDER_KEYS` |
 | `VOSK_MODEL_PATH` | Agent 容器内 Vosk 模型路径，默认为 `/mnt/data/vosk-model-small-es-0.42`；模型需位于镜像或 `agent-models` 卷中 |
 
-Provider 变量只传给 Agent，不会注入 Fast-Call、Adapter 或 FreeSWITCH。只配置实际使用的 Provider，并先通过 SIP App/WSS 或真实线路验证。
+Provider 变量只传给 Agent，不会注入 Fast-Call、Adapter 或 FreeSWITCH。只配置实际使用的 Provider，并先通过 SIP App/WSS 或真实线路验证。火山 ASR/TTS 的协议与配置说明见 `docs/modules/COLLECTION_AGENT.md`；真实火山连通性与延迟尚未验收。
 
 **容量、端口与构建**
 
